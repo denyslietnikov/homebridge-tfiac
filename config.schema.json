@@ -1,5 +1,5 @@
 {
-    "pluginAlias": "AirCondionerAccessory",
+    "pluginAlias": "AirConditionerAccessory",
     "pluginType": "accessory",
     "singular": false,
     "schema": {
