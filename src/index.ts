@@ -3,7 +3,7 @@ import { API } from 'homebridge';
 import { AirCondionerAccessory } from './platformAccessory'; 
 
 import { DgramAsPromised } from 'dgram-as-promised';
-import * as Crypto from 'crypto';
+// import * as Crypto from 'crypto';
 import { EventEmitter } from 'events';
 
 
