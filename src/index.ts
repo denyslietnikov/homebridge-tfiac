@@ -544,6 +544,6 @@ export class AirConditionerAPI {
  * This method registers the platform with Homebridge
  */
 
-export const registerAccessory = (api: API) => {
+export default (api: API) => {
   api.registerAccessory('AirCondionerAccessory', AirCondionerAccessory);
 };
