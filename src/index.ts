@@ -1,8 +1,10 @@
-// index.ts
 import { API } from 'homebridge';
-import { AirConditionerAccessory } from './platformAccessory';
 
+import { AirConditionerAccessory } from './platformAccessory'; 
+
+/**
+ * This method registers the platform with Homebridge
+ */
 export = (api: API) => {
-  api.registerAccessory('AirConditionerAccessory', 'AirConditioner', AirConditionerAccessory);
-
-};
+  api.registerAccessory('AirCondionerAccessory', AirConditionerAccessory);
+}
