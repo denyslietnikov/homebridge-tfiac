@@ -1,3 +1,3 @@
 # homebridge-tfiac
 
-WIP
+work in progress
