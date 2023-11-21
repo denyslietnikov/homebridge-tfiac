@@ -5,3 +5,4 @@ export interface AirConditionerConfig {
     port: number;
   }
   
+export const PLUGIN_NAME = 'homebridge-tfiac';
