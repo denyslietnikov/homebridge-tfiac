@@ -1,33 +1,29 @@
 // platformAccessory.ts
 import { AccessoryPlugin, API, Logging, Service } from 'homebridge';
-import { YourDeviceAPI } from './yourDeviceAPI';
-import { DeviceConfig } from './settings';
+import { AirConditionerAPI } from './AirConditionerAPI';
 
-export class YourDeviceAccessory implements AccessoryPlugin {
+export class AirConditionerAccessory implements AccessoryPlugin {
   private readonly log: Logging;
   private readonly api: API;
   private readonly name: string;
-  private readonly deviceAPI: YourDeviceAPI;
-
+  private readonly deviceAPI: AirConditionerAPI;
   private readonly service: Service;
 
-  private readonly config: DeviceConfig;
-
-  constructor(log: Logging, config: DeviceConfig, api: API) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  constructor(log: Logging, config: any, api: API) {
     this.log = log;
     this.name = config.name;
     this.api = api;
-    this.config = config;
 
-    if (!config.ip || !config.port) {
+    if (!('ip' in config) || !('port' in config)) {
       log.error('IP or port is not provided in the configuration.');
       throw new Error('IP or port is missing.');
     }
 
-    const ip = config.ip as string;
-    const port = config.port as number;    
+    const ip = config['ip'] as string;
+    const port = config['port'] as number;
 
-    this.deviceAPI = new YourDeviceAPI(ip, port);
+    this.deviceAPI = new AirConditionerAPI(ip, port);
 
     this.service = new this.api.hap.Service.Switch(this.name);
 

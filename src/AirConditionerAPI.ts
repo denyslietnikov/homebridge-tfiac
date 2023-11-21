@@ -1,8 +1,8 @@
-// yourDeviceAPI.ts
+// AirConditionerAPI.ts
 import * as dgram from 'dgram';
 import { EventEmitter } from 'events';
 
-export class YourDeviceAPI extends EventEmitter {
+export class AirConditionerAPI extends EventEmitter {
   private readonly ip: string;
   private readonly port: number;
 
@@ -26,17 +26,20 @@ export class YourDeviceAPI extends EventEmitter {
     });
   }
 
+  // Add method to get device state
   async getOnState(): Promise<boolean> {
     // Implement logic to get the device state
     // Example: return true if the device is on, false if it's off
     return false;
   }
 
+  // Add method to turn on the device
   async turnOn(): Promise<void> {
     const command = '<msg msgid="SetMessage" type="Control" seq="1"><SetMessage><TurnOn>on</TurnOn></SetMessage></msg>';
     await this.sendCommand(command);
   }
 
+  // Add method to turn off the device
   async turnOff(): Promise<void> {
     const command = '<msg msgid="SetMessage" type="Control" seq="12345"><SetMessage><TurnOn>off</TurnOn></SetMessage></msg>';
     await this.sendCommand(command);
