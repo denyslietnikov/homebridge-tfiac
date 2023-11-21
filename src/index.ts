@@ -348,8 +348,8 @@ export class AirConditionerAPI {
         checksum = checksum & 0xffff;
       }
 
-      const cipher = Crypto.createCipheriv('aes-128-cbc', this.defaultKey, this.defaultIV);
-      payload = cipher.update(payload);
+      // const cipher = Crypto.createCipheriv('aes-128-cbc', this.defaultKey, this.defaultIV);
+      // payload = cipher.update(payload);
 
       packet[0x34] = checksum & 0xff;
       packet[0x35] = checksum >> 8;
@@ -368,25 +368,34 @@ export class AirConditionerAPI {
       
     }
 
-    private decrypt(response: Buffer): Buffer {
-      const enc_payload = Buffer.alloc(response.length - 0x38, 0);
-      response.copy(enc_payload, 0, 0x38);
+    // private decrypt(response: Buffer): Buffer {
+    //  const enc_payload = Buffer.alloc(response.length - 0x38, 0);
+    //  response.copy(enc_payload, 0, 0x38);
 
-      const decipher = Crypto.createDecipheriv('aes-128-cbc', this.defaultKey, this.defaultIV);
-      decipher.setAutoPadding(false);
-      let payload = decipher.update(enc_payload);
-      const p2 = decipher.final();
-      if (p2) {
-        payload = Buffer.concat([payload, p2]);
-      }
+    //  const decipher = Crypto.createDecipheriv('aes-128-cbc', this.defaultKey, this.defaultIV);
+    //  decipher.setAutoPadding(false);
+    //  let payload = decipher.update(enc_payload);
+    //  const p2 = decipher.final();
+    //  if (p2) {
+    //    payload = Buffer.concat([payload, p2]);
+    //  }
 
-      return payload;
+    //  return payload;
         
-    }
+    //}
 
+    //private encrypt(payload: Buffer): Buffer {
+    //  return payload;
+    //}
+
+    private decrypt(response: Buffer): Buffer {
+      return response;
+    }
+    
     private encrypt(payload: Buffer): Buffer {
       return payload;
     }
+    
 
     // power = State.off
     // fanspeed = Fanspeed.medium
