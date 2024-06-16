@@ -3,7 +3,7 @@
   "displayName": "Homebridge Tfiac",
   "name": "homebridge-tfiac",
   "version": "1.0.20",
-  "description": "Control your AC from TFIAC App via homebridge.",
+  "description": "Homebridge plugin to control AC using the TFIAC protocol.",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
