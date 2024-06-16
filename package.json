@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "Homebridge Tfiac",
   "name": "homebridge-tfiac",
-  "version": "1.0.12",
+  "version": "1.0.20",
   "description": "Control your AC from TFIAC App via homebridge.",
   "license": "Apache-2.0",
   "repository": {
