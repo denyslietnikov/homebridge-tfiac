@@ -1,10 +1,8 @@
+// index.ts
 import { API } from 'homebridge';
+import { PLATFORM_NAME } from './settings';
+import { TfiacPlatform } from './platform';
 
-import { AirConditionerAccessory } from './platformAccessory'; 
-
-/**
- * This method registers the platform with Homebridge
- */
 export = (api: API) => {
-  api.registerAccessory('AirConditionerAccessory', AirConditionerAccessory);
-}
+  api.registerPlatform(PLATFORM_NAME, TfiacPlatform);
+};

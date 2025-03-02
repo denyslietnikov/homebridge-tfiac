@@ -1,3 +1,5 @@
+// AirConditionerAPI.ts
+
 import { EventEmitter } from 'events';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
