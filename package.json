@@ -13,8 +13,8 @@
     "url": "https://github.com/denyslietnikov/homebridge-tfiac/issues"
   },
   "engines": {
-    "node": ">=10.17.0",
-    "homebridge": ">=1.2.3"
+    "node": ">=16.0.0",
+    "homebridge": ">=1.6.0"
   },
   "main": "dist/index.js",
   "scripts": {
@@ -27,7 +27,7 @@
     "homebridge-plugin"
   ],
   "dependencies": {
-    "xml2js": "^0.4.23"
+    "xml2js": "^0.6.2"
   },
   "devDependencies": {
     "@types/node": "^14.14.8",

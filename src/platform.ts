@@ -1,3 +1,5 @@
+// platform.ts
+
 import {
   API,
   DynamicPlatformPlugin,

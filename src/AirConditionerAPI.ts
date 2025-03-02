@@ -4,7 +4,7 @@ import { EventEmitter } from 'events';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
 
-interface AirConditionerStatus {
+interface AirConditionerStatusInternal {
   current_temp: number;
   target_temp: number;
   operation_mode: string;
@@ -12,6 +12,8 @@ interface AirConditionerStatus {
   is_on: string;
   swing_mode: string;
 }
+
+export type AirConditionerStatus = AirConditionerStatusInternal
 
 interface StatusUpdateMsg {
   IndoorTemp: string[];
@@ -23,7 +25,7 @@ interface StatusUpdateMsg {
   WindDirection_V: string[];
 }
 
-type AirConditionerMode = keyof AirConditionerStatus;
+type AirConditionerMode = keyof AirConditionerStatusInternal;
 
 export class AirConditionerAPI extends EventEmitter {
   private readonly ip: string;
@@ -143,4 +145,4 @@ export class AirConditionerAPI extends EventEmitter {
   }
 }
 
-export default AirConditionerAPI;  // Export the class as the default export
+export default AirConditionerAPI;

@@ -1,3 +1,5 @@
+// settings.ts
+
 import { PlatformConfig } from 'homebridge';
 
 export const PLATFORM_NAME = 'TfiacPlatform';

@@ -1,24 +1,30 @@
- 
+// platformAccessory.ts
+
 import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback, CharacteristicGetCallback } from 'homebridge';
 import { TfiacPlatform } from './platform';
-import AirConditionerAPI from './AirConditionerAPI';
-import { TfiacPlatformConfig } from './settings';
+import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI';
+import { TfiacDeviceConfig } from './settings';
 
 export class TfiacPlatformAccessory {
   private service: Service;
   private deviceAPI: AirConditionerAPI;
+  private cachedStatus: AirConditionerStatus | null = null; // Explicitly typed
+  private pollInterval: number;
 
   constructor(
     private readonly platform: TfiacPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
     // Retrieve the device config from the accessory context
-    const deviceConfig = this.accessory.context.deviceConfig as TfiacPlatformConfig;
+    const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
 
     // Create the AirConditionerAPI instance
     const ip = deviceConfig.ip;
     const port = deviceConfig.port ?? 7777;
     this.deviceAPI = new AirConditionerAPI(ip, port);
+
+    // Determine polling interval (in milliseconds)
+    this.pollInterval = (deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000);
 
     // Create or retrieve the HeaterCooler service
     this.service =
@@ -30,6 +36,9 @@ export class TfiacPlatformAccessory {
       this.platform.Characteristic.Name, 
       deviceConfig.name ?? 'Unnamed AC',
     );
+
+    // Start background polling to update cached status
+    this.startPolling();
 
     // Link handlers for required characteristics
     this.service.getCharacteristic(this.platform.Characteristic.Active)
@@ -63,17 +72,40 @@ export class TfiacPlatformAccessory {
       .on('set', this.handleSwingModeSet.bind(this));
   }
 
-  private async handleActiveGet(callback: CharacteristicGetCallback): Promise<void> {
-    this.platform.log.debug('Triggered GET Active');
+  /**
+   * Starts periodic polling of the device state.
+   */
+  private startPolling(): void {
+    // Immediately update cache
+    this.updateCachedStatus();
+    // Then schedule periodic updates
+    setInterval(() => {
+      this.updateCachedStatus();
+    }, this.pollInterval);
+  }
+
+  /**
+   * Updates the cached status by calling the device API.
+   */
+  private async updateCachedStatus(): Promise<void> {
     try {
       const status = await this.deviceAPI.updateState();
-      const activeValue = (status.is_on === 'on')
+      this.cachedStatus = status;
+      this.platform.log.debug('Cached status updated:', status);
+    } catch (error) {
+      this.platform.log.error('Error updating cached status:', error);
+    }
+  }
+
+  private handleActiveGet(callback: CharacteristicGetCallback): void {
+    this.platform.log.debug('Triggered GET Active');
+    if (this.cachedStatus) {
+      const activeValue = (this.cachedStatus.is_on === 'on')
         ? this.platform.Characteristic.Active.ACTIVE
         : this.platform.Characteristic.Active.INACTIVE;
       callback(null, activeValue);
-    } catch (error) {
-      this.platform.log.error('Error getting Active state:', error);
-      callback(error as Error);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
@@ -85,6 +117,8 @@ export class TfiacPlatformAccessory {
       } else {
         await this.deviceAPI.turnOff();
       }
+      // Optionally update cache immediately after setting state
+      this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting Active state:', error);
@@ -92,27 +126,23 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private async handleCurrentHeaterCoolerStateGet(callback: CharacteristicGetCallback): Promise<void> {
+  private handleCurrentHeaterCoolerStateGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET CurrentHeaterCoolerState');
-    try {
-      const status = await this.deviceAPI.updateState();
-      const state = this.mapOperationModeToCurrentHeaterCoolerState(status.operation_mode);
+    if (this.cachedStatus) {
+      const state = this.mapOperationModeToCurrentHeaterCoolerState(this.cachedStatus.operation_mode);
       callback(null, state);
-    } catch (error) {
-      this.platform.log.error('Error getting CurrentHeaterCoolerState:', error);
-      callback(error as Error);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
-  private async handleTargetHeaterCoolerStateGet(callback: CharacteristicGetCallback): Promise<void> {
+  private handleTargetHeaterCoolerStateGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET TargetHeaterCoolerState');
-    try {
-      const status = await this.deviceAPI.updateState();
-      const state = this.mapOperationModeToTargetHeaterCoolerState(status.operation_mode);
+    if (this.cachedStatus) {
+      const state = this.mapOperationModeToTargetHeaterCoolerState(this.cachedStatus.operation_mode);
       callback(null, state);
-    } catch (error) {
-      this.platform.log.error('Error getting TargetHeaterCoolerState:', error);
-      callback(error as Error);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
@@ -121,6 +151,8 @@ export class TfiacPlatformAccessory {
     try {
       const mode = this.mapTargetHeaterCoolerStateToOperationMode(value as number);
       await this.deviceAPI.setAirConditionerState('operation_mode', mode);
+      // Update cache after setting
+      this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting TargetHeaterCoolerState:', error);
@@ -128,29 +160,25 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private async handleCurrentTemperatureGet(callback: CharacteristicGetCallback): Promise<void> {
+  private handleCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET CurrentTemperature');
-    try {
-      const status = await this.deviceAPI.updateState();
-      const temperatureCelsius = this.fahrenheitToCelsius(status.current_temp);
-      this.platform.log.debug(`Current temperature received: ${temperatureCelsius}°C`);
+    if (this.cachedStatus) {
+      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.current_temp);
+      this.platform.log.debug(`Current temperature: ${temperatureCelsius}°C`);
       callback(null, temperatureCelsius);
-    } catch (error) {
-      this.platform.log.error('Error getting current temperature:', error);
-      callback(error as Error);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
-  private async handleThresholdTemperatureGet(callback: CharacteristicGetCallback): Promise<void> {
+  private handleThresholdTemperatureGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET ThresholdTemperature');
-    try {
-      const status = await this.deviceAPI.updateState();
-      const temperatureCelsius = this.fahrenheitToCelsius(status.target_temp);
-      this.platform.log.debug(`Threshold temperature received: ${temperatureCelsius}°C`);
+    if (this.cachedStatus) {
+      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.target_temp);
+      this.platform.log.debug(`Threshold temperature: ${temperatureCelsius}°C`);
       callback(null, temperatureCelsius);
-    } catch (error) {
-      this.platform.log.error('Error getting threshold temperature:', error);
-      callback(error as Error);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
@@ -159,6 +187,7 @@ export class TfiacPlatformAccessory {
     try {
       const temperatureFahrenheit = this.celsiusToFahrenheit(value as number);
       await this.deviceAPI.setAirConditionerState('target_temp', temperatureFahrenheit.toString());
+      this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting threshold temperature:', error);
@@ -166,16 +195,14 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private async handleRotationSpeedGet(callback: CharacteristicGetCallback): Promise<void> {
+  private handleRotationSpeedGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET RotationSpeed');
-    try {
-      const status = await this.deviceAPI.updateState();
-      const fanSpeed = this.mapFanModeToRotationSpeed(status.fan_mode);
-      this.platform.log.debug(`Fan speed received: ${fanSpeed}`);
+    if (this.cachedStatus) {
+      const fanSpeed = this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode);
+      this.platform.log.debug(`Fan speed: ${fanSpeed}`);
       callback(null, fanSpeed);
-    } catch (error) {
-      this.platform.log.error('Error getting fan speed:', error);
-      callback(error as Error);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
@@ -184,6 +211,7 @@ export class TfiacPlatformAccessory {
     try {
       const fanMode = this.mapRotationSpeedToFanMode(value as number);
       await this.deviceAPI.setFanSpeed(fanMode);
+      this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting fan speed:', error);
@@ -191,14 +219,12 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private async handleSwingModeGet(callback: CharacteristicGetCallback): Promise<void> {
+  private handleSwingModeGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET SwingMode');
-    try {
-      const status = await this.deviceAPI.updateState();
-      callback(null, status.swing_mode === 'Off' ? 0 : 1);
-    } catch (error) {
-      this.platform.log.error('Error getting swing mode:', error);
-      callback(error as Error);
+    if (this.cachedStatus) {
+      callback(null, this.cachedStatus.swing_mode === 'Off' ? 0 : 1);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
@@ -207,6 +233,7 @@ export class TfiacPlatformAccessory {
     try {
       const mode = value ? 'Both' : 'Off';
       await this.deviceAPI.setSwingMode(mode);
+      this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting swing mode:', error);
