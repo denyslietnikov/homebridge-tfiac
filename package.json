@@ -2,7 +2,7 @@
   "private": false,
   "displayName": "Homebridge Tfiac",
   "name": "homebridge-tfiac",
-  "version": "1.0.23",
+  "version": "1.0.24",
   "description": "Homebridge plugin to control AC using the TFIAC protocol.",
   "license": "Apache-2.0",
   "repository": {
@@ -27,10 +27,10 @@
     "homebridge-plugin"
   ],
   "files": [
-  "dist/",
-  "config.schema.json",
-  "README.md",
-  "LICENSE"
+    "dist/",
+    "config.schema.json",
+    "README.md",
+    "LICENSE"
   ],
   "dependencies": {
     "xml2js": "^0.6.2"
