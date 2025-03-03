@@ -13,7 +13,7 @@ interface AirConditionerStatusInternal {
   swing_mode: string;
 }
 
-export type AirConditionerStatus = AirConditionerStatusInternal
+export type AirConditionerStatus = AirConditionerStatusInternal;
 
 interface StatusUpdateMsg {
   IndoorTemp: string[];
@@ -81,8 +81,9 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   private mapWindDirectionToSwingMode(status: StatusUpdateMsg): string {
-    const value = (status['WindDirection_H'][0] === 'on' ? 1 : 0) | 
-                  (status['WindDirection_V'][0] === 'on' ? 2 : 0);
+    const value =
+      (status.WindDirection_H[0] === 'on' ? 1 : 0) |
+      (status.WindDirection_V[0] === 'on' ? 2 : 0);
     return { 0: 'Off', 1: 'Horizontal', 2: 'Vertical', 3: 'Both' }[value] || 'Off';
   }
 
@@ -98,13 +99,13 @@ export class AirConditionerAPI extends EventEmitter {
                       <SyncStatusReq></SyncStatusReq></msg>`;
     const response = await this.sendCommand(command);
     const xmlObject = await xml2js.parseStringPromise(response);
-    const statusUpdateMsg = xmlObject['msg']['statusUpdateMsg'][0] as StatusUpdateMsg;
+    const statusUpdateMsg = xmlObject.msg.statusUpdateMsg[0] as StatusUpdateMsg;
     const status: AirConditionerStatus = {
-      current_temp: parseFloat(statusUpdateMsg['IndoorTemp'][0]),
-      target_temp: parseFloat(statusUpdateMsg['SetTemp'][0]),
-      operation_mode: statusUpdateMsg['BaseMode'][0],
-      fan_mode: statusUpdateMsg['WindSpeed'][0],
-      is_on: statusUpdateMsg['TurnOn'][0],
+      current_temp: parseFloat(statusUpdateMsg.IndoorTemp[0]),
+      target_temp: parseFloat(statusUpdateMsg.SetTemp[0]),
+      operation_mode: statusUpdateMsg.BaseMode[0],
+      fan_mode: statusUpdateMsg.WindSpeed[0],
+      is_on: statusUpdateMsg.TurnOn[0],
       swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg),
     };
     return status;
@@ -127,14 +128,14 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   async setSwingMode(value: string): Promise<void> {
-    const SET_SWING = {
-      'Off': '<WindDirection_H>off</WindDirection_H><WindDirection_V>off</WindDirection_V>',
-      'Vertical': '<WindDirection_H>off</WindDirection_H><WindDirection_V>on</WindDirection_V>',
-      'Horizontal': '<WindDirection_H>on</WindDirection_H><WindDirection_V>off</WindDirection_V>',
-      'Both': '<WindDirection_H>on</WindDirection_H><WindDirection_V>on</WindDirection_V>',
+    const SET_SWING: Record<'Off' | 'Vertical' | 'Horizontal' | 'Both', string> = {
+      Off: '<WindDirection_H>off</WindDirection_H><WindDirection_V>off</WindDirection_V>',
+      Vertical: '<WindDirection_H>off</WindDirection_H><WindDirection_V>on</WindDirection_V>',
+      Horizontal: '<WindDirection_H>on</WindDirection_H><WindDirection_V>off</WindDirection_V>',
+      Both: '<WindDirection_H>on</WindDirection_H><WindDirection_V>on</WindDirection_V>',
     };
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage>${SET_SWING[value]}</SetMessage></msg>`;
+                      <SetMessage>${SET_SWING[value as keyof typeof SET_SWING]}</SetMessage></msg>`;
     await this.sendCommand(command);
   }
 
