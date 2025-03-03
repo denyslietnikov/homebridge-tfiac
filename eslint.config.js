@@ -1,59 +1,35 @@
-/* eslint-env node */
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
 
-import { FlatCompat } from '@eslint/eslintrc';
-import js from '@eslint/js';
-import tsPlugin from '@typescript-eslint/eslint-plugin';
-import tsParser from '@typescript-eslint/parser';
-
-// Pass "recommendedConfig" so that "eslint:recommended" is recognized.
-const compat = new FlatCompat({
-  baseDirectory: process.cwd(),
-  resolvePluginsRelativeTo: process.cwd(),
-  recommendedConfig: js.configs.recommended,
-});
-
-export default [
-  // Ignore the dist folder
+export default tseslint.config(
   {
-    ignores: ['dist'],
+    ignores: ['dist/**'],
   },
-
-  // Extend old-style configurations. Note: we pass them as separate arguments.
-  ...compat.extends(
-    'eslint:recommended',
-    'plugin:@typescript-eslint/recommended'
-  ),
-
   {
-    // Apply these settings only to TypeScript files.
-    files: ['**/*.ts'],
+    rules: {
+      'quotes': ['error', 'single'],
+      'indent': ['error', 2, { 'SwitchCase': 0 }],
+      'linebreak-style': ['error', 'unix'],
+      'semi': ['error', 'always'],
+      'comma-dangle': ['error', 'always-multiline'],
+      'dot-notation': 'error',
+      'eqeqeq': ['error', 'smart'],
+      'curly': ['error', 'all'],
+      'brace-style': ['error'],
+      'prefer-arrow-callback': 'warn',
+      'max-len': ['warn', 160],
+      'object-curly-spacing': ['error', 'always'],
+      'no-use-before-define': 'off',
+      '@typescript-eslint/no-use-before-define': ['error', { 'classes': false, 'enums': false }],
+      '@typescript-eslint/no-unused-vars': ['error', { 'caughtErrors': 'none' }],
+    },
+  },
+  {
     languageOptions: {
-      parser: tsParser,
-      ecmaVersion: 2018,
+      ecmaVersion: 2022,
       sourceType: 'module',
     },
-    plugins: {
-      '@typescript-eslint': tsPlugin,
-    },
-    rules: {
-      'quotes': ['warn', 'single'],
-      'indent': ['warn', 2, { 'SwitchCase': 1 }],
-      'semi': ['warn', 'always'],
-      'comma-dangle': ['warn', 'always-multiline'],
-      'dot-notation': 'off',
-      'eqeqeq': 'warn',
-      'curly': ['warn', 'all'],
-      'brace-style': ['warn'],
-      'prefer-arrow-callback': ['warn'],
-      'max-len': ['warn', 140],
-      'no-console': ['warn'], // prefer the built-in Homebridge log methods
-      'no-non-null-assertion': ['off'],
-      'comma-spacing': ['error'],
-      'no-multi-spaces': ['warn', { 'ignoreEOLComments': true }],
-      'lines-between-class-members': ['warn', 'always', { 'exceptAfterSingleLine': true }],
-      '@typescript-eslint/explicit-function-return-type': 'off',
-      '@typescript-eslint/no-non-null-assertion': 'off',
-      '@typescript-eslint/explicit-module-boundary-types': 'off'
-    }
-  }
-];
+  },
+  eslint.configs.recommended,
+  ...tseslint.configs.recommended,
+);

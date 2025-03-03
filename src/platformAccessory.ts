@@ -1,6 +1,12 @@
 // platformAccessory.ts
 
-import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback, CharacteristicGetCallback } from 'homebridge';
+import {
+  PlatformAccessory,
+  Service,
+  CharacteristicValue,
+  CharacteristicSetCallback,
+  CharacteristicGetCallback,
+} from 'homebridge';
 import { TfiacPlatform } from './platform';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI';
 import { TfiacDeviceConfig } from './settings';
@@ -24,16 +30,18 @@ export class TfiacPlatformAccessory {
     this.deviceAPI = new AirConditionerAPI(ip, port);
 
     // Determine polling interval (in milliseconds)
-    this.pollInterval = (deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000);
+    this.pollInterval = deviceConfig.updateInterval
+      ? deviceConfig.updateInterval * 1000
+      : 30000;
 
     // Create or retrieve the HeaterCooler service
     this.service =
-      this.accessory.getService(this.platform.Service.HeaterCooler)
-      || this.accessory.addService(this.platform.Service.HeaterCooler, deviceConfig.name);
+      this.accessory.getService(this.platform.Service.HeaterCooler) ||
+      this.accessory.addService(this.platform.Service.HeaterCooler, deviceConfig.name);
 
     // Set the displayed name characteristic
     this.service.setCharacteristic(
-      this.platform.Characteristic.Name, 
+      this.platform.Characteristic.Name,
       deviceConfig.name ?? 'Unnamed AC',
     );
 
@@ -41,33 +49,41 @@ export class TfiacPlatformAccessory {
     this.startPolling();
 
     // Link handlers for required characteristics
-    this.service.getCharacteristic(this.platform.Characteristic.Active)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.Active)
       .on('get', this.handleActiveGet.bind(this))
       .on('set', this.handleActiveSet.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
       .on('get', this.handleCurrentHeaterCoolerStateGet.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
       .on('get', this.handleTargetHeaterCoolerStateGet.bind(this))
       .on('set', this.handleTargetHeaterCoolerStateSet.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .on('get', this.handleCurrentTemperatureGet.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature)
       .on('get', this.handleThresholdTemperatureGet.bind(this))
       .on('set', this.handleThresholdTemperatureSet.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature)
       .on('get', this.handleThresholdTemperatureGet.bind(this))
       .on('set', this.handleThresholdTemperatureSet.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.RotationSpeed)
       .on('get', this.handleRotationSpeedGet.bind(this))
       .on('set', this.handleRotationSpeedSet.bind(this));
 
-    this.service.getCharacteristic(this.platform.Characteristic.SwingMode)
+    this.service
+      .getCharacteristic(this.platform.Characteristic.SwingMode)
       .on('get', this.handleSwingModeGet.bind(this))
       .on('set', this.handleSwingModeSet.bind(this));
   }
@@ -100,16 +116,20 @@ export class TfiacPlatformAccessory {
   private handleActiveGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET Active');
     if (this.cachedStatus) {
-      const activeValue = (this.cachedStatus.is_on === 'on')
-        ? this.platform.Characteristic.Active.ACTIVE
-        : this.platform.Characteristic.Active.INACTIVE;
+      const activeValue =
+        this.cachedStatus.is_on === 'on'
+          ? this.platform.Characteristic.Active.ACTIVE
+          : this.platform.Characteristic.Active.INACTIVE;
       callback(null, activeValue);
     } else {
       callback(new Error('Cached status not available'));
     }
   }
 
-  private async handleActiveSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  private async handleActiveSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
     this.platform.log.debug('Triggered SET Active:', value);
     try {
       if (value === this.platform.Characteristic.Active.ACTIVE) {
@@ -129,7 +149,9 @@ export class TfiacPlatformAccessory {
   private handleCurrentHeaterCoolerStateGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET CurrentHeaterCoolerState');
     if (this.cachedStatus) {
-      const state = this.mapOperationModeToCurrentHeaterCoolerState(this.cachedStatus.operation_mode);
+      const state = this.mapOperationModeToCurrentHeaterCoolerState(
+        this.cachedStatus.operation_mode,
+      );
       callback(null, state);
     } else {
       callback(new Error('Cached status not available'));
@@ -139,14 +161,19 @@ export class TfiacPlatformAccessory {
   private handleTargetHeaterCoolerStateGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET TargetHeaterCoolerState');
     if (this.cachedStatus) {
-      const state = this.mapOperationModeToTargetHeaterCoolerState(this.cachedStatus.operation_mode);
+      const state = this.mapOperationModeToTargetHeaterCoolerState(
+        this.cachedStatus.operation_mode,
+      );
       callback(null, state);
     } else {
       callback(new Error('Cached status not available'));
     }
   }
 
-  private async handleTargetHeaterCoolerStateSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  private async handleTargetHeaterCoolerStateSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
     this.platform.log.debug('Triggered SET TargetHeaterCoolerState:', value);
     try {
       const mode = this.mapTargetHeaterCoolerStateToOperationMode(value as number);
@@ -182,7 +209,10 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private async handleThresholdTemperatureSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  private async handleThresholdTemperatureSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
     this.platform.log.debug('Triggered SET ThresholdTemperature:', value);
     try {
       const temperatureFahrenheit = this.celsiusToFahrenheit(value as number);
@@ -206,7 +236,10 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private async handleRotationSpeedSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  private async handleRotationSpeedSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
     this.platform.log.debug('Triggered SET RotationSpeed:', value);
     try {
       const fanMode = this.mapRotationSpeedToFanMode(value as number);
@@ -228,7 +261,10 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private async handleSwingModeSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  private async handleSwingModeSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
     this.platform.log.debug('Triggered SET SwingMode:', value);
     try {
       const mode = value ? 'Both' : 'Off';
@@ -244,53 +280,53 @@ export class TfiacPlatformAccessory {
   private mapOperationModeToCurrentHeaterCoolerState(mode: string): number {
     const { CurrentHeaterCoolerState } = this.platform.Characteristic;
     switch (mode) {
-      case 'cool':
-        return CurrentHeaterCoolerState.COOLING;
-      case 'heat':
-        return CurrentHeaterCoolerState.HEATING;
-      default:
-        return CurrentHeaterCoolerState.IDLE;
+    case 'cool':
+      return CurrentHeaterCoolerState.COOLING;
+    case 'heat':
+      return CurrentHeaterCoolerState.HEATING;
+    default:
+      return CurrentHeaterCoolerState.IDLE;
     }
   }
 
   private mapOperationModeToTargetHeaterCoolerState(mode: string): number {
     const { TargetHeaterCoolerState } = this.platform.Characteristic;
     switch (mode) {
-      case 'cool':
-        return TargetHeaterCoolerState.COOL;
-      case 'heat':
-        return TargetHeaterCoolerState.HEAT;
-      default:
-        return TargetHeaterCoolerState.AUTO;
+    case 'cool':
+      return TargetHeaterCoolerState.COOL;
+    case 'heat':
+      return TargetHeaterCoolerState.HEAT;
+    default:
+      return TargetHeaterCoolerState.AUTO;
     }
   }
 
   private mapTargetHeaterCoolerStateToOperationMode(state: number): string {
     const { TargetHeaterCoolerState } = this.platform.Characteristic;
     switch (state) {
-      case TargetHeaterCoolerState.COOL:
-        return 'cool';
-      case TargetHeaterCoolerState.HEAT:
-        return 'heat';
-      default:
-        return 'auto';
+    case TargetHeaterCoolerState.COOL:
+      return 'cool';
+    case TargetHeaterCoolerState.HEAT:
+      return 'heat';
+    default:
+      return 'auto';
     }
   }
 
   private fahrenheitToCelsius(fahrenheit: number): number {
-    return (fahrenheit - 32) * 5 / 9;
+    return ((fahrenheit - 32) * 5) / 9;
   }
 
   private celsiusToFahrenheit(celsius: number): number {
-    return (celsius * 9 / 5) + 32;
+    return (celsius * 9) / 5 + 32;
   }
 
   private mapFanModeToRotationSpeed(fanMode: string): number {
     const fanSpeedMap: { [key: string]: number } = {
-      'Auto': 50,
-      'Low': 25,
-      'Middle': 50,
-      'High': 75,
+      Auto: 50,
+      Low: 25,
+      Middle: 50,
+      High: 75,
     };
     return fanSpeedMap[fanMode] || 50;
   }

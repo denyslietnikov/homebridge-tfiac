@@ -1,11 +1,13 @@
 {
-  "private": false,
-  "displayName": "Homebridge Tfiac",
   "name": "homebridge-tfiac",
-  "version": "1.0.26",
-  "description": "Homebridge plugin to control AC using the TFIAC protocol.",
-  "license": "MIT",
+  "displayName": "Homebridge Tfiac",
   "type": "module",
+  "version": "1.0.26",
+  "private": true,
+  "description": "Homebridge plugin to control AC using the TFIAC protocol.",
+  "author": "denyslietnikov",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/denyslietnikov/homebridge-tfiac#readme",
   "repository": {
     "type": "git",
     "url": "git://github.com/denyslietnikov/homebridge-tfiac.git"
@@ -13,40 +15,41 @@
   "bugs": {
     "url": "https://github.com/denyslietnikov/homebridge-tfiac/issues"
   },
-  "engines": {
-    "node": ">=16.0.0",
-    "homebridge": ">=1.6.0"
-  },
-  "main": "dist/index.js",
-  "scripts": {
-    "lint": "eslint src/**.ts",
-    "lint:fix": "eslint src/**/*.ts --fix",
-    "build": "rimraf ./dist && tsc",
-    "prepublishOnly": "npm run lint && npm run build"
-  },
   "keywords": [
     "homebridge-plugin"
   ],
+  "main": "dist/index.js",
+  "engines": {
+    "node": "^18.20.4 || ^20.18.0 || ^22.10.0",
+    "homebridge": "^1.8.0 || ^2.0.0-beta.0"
+  },
   "files": [
     "dist/",
     "config.schema.json",
     "README.md",
     "LICENSE"
   ],
+  "scripts": {
+    "build": "rimraf ./dist && tsc",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "prepublishOnly": "npm run lint && npm run build",
+    "watch": "npm run build && npm link && nodemon"
+  },
   "dependencies": {
-    "xml2js": "^0.6.2"
+    "xml2js": "^0.6.2",
+    "homebridge-lib": "^7.1.4"
   },
   "devDependencies": {
-    "@types/node": "^16.0.0",
-    "@types/xml2js": "^0.4.14",
-    "@typescript-eslint/eslint-plugin": "^8.25.0",
-    "@typescript-eslint/parser": "^8.25.0",
+    "@eslint/js": "^9.21.0",
+    "@types/node": "^22.13.5",
     "eslint": "^9.21.0",
-    "homebridge": "^1.6.0",
-    "rimraf": "^3.0.2",
-    "ts-node": "^9.0.0",
-    "typescript": "^4.9.0"
-  },
-  "homepage": "https://github.com/denyslietnikov/homebridge-tfiac#readme",
-  "author": "denyslietnikov"
+    "homebridge": "^2.0.0-beta.0",
+    "nodemon": "^3.1.9",
+    "rimraf": "^6.0.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.24.1",
+    "@types/xml2js": "^0.4.14"
+  }
 }
