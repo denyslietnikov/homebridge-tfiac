@@ -2,7 +2,7 @@
   "name": "homebridge-tfiac",
   "displayName": "Homebridge Tfiac",
   "type": "module",
-  "version": "1.0.26",
+  "version": "1.0.27",
   "private": true,
   "description": "Homebridge plugin to control AC using the TFIAC protocol.",
   "author": "denyslietnikov",
