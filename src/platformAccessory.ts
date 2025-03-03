@@ -7,9 +7,9 @@ import {
   CharacteristicSetCallback,
   CharacteristicGetCallback,
 } from 'homebridge';
-import { TfiacPlatform } from './platform';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI';
-import { TfiacDeviceConfig } from './settings';
+import { TfiacPlatform } from './platform.js';
+import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
+import { TfiacDeviceConfig } from './settings.js';
 
 export class TfiacPlatformAccessory {
   private service: Service;

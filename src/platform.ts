@@ -9,8 +9,8 @@ import {
   Service,
   Characteristic,
 } from 'homebridge';
-import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig } from './settings';
-import { TfiacPlatformAccessory } from './platformAccessory';
+import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig } from './settings.js';
+import { TfiacPlatformAccessory } from './platformAccessory.js';
 
 export class TfiacPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
