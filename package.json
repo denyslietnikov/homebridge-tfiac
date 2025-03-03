@@ -4,7 +4,7 @@
   "name": "homebridge-tfiac",
   "version": "1.0.26",
   "description": "Homebridge plugin to control AC using the TFIAC protocol.",
-  "license": "Apache-2.0",
+  "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
