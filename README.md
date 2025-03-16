@@ -1,5 +1,5 @@
 # Homebridge Tfiac  
-Homebridge Tfiac is a Homebridge plugin that enables you to control air conditioners using the TFIAC protocol – the same protocol used by the popular iOS application [CloudAircon](https://apps.apple.com/app/cloudaircon) for both local network and cloud-based control. CloudAircon supports a wide range of models—reportedly over 15 different air conditioner models from leading manufacturers—and appears to be implemented on modules that utilize Broadcom chipsets. By reverse-engineering this protocol, Homebridge Tfiac brings full HomeKit integration to your air conditioners, allowing you to manage power, temperature, operating mode, fan speed, and swing settings seamlessly through Siri, Home apps, or automations.  
+Homebridge Tfiac is a Homebridge plugin that enables you to control air conditioners using the TFIAC protocol – the same protocol used by the popular iOS application [CloudAircon](https://apps.apple.com/app/cloudaircon) for both local network and cloud-based control. CloudAircon supports a wide range of models—reportedly over 15 different air conditioner models from leading manufacturers—and appears to be implemented on modules that utilize BroadLink chipsets. By reverse-engineering this protocol, Homebridge Tfiac brings full HomeKit integration to your air conditioners, allowing you to manage power, temperature, operating mode, fan speed, and swing settings seamlessly through Siri, Home apps, or automations.  
 
 ## Features  
 * Power Control: Turn your AC unit on or off.  
@@ -37,13 +37,11 @@ The plugin is registered as a dynamic platform. Add a new platform entry in your
         {
           "name": "Living Room AC",
           "ip": "192.168.1.100",
-          "mac": "B4:43:0D:BA:A6:CC",
           "updateInterval": 30
         },
         {
           "name": "Bedroom AC",
           "ip": "192.168.1.101",
-          "mac": "B4:43:0D:BA:A4:07",
           "updateInterval": 60
         }
       ]
