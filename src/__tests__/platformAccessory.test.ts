@@ -1,3 +1,5 @@
+// platformAccessory.test.ts
+
 import { PlatformAccessory, Categories } from 'homebridge';
 // Removed unused import for TfiacPlatformAccessory
 import { TfiacPlatform } from '../platform';
@@ -90,17 +92,16 @@ const createMockCharacteristic = (): MockedCharacteristic => {
       return this;
     },
     emit(event: 'get' | 'set', valueOrCallback: unknown, maybeCallback?: unknown) {
-      setTimeout(() => {
-        if (event === 'get' && typeof valueOrCallback === 'function') {
-          if (this.handlers.get) {
-            this.handlers.get(valueOrCallback as GetCallback);
-          }
-        } else if (event === 'set' && typeof maybeCallback === 'function') {
-          if (this.handlers.set) {
-            this.handlers.set(valueOrCallback as CharacteristicValue, maybeCallback as SetCallback);
-          }
+
+      if (event === 'get' && typeof valueOrCallback === 'function') {
+        if (this.handlers.get) {
+          this.handlers.get(valueOrCallback as GetCallback);
         }
-      }, 0);
+      } else if (event === 'set' && typeof maybeCallback === 'function') {
+        if (this.handlers.set) {
+          this.handlers.set(valueOrCallback as CharacteristicValue, maybeCallback as SetCallback);
+        }
+      };
     },
     setProps() {
       return this;
