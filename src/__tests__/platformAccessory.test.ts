@@ -6,7 +6,7 @@ import { TfiacPlatform } from '../platform';
 import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
 import dgram from 'dgram';
 
-// --- Типы для UDP мока
+// --- Types for UDP mock
 interface MockSocket {
   send: jest.Mock;
   on: jest.Mock;
@@ -15,7 +15,7 @@ interface MockSocket {
 
 type UDPCallback = (error?: Error) => void;
 
-// --- Мокаем UDP сокет
+// --- Mocking UDP socket
 jest.mock('dgram', () => {
   const mockSocket: MockSocket = {
     send: jest.fn((...args: unknown[]) => {
@@ -32,7 +32,7 @@ jest.mock('dgram', () => {
   };
 });
 
-// --- Типы для HomeKit характеристик и сервисов
+// --- Types for HomeKit characteristics and services
 type CharacteristicValue = boolean | string | number;
 type GetCallback = (error: Error | null, value?: CharacteristicValue) => void;
 type SetCallback = (error: Error | null) => void;
@@ -56,7 +56,7 @@ interface MockedService {
   getCharacteristic(characteristic: string): MockedCharacteristic;
 }
 
-// --- Тип состояния устройства
+// --- Device state type
 interface DeviceStatus {
   is_on: string;
   current_temp: number;
@@ -66,7 +66,7 @@ interface DeviceStatus {
   swing_mode: string;
 }
 
-// --- Интерфейс для DeviceAPI
+// --- Interface for DeviceAPI
 interface DeviceAPI {
   turnOn: () => Promise<void>;
   turnOff: () => Promise<void>;
@@ -78,7 +78,7 @@ interface DeviceAPI {
 // Add type declaration for TfiacPlatformAccessory
 import { TfiacPlatformAccessory as ImportedTfiacPlatformAccessory } from '../platformAccessory';
 
-// --- Мок характеристик
+// --- Mock characteristics
 const createMockCharacteristic = (): MockedCharacteristic => {
   const handlers: CharacteristicHandlers = {};
   const mock: MockedCharacteristic = {
@@ -110,7 +110,7 @@ const createMockCharacteristic = (): MockedCharacteristic => {
   return mock;
 };
 
-// --- Мок сервиса
+// --- Mock service
 const createMockService = (): MockedService => {
   const characteristics = new Map<string, MockedCharacteristic>();
   interface CharacteristicType {
@@ -145,7 +145,7 @@ const createMockService = (): MockedService => {
   };
 };
 
-// --- Мок платформы
+// --- Mock platform
 const fakePlatform = {
   log: { debug: jest.fn(), error: jest.fn() },
   config: { deviceType: 'aircon', name: 'Test AC' },
@@ -168,10 +168,10 @@ const fakePlatform = {
   configureAccessory: jest.fn(),
 } as unknown as TfiacPlatform;
 
-// --- Мок сервиса
+// --- Mock service
 const mockService = createMockService();
 
-// --- Мок аксессуара
+// --- Mock accessory
 const fakeAccessory = {
   context: {
     deviceConfig: {
@@ -209,10 +209,10 @@ describe('TfiacPlatformAccessory', () => {
     jest.useFakeTimers();
     mockSocket = (dgram.createSocket as jest.Mock)() as MockSocket;
 
-    // Создаем новый экземпляр аксессуара
+    // Create a new instance of the accessory
     accessoryInstance = new ImportedTfiacPlatformAccessory(fakePlatform, fakeAccessory);
 
-    // Мокаем API устройства
+    // Mock the device API
     const mockDeviceAPI: DeviceAPI = {
       turnOn: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
       turnOff: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
@@ -244,7 +244,7 @@ describe('TfiacPlatformAccessory', () => {
       },
     });
 
-    // Отключаем polling, если таковой запускается в конструкторе
+    // Disable polling if it starts in the constructor
     jest.spyOn(accessoryInstance as unknown as { startPolling: () => void }, 'startPolling').mockImplementation(() => {});
   });
 
@@ -311,7 +311,7 @@ describe('TfiacPlatformAccessory', () => {
         });
       });
 
-      // 72°F преобразуется примерно в 22°C
+      // 72°F converts to approximately 22°C
       expect(Math.round(result as number)).toBe(22);
     });
 
