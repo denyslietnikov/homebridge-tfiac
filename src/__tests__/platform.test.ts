@@ -419,31 +419,18 @@ describe('TfiacPlatform', () => {
 
     it('should handle error during registration', () => {
       const device = { name: 'AC', ip: '1.2.3.4' };
-      const mockCharacteristic = { on: jest.fn().mockReturnThis() };
-      const mockService = {
-        setCharacteristic: jest.fn().mockReturnThis(),
-        getCharacteristic: jest.fn().mockReturnValue(mockCharacteristic),
-      };
-      // Создаём кастомный конструктор аксессуара с нужными статическими методами
-      const basePlatformAccessory = mockAPI.platformAccessory;
-      const customPlatformAccessory = Object.assign(
-        jest.fn(() => ({
-          UUID: 'uuid-1.2.3.4AC',
-          context: {},
-          displayName: 'AC',
-          getService: jest.fn().mockReturnValue(mockService),
-          addService: jest.fn().mockReturnValue(mockService),
-        })),
-        basePlatformAccessory,
-      );
+      // const mockCharacteristic = { on: jest.fn().mockReturnThis() }; // Not used directly in this test
+      // const mockService = { // Not used directly in this test
+      //   setCharacteristic: jest.fn().mockReturnThis(),
+      //   getCharacteristic: jest.fn().mockReturnValue(mockCharacteristic),
+      // };
       const localMockAPI = {
         ...mockAPI,
-        platformAccessory: customPlatformAccessory,
-        registerPlatformAccessories: jest.fn(() => {
-          throw new Error('fail'); 
-        }),
+        platformAccessory: jest.fn(() => {
+          throw new Error('fail');
+        }) as unknown as typeof PlatformAccessory,
       };
-      platform = new TfiacPlatform(mockLogger, { ...config, devices: [device] }, localMockAPI);
+      platform = new TfiacPlatform(mockLogger, { ...config, devices: [device] }, localMockAPI as API);
       platform.discoverDevices();
       expect(mockLogger.error).toHaveBeenCalledWith('Failed to initialize device:', expect.any(Error));
     });
@@ -452,9 +439,9 @@ describe('TfiacPlatform', () => {
 
 describe('TfiacPlatform (unit, coverage)', () => {
   let platform: TfiacPlatform;
-  let mockLogger: any;
-  let mockAPI: any;
-  let config: any;
+  let mockLogger: Logger;
+  let mockAPI: API;
+  let config: { platform: string; name: string; devices: unknown[] };
 
   beforeEach(() => {
     mockLogger = {
@@ -462,22 +449,40 @@ describe('TfiacPlatform (unit, coverage)', () => {
       info: jest.fn(),
       warn: jest.fn(),
       error: jest.fn(),
-    };
+      success: jest.fn(),
+      log: jest.fn(),
+    } as unknown as Logger;
     mockAPI = {
       hap: {
         Service: {},
         Characteristic: {},
         uuid: { generate: jest.fn((str: string) => 'uuid-' + str) },
-      },
-      on: jest.fn(),
+      } as unknown as typeof import('hap-nodejs'),
+      on: jest.fn() as jest.Mock,
       platformAccessory: jest.fn((name, uuid) => ({
         UUID: uuid,
         displayName: name,
         context: {},
-      })),
-      updatePlatformAccessories: jest.fn(),
-      registerPlatformAccessories: jest.fn(),
-    };
+      })) as unknown as typeof PlatformAccessory,
+      updatePlatformAccessories: jest.fn() as jest.Mock,
+      registerPlatformAccessories: jest.fn() as jest.Mock,
+      version: 1,
+      serverVersion: 'mock-server-version',
+      user: {
+        configPath: () => '/mock/config/path',
+        storagePath: () => '/mock/storage/path',
+        prototype: {},
+        persistPath: '/mock/persist/path',
+        cachedAccessoryPath: () => '/mock/cached/accessory/path',
+        setStoragePath: jest.fn(),
+      } as unknown as typeof User,
+      hapLegacyTypes: {},
+      versionGreaterOrEqual: jest.fn().mockReturnValue(true),
+      registerAccessory: jest.fn(),
+      registerPlatform: jest.fn(),
+      unregisterPlatformAccessories: jest.fn(),
+      publishExternalAccessories: jest.fn(),
+    } as unknown as API;
     config = { platform: 'TfiacPlatform', name: 'Test Platform', devices: [] };
   });
 
@@ -510,7 +515,7 @@ describe('TfiacPlatform (unit, coverage)', () => {
       addService: jest.fn().mockReturnValue(mockService),
     };
     platform = new TfiacPlatform(mockLogger, { ...config, devices: [device] }, mockAPI);
-    // @ts-ignore
+    // @ts-expect-error: test is pushing directly to private array for coverage
     platform.accessories.push(existingAccessory);
     platform.discoverDevices();
     expect(mockLogger.info).toHaveBeenCalledWith('Updated existing accessory: AC');
@@ -519,20 +524,22 @@ describe('TfiacPlatform (unit, coverage)', () => {
 
   it('should handle error during accessory creation', () => {
     const device = { name: 'AC', ip: '1.2.3.4' };
-    mockAPI.platformAccessory = jest.fn(() => {
-      throw new Error('fail'); 
-    });
-    platform = new TfiacPlatform(mockLogger, { ...config, devices: [device] }, mockAPI);
+    const localMockAPI = {
+      ...mockAPI,
+      platformAccessory: jest.fn(() => {
+        throw new Error('fail');
+      }) as unknown as typeof PlatformAccessory,
+    };
+    platform = new TfiacPlatform(mockLogger, { ...config, devices: [device] }, localMockAPI as API);
     platform.discoverDevices();
     expect(mockLogger.error).toHaveBeenCalledWith('Failed to initialize device:', expect.any(Error));
   });
 
   it('configureAccessory should add accessory to array and log', () => {
     platform = new TfiacPlatform(mockLogger, config, mockAPI);
-    const accessory = { displayName: 'Test', UUID: 'uuid' };
-    platform.configureAccessory(accessory as any);
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-expect-error
+    const accessory: PlatformAccessory = { displayName: 'Test', UUID: 'uuid' } as PlatformAccessory;
+    platform.configureAccessory(accessory);
+    // @ts-expect-error: test is accessing private array for coverage
     expect(platform.accessories).toContain(accessory);
     expect(mockLogger.debug).toHaveBeenCalledWith('Loading accessory from cache: Test');
   });
