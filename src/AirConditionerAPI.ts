@@ -30,7 +30,7 @@ type AirConditionerMode = keyof AirConditionerStatusInternal;
 export class AirConditionerAPI extends EventEmitter {
   private readonly ip: string;
   private readonly port: number;
-  private available: boolean;
+  public available: boolean;
   private lastSeq: number;
 
   constructor(ip: string, port: number = 7777) {
