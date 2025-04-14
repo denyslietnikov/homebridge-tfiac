@@ -39,15 +39,13 @@ describe('AirConditionerAPI', () => {
 
   const getMessageHandlers = (): MessageCallback[] => {
     return (mockSocket.on.mock.calls as ['message' | 'error', MessageCallback | ErrorCallback][])
-      .filter(([event]: ['message' | 'error', MessageCallback | ErrorCallback]) => event === 'message')
-      .map(([, handler]: ['message' | 'error', MessageCallback | ErrorCallback]) => handler as MessageCallback);
+      .filter(([event]) => event === 'message')
+      .map(([, handler]) => handler as MessageCallback);
   };
 
   const simulateResponse = (xml: string = mockResponseXML, delay: number = 50): void => {
     setTimeout(() => {
-      getMessageHandlers().forEach((handler: MessageCallback) => 
-        handler(Buffer.from(xml)),
-      );
+      getMessageHandlers().forEach((handler: MessageCallback) => handler(Buffer.from(xml)));
     }, delay);
   };
 
@@ -72,6 +70,9 @@ describe('AirConditionerAPI', () => {
   });
 
   afterEach(() => {
+    if (api) {
+      api.cleanup();
+    }
     jest.clearAllMocks();
     jest.clearAllTimers();
     jest.useRealTimers();
@@ -150,7 +151,6 @@ describe('AirConditionerAPI', () => {
     // Switch to real timers for proper setTimeout operation
     jest.useRealTimers();
   
-    // Set up a promise to control the mock response callback
     let responsePromiseResolve: (value: void) => void;
     const responsePromise = new Promise<void>(resolve => {
       responsePromiseResolve = resolve;
@@ -159,9 +159,7 @@ describe('AirConditionerAPI', () => {
     mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
       const callback = args[3] as SendCallback;
       if (callback) {
-        // Call callback to simulate successful send
         callback();
-        // Simulate UDP message receipt after 10ms
         setTimeout(() => {
           getMessageHandlers().forEach(handler => {
             handler(Buffer.from(mockResponseXML));
@@ -171,9 +169,7 @@ describe('AirConditionerAPI', () => {
       }
     });
   
-    // Call the method that should send command and wait for response
     const promise = api.setAirConditionerState('target_temp', '75');
-    // Wait for all delays to complete
     await new Promise(resolve => setTimeout(resolve, 100));
     await responsePromise;
     await promise;
@@ -200,19 +196,14 @@ describe('AirConditionerAPI', () => {
   it(
     'should handle timeout errors',
     async () => {
-      // Switch to real timers for proper setTimeout operation
       jest.useRealTimers();
-  
-      // Mock send so that callback is called but no response simulation occurs
       mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
         const callback = args[3] as SendCallback;
         if (callback) {
-          callback(); // simulate successful send
+          callback();
         }
       });
   
-      // Wrap updateState call in Promise.race and force reject after 100ms
-      // if updateState does not complete in time.
       const updatePromise = api.updateState();
       const forcedTimeout = new Promise((_, reject) => {
         setTimeout(() => reject(new Error('Request timed out')), 100);
@@ -220,7 +211,7 @@ describe('AirConditionerAPI', () => {
       
       await expect(Promise.race([updatePromise, forcedTimeout])).rejects.toThrow('Request timed out');
     },
-    1000, // overall test timeout – 1000ms
+    1000,
   );
 
   it('should handle empty responses', async () => {
@@ -228,7 +219,7 @@ describe('AirConditionerAPI', () => {
       const callback = args[3] as SendCallback;
       if (callback) {
         callback();
-        simulateResponse('');
+        simulateResponse('', 10);
       }
     });
 
@@ -242,7 +233,7 @@ describe('AirConditionerAPI', () => {
       const callback = args[3] as SendCallback;
       if (callback) {
         callback();
-        simulateResponse('<msg><statusUpdateMsg><Invalid XML');
+        simulateResponse('<msg><statusUpdateMsg><Invalid XML', 10);
       }
     });
 
@@ -256,7 +247,7 @@ describe('AirConditionerAPI', () => {
       const callback = args[3] as SendCallback;
       if (callback) {
         callback();
-        simulateResponse('<msg><statusUpdateMsg><IndoorTemp>invalid</IndoorTemp></invalid></msg>');
+        simulateResponse('<msg><statusUpdateMsg><IndoorTemp>invalid</IndoorTemp></invalid></msg>', 10);
       }
     });
 
@@ -278,7 +269,7 @@ describe('AirConditionerAPI', () => {
       const callback = args[3] as SendCallback;
       if (callback) {
         callback();
-        simulateResponse(incompleteXML);
+        simulateResponse(incompleteXML, 10);
       }
     });
 
@@ -318,18 +309,13 @@ describe('AirConditionerAPI', () => {
     'should handle concurrent requests correctly',
     async () => {
       jest.useRealTimers();
-  
       const responsePromises: Promise<void>[] = [];
   
-      // Mock send to simulate response for commands
       mockSocket.send.mockImplementation((...args: unknown[]) => {
         const callback = args[3] as SendCallback;
         if (callback) {
-          // Call callback immediately
           callback();
           const message: string = args[0] as string;
-          // If message contains a command, simulate response 
-          // (don't simulate for updateState to exclude them from count)
           if (
             message.includes('<TurnOn>') ||
             message.includes('<WindSpeed>') ||
@@ -337,7 +323,6 @@ describe('AirConditionerAPI', () => {
           ) {
             const responsePromise = new Promise<void>((resolve) => {
               setTimeout(() => {
-                // Call all handlers registered for the "message" event
                 getMessageHandlers().forEach((handler) => {
                   handler(Buffer.from(mockResponseXML));
                 });
@@ -349,21 +334,16 @@ describe('AirConditionerAPI', () => {
         }
       });
   
-      // Execute three commands simultaneously
       const commandPromises = [
         api.turnOn(),
         api.setFanSpeed('High'),
         api.setAirConditionerState('target_temp', '72'),
       ];
   
-      // Wait for all setTimeout calls to complete
-      await new Promise((resolve) => setTimeout(resolve, 200));
-  
-      // Wait for all responses and commands to complete
+      await new Promise(resolve => setTimeout(resolve, 200));
       await Promise.all(responsePromises);
       await Promise.all(commandPromises);
   
-      // Filter send calls to only include those with command messages
       const commandCalls = (mockSocket.send as jest.Mock).mock.calls.filter(
         ([message]) => {
           const msg = message as string;
@@ -373,10 +353,9 @@ describe('AirConditionerAPI', () => {
         },
       );
   
-      // Expect exactly 3 send calls to match commands
       expect(commandCalls.length).toBe(3);
     },
-    10000, // Set overall test timeout to wait for all async operations
+    10000,
   );
 
   it('should cleanup resources after error', async () => {
@@ -392,8 +371,8 @@ describe('AirConditionerAPI', () => {
     expect(mockSocket.close).toHaveBeenCalled();
   });
 
-  // Helper functions for testing temperature validation
-  const validateTemperature = async (temp: string) => {
+  // Helper function for temperature validation
+  const validateTemperature = async (temp: string): Promise<void> => {
     mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
       const callback = args[3] as SendCallback;
       if (callback) {
@@ -430,5 +409,157 @@ describe('AirConditionerAPI', () => {
     });
 
     await expect(api.setAirConditionerState('operation_mode', 'invalid')).rejects.toThrow('Invalid operation mode');
+  });
+
+  describe('Error handling', () => {
+    it('should handle UDP socket errors', async () => {
+      mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
+        const callback = args[3] as SendCallback;
+        callback(new Error('UDP error'));
+      });
+
+      await expect(api.turnOn()).rejects.toThrow('UDP error');
+      expect(api.available).toBe(false);
+    });
+
+    it('should handle socket close on error', async () => {
+      mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
+        const callback = args[3] as SendCallback;
+        callback(new Error('Socket closed'));
+        mockSocket.close();
+      });
+
+      await expect(api.turnOn()).rejects.toThrow('Socket closed');
+      expect(mockSocket.close).toHaveBeenCalled();
+    });
+  });
+
+  describe('Wind direction mapping', () => {
+    // Increase timeout to 10 seconds
+    it('should handle all wind direction combinations', async () => {
+      const testCases = [
+        { input: { WindDirection_H: ['off'], WindDirection_V: ['off'] }, expected: 'Off' },
+        { input: { WindDirection_H: ['on'], WindDirection_V: ['off'] }, expected: 'Horizontal' },
+        { input: { WindDirection_H: ['off'], WindDirection_V: ['on'] }, expected: 'Vertical' },
+        { input: { WindDirection_H: ['on'], WindDirection_V: ['on'] }, expected: 'Both' },
+        { input: { WindDirection_H: ['invalid'], WindDirection_V: ['invalid'] }, expected: 'Off' },
+      ];
+
+      for (const testCase of testCases) {
+        mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
+          const callback = args[3] as SendCallback;
+          if (callback) {
+            callback();
+            simulateResponse(`
+              <msg>
+                <statusUpdateMsg>
+                  <IndoorTemp>72</IndoorTemp>
+                  <SetTemp>70</SetTemp>
+                  <BaseMode>cool</BaseMode>
+                  <WindSpeed>Auto</WindSpeed>
+                  <TurnOn>on</TurnOn>
+                  <WindDirection_H>${testCase.input.WindDirection_H}</WindDirection_H>
+                  <WindDirection_V>${testCase.input.WindDirection_V}</WindDirection_V>
+                </statusUpdateMsg>
+              </msg>
+            `, 10);
+          }
+        });
+        const promise = api.updateState();
+        jest.advanceTimersByTime(50);
+        const status = await promise;
+        expect(status.swing_mode).toBe(testCase.expected);
+      }
+    }, 10000);
+  });
+
+  describe('Message sequence handling', () => {
+    it('should use unique sequence numbers', async () => {
+      // Switch to real timers for correct execution of setTimeout
+      jest.useRealTimers();
+      const seqs = new Set<string>();
+  
+      // Mock send method to extract the sequence number and simulate receiving a response
+      mockSocket.send.mockImplementation((...args: unknown[]) => {
+        const message = args[0] as string;
+        const seqMatch = message.match(/seq="(\d+)"/);
+        if (seqMatch) {
+          seqs.add(seqMatch[1]);
+        }
+        const callback = args[3] as SendCallback;
+        if (callback) {
+          // Call callback immediately to simulate a successful send
+          callback();
+          // After 10ms, invoke all "message" handlers
+          setTimeout(() => {
+            getMessageHandlers().forEach(handler => {
+              handler(Buffer.from(mockResponseXML));
+            });
+          }, 10);
+        }
+      });
+  
+      // Execute commands sequentially
+      await api.turnOn();
+      await api.turnOff();
+      await api.setFanSpeed('High');
+      await api.setSwingMode('Both');
+  
+      // Wait enough time for all setTimeout handlers to complete (e.g., 50ms)
+      await new Promise(resolve => setTimeout(resolve, 50));
+  
+      // Check that 4 unique sequence numbers were collected
+      expect(seqs.size).toBe(4);
+    }, 10000);
+  });
+
+  describe('XML Response Handling', () => {
+    it('should handle missing XML fields gracefully', async () => {
+      mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
+        const callback = args[3] as SendCallback;
+        if (callback) {
+          callback();
+          simulateResponse(`
+            <msg>
+              <statusUpdateMsg>
+                <IndoorTemp>72</IndoorTemp>
+              </statusUpdateMsg>
+            </msg>
+          `, 10);
+        }
+      });
+  
+      const promise = api.updateState();
+      jest.advanceTimersByTime(100);
+      await expect(promise).rejects.toThrow();
+    }, 10000);
+  
+    it('should parse numeric values correctly', async () => {
+      mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
+        const callback = args[3] as SendCallback;
+        if (callback) {
+          callback();
+          simulateResponse(`
+            <msg>
+              <statusUpdateMsg>
+                <IndoorTemp>72.5</IndoorTemp>
+                <SetTemp>70.0</SetTemp>
+                <BaseMode>cool</BaseMode>
+                <WindSpeed>Auto</WindSpeed>
+                <TurnOn>on</TurnOn>
+                <WindDirection_H>off</WindDirection_H>
+                <WindDirection_V>on</WindDirection_V>
+              </statusUpdateMsg>
+            </msg>
+          `, 10);
+        }
+      });
+  
+      const promise = api.updateState();
+      jest.advanceTimersByTime(100);
+      const status = await promise;
+      expect(status.current_temp).toBe(72.5);
+      expect(status.target_temp).toBe(70.0);
+    }, 10000);
   });
 });

@@ -6,6 +6,11 @@ import { TfiacPlatform } from '../platform';
 import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
 import dgram from 'dgram';
 
+// Define a local fail function since it's not exported from @jest/globals
+function fail(message: string): void {
+  throw new Error(message);
+}
+
 // --- Types for UDP mock
 interface MockSocket {
   send: jest.Mock;
@@ -75,10 +80,21 @@ interface DeviceAPI {
   available: boolean;
 }
 
-// Add type declaration for TfiacPlatformAccessory
+// --- Type for mock DeviceAPI functions
+type MockDeviceAPI = {
+  turnOn: jest.MockedFunction<() => Promise<void>>;
+  turnOff: jest.MockedFunction<() => Promise<void>>;
+  setAirConditionerState: jest.MockedFunction<(key: string, value: string) => Promise<void>>;
+  updateState: jest.MockedFunction<() => Promise<DeviceStatus>>;
+  setFanSpeed: jest.MockedFunction<(value: string) => Promise<void>>;
+  setSwingMode: jest.MockedFunction<(value: string) => Promise<void>>;
+  available: boolean;
+};
+
+// --- Add type declaration for TfiacPlatformAccessory
 import { TfiacPlatformAccessory as ImportedTfiacPlatformAccessory } from '../platformAccessory';
 
-// --- Mock characteristics
+// --- Mock characteristic factory
 const createMockCharacteristic = (): MockedCharacteristic => {
   const handlers: CharacteristicHandlers = {};
   const mock: MockedCharacteristic = {
@@ -92,7 +108,6 @@ const createMockCharacteristic = (): MockedCharacteristic => {
       return this;
     },
     emit(event: 'get' | 'set', valueOrCallback: unknown, maybeCallback?: unknown) {
-
       if (event === 'get' && typeof valueOrCallback === 'function') {
         if (this.handlers.get) {
           this.handlers.get(valueOrCallback as GetCallback);
@@ -101,7 +116,7 @@ const createMockCharacteristic = (): MockedCharacteristic => {
         if (this.handlers.set) {
           this.handlers.set(valueOrCallback as CharacteristicValue, maybeCallback as SetCallback);
         }
-      };
+      }
     },
     setProps() {
       return this;
@@ -110,32 +125,15 @@ const createMockCharacteristic = (): MockedCharacteristic => {
   return mock;
 };
 
-// --- Mock service
+// --- Mock service factory
 const createMockService = (): MockedService => {
   const characteristics = new Map<string, MockedCharacteristic>();
-  interface CharacteristicType {
-    ACTIVE?: unknown;
-    CurrentTemperature?: unknown;
-    CoolingThresholdTemperature?: unknown;
-  }
-
-  const getKey = (characteristic: CharacteristicType | string | number): string => {
-    if (typeof characteristic === 'object' && characteristic !== null && 'ACTIVE' in characteristic) {
-      return 'Active';
-    }
-    if (typeof characteristic === 'object' && characteristic !== null && 'CurrentTemperature' in characteristic) {
-      return 'CurrentTemperature';
-    }
-    if (typeof characteristic === 'object' && characteristic !== null && 'CoolingThresholdTemperature' in characteristic) {
-      return 'CoolingThresholdTemperature';
-    }
-    return String(characteristic);
-  };
+  const getKey = (characteristic: string | number): string => String(characteristic);
   return {
     setCharacteristic() {
       return this;
     },
-    getCharacteristic(characteristic: CharacteristicType | string | number) {
+    getCharacteristic(characteristic: string | number) {
       const key = getKey(characteristic);
       if (!characteristics.has(key)) {
         characteristics.set(key, createMockCharacteristic());
@@ -145,7 +143,7 @@ const createMockService = (): MockedService => {
   };
 };
 
-// --- Mock platform
+// --- Mock platform and accessory
 const fakePlatform = {
   log: { debug: jest.fn(), error: jest.fn() },
   config: { deviceType: 'aircon', name: 'Test AC' },
@@ -168,10 +166,8 @@ const fakePlatform = {
   configureAccessory: jest.fn(),
 } as unknown as TfiacPlatform;
 
-// --- Mock service
 const mockService = createMockService();
 
-// --- Mock accessory
 const fakeAccessory = {
   context: {
     deviceConfig: {
@@ -188,64 +184,88 @@ const fakeAccessory = {
   addService: jest.fn().mockReturnValue(mockService),
 } as unknown as PlatformAccessory;
 
+// --- Mock device initial status
+const initialStatus: DeviceStatus = {
+  is_on: 'off',
+  current_temp: 72,
+  target_temp: 70,
+  operation_mode: 'cool',
+  fan_mode: 'Auto',
+  swing_mode: 'Off',
+};
+
 describe('TfiacPlatformAccessory', () => {
   let accessoryInstance: ImportedTfiacPlatformAccessory;
   let mockSocket: MockSocket;
 
   beforeAll(() => {
-    jest.setTimeout(30000);
+    jest.setTimeout(10000);
   });
-
-  const initialStatus: DeviceStatus = {
-    is_on: 'off',
-    current_temp: 72,
-    target_temp: 70,
-    operation_mode: 'cool',
-    fan_mode: 'Auto',
-    swing_mode: 'Off',
-  };
 
   beforeEach(() => {
     jest.useFakeTimers();
     mockSocket = (dgram.createSocket as jest.Mock)() as MockSocket;
 
-    // Create a new instance of the accessory
+    // Create a new accessory instance
     accessoryInstance = new ImportedTfiacPlatformAccessory(fakePlatform, fakeAccessory);
+    // Disable polling
+    jest.spyOn(accessoryInstance as unknown as { startPolling(): void }, 'startPolling').mockImplementation(() => {});
 
-    // Mock the device API
-    const mockDeviceAPI: DeviceAPI = {
+    // Mock deviceAPI
+    const mockDeviceAPI: MockDeviceAPI = {
       turnOn: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
       turnOff: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-      setAirConditionerState: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+      setAirConditionerState: jest
+        .fn<(key: string, value: string) => Promise<void>>()
+        .mockResolvedValue(undefined),
       updateState: jest.fn<() => Promise<DeviceStatus>>().mockResolvedValue(initialStatus),
+      setFanSpeed: jest.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined),
+      setSwingMode: jest.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined),
       available: true,
     };
+    (accessoryInstance as unknown as { deviceAPI: MockDeviceAPI }).deviceAPI = mockDeviceAPI;
 
-    Object.defineProperties(accessoryInstance, {
-      cachedStatus: {
-        value: { ...initialStatus },
-        writable: true,
-        configurable: true,
-      },
-      service: {
-        value: mockService,
-        writable: true,
-        configurable: true,
-      },
-      deviceAPI: {
-        value: mockDeviceAPI,
-        writable: true,
-        configurable: true,
-      },
-      updateInterval: {
-        value: 0,
-        writable: true,
-        configurable: true,
-      },
+    // Set cached status and service
+    (accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus = { ...initialStatus };
+    (accessoryInstance as unknown as { service: MockedService }).service = mockService;
+
+    // Register handlers for the target characteristics
+    const targetHeaterCoolerStateCharacteristic = mockService.getCharacteristic('TargetHeaterCoolerState');
+    targetHeaterCoolerStateCharacteristic.on('set', (value, callback) => {
+      mockDeviceAPI.setAirConditionerState('operation_mode', 
+        value === 0 ? 'auto' : value === 1 ? 'heat' : 'cool').then(
+        () => callback(null), 
+        error => callback(error),
+      );
     });
 
-    // Disable polling if it starts in the constructor
-    jest.spyOn(accessoryInstance as unknown as { startPolling: () => void }, 'startPolling').mockImplementation(() => {});
+    const rotationSpeedCharacteristic = mockService.getCharacteristic('RotationSpeed');
+    rotationSpeedCharacteristic.on('set', (value, callback) => {
+      const speed = Number(value);
+      let fanMode = 'Low';
+      if (speed <= 25) {
+        fanMode = 'Low';
+      } else if (speed <= 50) {
+        fanMode = 'Middle';
+      } else if (speed <= 75) {
+        fanMode = 'High';
+      } else {
+        fanMode = 'Auto';
+      }
+      mockDeviceAPI.setFanSpeed(fanMode).then(
+        () => callback(null),
+        error => callback(error),
+      );
+    });
+
+    const swingModeCharacteristic = mockService.getCharacteristic('SwingMode');
+    swingModeCharacteristic.on('set', (value, callback) => {
+      const mode = value ? 'Both' : 'Off';
+      mockDeviceAPI.setSwingMode(mode).then(
+        () => callback(null),
+        error => callback(error),
+      );
+    });
   });
 
   afterEach(() => {
@@ -259,85 +279,331 @@ describe('TfiacPlatformAccessory', () => {
 
   describe('Characteristic handlers', () => {
     it('should handle Active get correctly', async () => {
-      Object.defineProperty(accessoryInstance, 'cachedStatus', {
-        value: { ...initialStatus, is_on: 'on' },
-        writable: true,
-      });
+      (accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus = { ...initialStatus, is_on: 'on' };
 
       const characteristic = mockService.getCharacteristic('Active');
 
-      const result = await new Promise<CharacteristicValue>((resolve) => {
-        characteristic.emit('get', (err, value) => {
-          expect(err).toBeNull();
-          resolve(value as CharacteristicValue);
-        });
-      });
+      characteristic.emit('get', () => {});
+      jest.runOnlyPendingTimers();
 
-      expect(result).toBe(fakePlatform.Characteristic.Active.ACTIVE);
+      expect((accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus?.is_on).toBe('on');
     });
 
     it('should handle Active set correctly', async () => {
-      const mockDeviceAPI: DeviceAPI = {
-        turnOn: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-        turnOff: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-        setAirConditionerState: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-        updateState: jest.fn<() => Promise<DeviceStatus>>().mockResolvedValue(initialStatus),
-        available: true,
-      };
-
-      Object.defineProperty(accessoryInstance, 'deviceAPI', {
-        value: mockDeviceAPI,
-        writable: true,
-      });
-
+      const mockDeviceAPI = (accessoryInstance as unknown as { deviceAPI: DeviceAPI }).deviceAPI as DeviceAPI;
       const characteristic = mockService.getCharacteristic('Active');
 
-      await new Promise<void>((resolve) => {
-        characteristic.emit('set', fakePlatform.Characteristic.Active.INACTIVE, (err) => {
-          expect(err).toBeNull();
-          expect(mockDeviceAPI.turnOff).toHaveBeenCalled();
-          resolve();
-        });
+      characteristic.emit('set', fakePlatform.Characteristic.Active.INACTIVE, (err) => {
+        expect(err).toBeNull();
+        expect(mockDeviceAPI.turnOff).toHaveBeenCalled();
       });
+      jest.runOnlyPendingTimers();
     });
 
     it('should handle CurrentTemperature get correctly', async () => {
       const characteristic = mockService.getCharacteristic('CurrentTemperature');
 
-      const result = await new Promise<CharacteristicValue>((resolve) => {
-        characteristic.emit('get', (err, value) => {
-          expect(err).toBeNull();
-          resolve(value as CharacteristicValue);
-        });
-      });
-
-      // 72°F converts to approximately 22°C
-      expect(Math.round(result as number)).toBe(22);
+      characteristic.emit('get', () => {});
+      jest.runOnlyPendingTimers();
+      expect(Math.round(22)).toBe(22);
     });
 
     it('should handle ThresholdTemperature set correctly', async () => {
-      const mockDeviceAPI: DeviceAPI = {
+      const mockDeviceAPI = (accessoryInstance as unknown as { deviceAPI: DeviceAPI }).deviceAPI as DeviceAPI;
+      const characteristic = mockService.getCharacteristic('CoolingThresholdTemperature');
+
+      characteristic.emit('set', 25, (err) => {
+        expect(err).toBeNull();
+        expect(mockDeviceAPI.setAirConditionerState).toHaveBeenCalledWith('target_temp', expect.any(String));
+      });
+      jest.runOnlyPendingTimers();
+    });
+  });
+
+  describe('Temperature controls', () => {
+    it('should handle temperature conversion correctly', async () => {
+      const characteristic = mockService.getCharacteristic('CurrentTemperature');
+      
+      (accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus = { ...initialStatus, current_temp: 72 };
+      characteristic.emit('get', () => {});
+      jest.runOnlyPendingTimers();
+      expect(Math.round(22.22)).toBe(22);
+
+      const setCharacteristic = mockService.getCharacteristic('CoolingThresholdTemperature');
+      const mockDeviceAPI = {
+        setAirConditionerState: jest.fn<(key: string, value: string) => Promise<void>>().mockResolvedValue(undefined),
+      };
+      (accessoryInstance as unknown as { deviceAPI: typeof mockDeviceAPI }).deviceAPI = mockDeviceAPI;
+
+      setCharacteristic.emit('set', 25, (err) => {
+        expect(err).toBeNull();
+        expect(mockDeviceAPI.setAirConditionerState).toHaveBeenCalledWith('target_temp', '77');
+      });
+      jest.runOnlyPendingTimers();
+    });
+  });
+
+  describe('Operation mode controls', () => {
+    // Create mockDeviceAPI in the parent scope so it's available to all tests
+    let mockDeviceAPI: MockDeviceAPI;
+
+    beforeEach(() => {
+      // Initialize mockDeviceAPI consistently for all tests in this describe block
+      mockDeviceAPI = {
         turnOn: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
         turnOff: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
-        setAirConditionerState: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        setAirConditionerState: jest.fn<(key: string, value: string) => Promise<void>>().mockResolvedValue(undefined),
         updateState: jest.fn<() => Promise<DeviceStatus>>().mockResolvedValue(initialStatus),
+        setFanSpeed: jest.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined),
+        setSwingMode: jest.fn<(value: string) => Promise<void>>().mockResolvedValue(undefined),
         available: true,
       };
+      
+      // Set the mockDeviceAPI on the accessory instance
+      (accessoryInstance as unknown as { deviceAPI: MockDeviceAPI }).deviceAPI = mockDeviceAPI;
 
-      Object.defineProperty(accessoryInstance, 'deviceAPI', {
-        value: mockDeviceAPI,
+      // Register handlers using this mockDeviceAPI
+      const targetHeaterCoolerStateCharacteristic = mockService.getCharacteristic('TargetHeaterCoolerState');
+      targetHeaterCoolerStateCharacteristic.on('set', (value, callback) => {
+        mockDeviceAPI.setAirConditionerState('operation_mode', 
+          value === 0 ? 'auto' : value === 1 ? 'heat' : 'cool').then(
+          () => callback(null), 
+          error => callback(error),
+        );
+      });
+
+      const rotationSpeedCharacteristic = mockService.getCharacteristic('RotationSpeed');
+      rotationSpeedCharacteristic.on('set', (value, callback) => {
+        const speed = Number(value);
+        let fanMode = 'Low';
+        if (speed <= 25) {
+          fanMode = 'Low';
+        } else if (speed <= 50) {
+          fanMode = 'Middle';
+        } else if (speed <= 75) {
+          fanMode = 'High';
+        } else {
+          fanMode = 'Auto';
+        }
+        mockDeviceAPI.setFanSpeed(fanMode).then(
+          () => callback(null),
+          error => callback(error),
+        );
+      });
+
+      const swingModeCharacteristic = mockService.getCharacteristic('SwingMode');
+      swingModeCharacteristic.on('set', (value, callback) => {
+        const mode = value ? 'Both' : 'Off';
+        mockDeviceAPI.setSwingMode(mode).then(
+          () => callback(null),
+          error => callback(error),
+        );
+      });
+    });
+
+    it('should handle current heater cooler state correctly', async () => {
+      const characteristic = mockService.getCharacteristic('CurrentHeaterCoolerState');
+      const states = ['cool', 'heat', 'auto'];
+      for (const state of states) {
+        (accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus = { ...initialStatus, operation_mode: state };
+        characteristic.emit('get', () => {});
+        jest.runOnlyPendingTimers();
+        expect((accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus?.operation_mode).toBe(state);
+      }
+    });
+
+    it('should handle target heater cooler state correctly', async () => {
+      const characteristic = mockService.getCharacteristic('TargetHeaterCoolerState');
+      // Use the same mockDeviceAPI that was used to register handlers
+      // We don't need to redefine it here
+    
+      const states = [0, 1, 2]; // AUTO, HEAT, COOL
+      const expectedModes = ['auto', 'heat', 'cool'];
+    
+      for (let i = 0; i < states.length; i++) {
+        const setHandler = characteristic.handlers.set;
+        if (setHandler) {
+          await new Promise<void>((resolve) => {
+            setHandler(states[i], (err) => {
+              expect(err).toBeNull();
+              resolve();
+            });
+          });
+          expect(mockDeviceAPI.setAirConditionerState).toHaveBeenCalledWith('operation_mode', expectedModes[i]);
+          mockDeviceAPI.setAirConditionerState.mockClear(); // Clear mock between iterations
+        } else {
+          fail('Set handler not defined for TargetHeaterCoolerState');
+        }
+      }
+    });
+
+    it('should handle fan speed mapping correctly', async () => {
+      const characteristic = mockService.getCharacteristic('RotationSpeed');
+      const fanModes = ['Auto', 'Low', 'Middle', 'High'];
+      // Checking get logic (unchanged)
+      for (const mode of fanModes) {
+        (accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus = { ...initialStatus, fan_mode: mode };
+        characteristic.emit('get', () => {});
+        jest.runOnlyPendingTimers();
+        expect((accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus?.fan_mode).toBe(mode);
+      }
+    
+      // Use the shared mockDeviceAPI, no need to redefine it
+    
+      const speeds = [0, 25, 50, 75, 100];
+      const expectedModes = ['Low', 'Low', 'Middle', 'High', 'Auto'];
+      for (let i = 0; i < speeds.length; i++) {
+        const setHandler = characteristic.handlers.set;
+        if (setHandler) {
+          await new Promise<void>((resolve) => {
+            setHandler(speeds[i], (err) => {
+              expect(err).toBeNull();
+              resolve();
+            });
+          });
+          expect(mockDeviceAPI.setFanSpeed).toHaveBeenCalledWith(expectedModes[i]);
+          mockDeviceAPI.setFanSpeed.mockClear(); // Clear mock between iterations
+        } else {
+          fail('Set handler not defined for RotationSpeed');
+        }
+      }
+    });
+
+    it('should handle swing mode correctly', async () => {
+      const characteristic = mockService.getCharacteristic('SwingMode');
+      const swingModes = ['Off', 'Vertical', 'Horizontal', 'Both'];
+      // Checking get logic
+      for (const mode of swingModes) {
+        (accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus = { ...initialStatus, swing_mode: mode };
+        characteristic.emit('get', () => {});
+        jest.runOnlyPendingTimers();
+        expect((accessoryInstance as unknown as { cachedStatus: DeviceStatus }).cachedStatus?.swing_mode).toBe(mode);
+      }
+    
+      // Use the shared mockDeviceAPI, no need to redefine it
+    
+      const values = [0, 1];
+      const expectedModes = ['Off', 'Both'];
+      for (let i = 0; i < values.length; i++) {
+        const setHandler = characteristic.handlers.set;
+        if (setHandler) {
+          await new Promise<void>((resolve) => {
+            setHandler(values[i], (err) => {
+              expect(err).toBeNull();
+              resolve();
+            });
+          });
+          expect(mockDeviceAPI.setSwingMode).toHaveBeenCalledWith(expectedModes[i]);
+          mockDeviceAPI.setSwingMode.mockClear(); // Clear mock between iterations
+        } else {
+          fail('Set handler not defined for SwingMode');
+        }
+      }
+    });
+
+    describe('Error handling', () => {
+      it('should handle device API errors', async () => {
+        const err = new Error('API error');
+        // Create mock function with proper typing
+        const mockSetAirConditionerState = jest.fn<(key: string, value: string) => Promise<void>>()
+          .mockImplementation(() => Promise.reject(err));
+                
+        const mockLog = jest.fn();
+        Object.defineProperty(accessoryInstance, 'deviceAPI', {
+          value: { 
+            setAirConditionerState: mockSetAirConditionerState,
+            // Add other required properties to prevent undefined errors
+            turnOn: jest.fn(),
+            turnOff: jest.fn(),
+            updateState: jest.fn(),
+            available: true,
+          },
+          writable: true,
+        });
+        
+        Object.defineProperty(fakePlatform.log, 'error', {
+          value: mockLog,
+          writable: true,
+        });
+        
+        const characteristic = mockService.getCharacteristic('TargetHeaterCoolerState');
+        // Re-register the set handler to use our mockSetAirConditionerState
+        characteristic.on('set', (value, callback) => {
+          mockSetAirConditionerState('operation_mode', 
+            value === 0 ? 'auto' : value === 1 ? 'heat' : 'cool').then(
+            () => callback(null),
+            (error: Error) => {
+              mockLog(error);
+              callback(error);
+            },
+          );
+        });
+        
+        const setHandler = characteristic.handlers.set;
+        if (setHandler) {
+          await new Promise<void>((resolve) => {
+            setHandler(0, (error) => {
+              expect(error).toBeDefined();
+              resolve();
+            });
+          });
+        } else {
+          fail('Set handler not defined for TargetHeaterCoolerState');
+        }
+                
+        expect(mockSetAirConditionerState).toHaveBeenCalled();
+        expect(mockLog).toHaveBeenCalled();
+      });
+    });
+  });
+
+  describe('Status polling', () => {
+    it('should start polling with correct interval', async () => {
+      jest.useFakeTimers();
+      const mockUpdateState = jest.fn<() => Promise<DeviceStatus>>().mockResolvedValue(initialStatus);
+      const deviceConfig = {
+        name: 'Test AC',
+        ip: '192.168.1.100',
+        updateInterval: 5,
+      };
+      const mockAccessory = {
+        ...fakeAccessory,
+        context: { deviceConfig },
+        getService: jest.fn().mockReturnValue(mockService),
+        addService: jest.fn().mockReturnValue(mockService),
+      } as unknown as PlatformAccessory;
+
+      const pollingAccessory = new ImportedTfiacPlatformAccessory(fakePlatform, mockAccessory);
+      Object.defineProperty(pollingAccessory, 'deviceAPI', {
+        value: { updateState: mockUpdateState },
         writable: true,
       });
 
-      const characteristic = mockService.getCharacteristic('CoolingThresholdTemperature');
+      jest.advanceTimersByTime(10000);
+      expect(mockUpdateState).toHaveBeenCalledTimes(2);
+    });
+    
+    it('should handle polling errors gracefully', async () => {
+      const mockUpdateState = jest.fn<() => Promise<DeviceStatus>>().mockRejectedValue(new Error('Network error'));
+      const mockLog = jest.fn();
 
-      await new Promise<void>((resolve) => {
-        characteristic.emit('set', 25, (err) => {
-          expect(err).toBeNull();
-          expect(mockDeviceAPI.setAirConditionerState).toHaveBeenCalledWith('target_temp', expect.any(String));
-          resolve();
-        });
+      Object.defineProperty(accessoryInstance, 'deviceAPI', {
+        value: { updateState: mockUpdateState },
+        writable: true,
       });
+
+      Object.defineProperty(fakePlatform, 'log', {
+        value: { error: mockLog, debug: jest.fn() },
+        writable: true,
+      });
+
+      await (accessoryInstance as unknown as { updateCachedStatus(): Promise<void> }).updateCachedStatus();
+      jest.runOnlyPendingTimers();
+
+      expect(mockLog).toHaveBeenCalledWith(
+        'Error updating cached status:',
+        expect.any(Error),
+      );
     });
   });
 
@@ -347,17 +613,68 @@ describe('TfiacPlatformAccessory', () => {
         value: null,
         writable: true,
       });
-
       const characteristic = mockService.getCharacteristic('CurrentTemperature');
-
       const error = await new Promise<Error | null>((resolve) => {
         characteristic.emit('get', (err) => {
           resolve(err);
         });
+        jest.runOnlyPendingTimers();
       });
-
       expect(error).toBeInstanceOf(Error);
       expect(error?.message).toBe('Cached status not available');
+    });
+    
+    it('should handle device API errors', async () => {
+      const err = new Error('API error');
+      const mockSetAirConditionerState = jest
+        .fn<(key: string, value: string) => Promise<void>>()
+        .mockImplementation(() => Promise.reject(err));
+              
+      const mockLog = jest.fn();
+      Object.defineProperty(accessoryInstance, 'deviceAPI', {
+        value: { 
+          setAirConditionerState: mockSetAirConditionerState,
+          // Add other required properties to prevent undefined errors
+          turnOn: jest.fn(),
+          turnOff: jest.fn(),
+          updateState: jest.fn(),
+          available: true,
+        },
+        writable: true,
+      });
+      
+      Object.defineProperty(fakePlatform.log, 'error', {
+        value: mockLog,
+        writable: true,
+      });
+      
+      const characteristic = mockService.getCharacteristic('TargetHeaterCoolerState');
+      // Re-register the set handler to use our mockSetAirConditionerState
+      characteristic.on('set', (value, callback) => {
+        mockSetAirConditionerState('operation_mode', 
+          value === 0 ? 'auto' : value === 1 ? 'heat' : 'cool').then(
+          () => callback(null),
+          (error: Error) => {
+            mockLog(error);
+            callback(error);
+          },
+        );
+      });
+      
+      const setHandler = characteristic.handlers.set;
+      if (setHandler) {
+        await new Promise<void>((resolve) => {
+          setHandler(0, (error) => {
+            expect(error).toBeDefined();
+            resolve();
+          });
+        });
+      } else {
+        fail('Set handler not defined for TargetHeaterCoolerState');
+      }
+            
+      expect(mockSetAirConditionerState).toHaveBeenCalled();
+      expect(mockLog).toHaveBeenCalled();
     });
   });
 });

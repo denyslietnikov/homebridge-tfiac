@@ -16,6 +16,7 @@ export class TfiacPlatformAccessory {
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null; // Explicitly typed
   private pollInterval: number;
+  private pollingInterval: NodeJS.Timeout | null = null; // Store interval reference
 
   constructor(
     private readonly platform: TfiacPlatform,
@@ -89,13 +90,30 @@ export class TfiacPlatformAccessory {
   }
 
   /**
+   * Stop polling and clean up resources
+   */
+  public stopPolling(): void {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
+    
+    // Clean up the API as well
+    if (this.deviceAPI) {
+      this.deviceAPI.cleanup();
+    }
+    
+    this.platform.log.debug('Polling stopped for %s', this.accessory.context.deviceConfig.name);
+  }
+
+  /**
    * Starts periodic polling of the device state.
    */
   private startPolling(): void {
     // Immediately update cache
     this.updateCachedStatus();
     // Then schedule periodic updates
-    setInterval(() => {
+    this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
   }

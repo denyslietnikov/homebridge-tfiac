@@ -32,6 +32,7 @@ export class AirConditionerAPI extends EventEmitter {
   private readonly port: number;
   public available: boolean;
   private lastSeq: number;
+  private activeTimeouts: NodeJS.Timeout[] = [];
 
   constructor(ip: string, port: number = 7777) {
     super();
@@ -41,29 +42,93 @@ export class AirConditionerAPI extends EventEmitter {
     this.lastSeq = 0;
   }
 
+  /**
+   * Cleanup resources (useful for tests)
+   */
+  public cleanup(): void {
+    // Clear all active timers
+    this.activeTimeouts.forEach(timeoutId => {
+      clearTimeout(timeoutId);
+    });
+    this.activeTimeouts = [];
+  }
+
   private get seq(): string {
+    // Return a sequence number (in this case we can use timestamp)
     return (Date.now() % 10000000).toString();
   }
 
-  private async sendCommand(command: string): Promise<string> {
-    return new Promise((resolve, reject) => {
+  private async sendCommand(command: string, timeoutMs: number = 5000): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      // Create socket
       const client = dgram.createSocket('udp4');
-      client.send(command, this.port, this.ip, (error) => {
-        if (error) {
+
+      // Call unref if available
+      if (typeof client.unref === 'function') {
+        client.unref(); 
+      }
+
+      let isResolved = false;
+      // eslint-disable-next-line prefer-const
+      let timeoutId: NodeJS.Timeout;
+
+      // Function to cleanup socket and timeout
+      const cleanupSocket = () => {
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          const index = this.activeTimeouts.indexOf(timeoutId);
+          if (index !== -1) {
+            this.activeTimeouts.splice(index, 1);
+          }
+        }
+        if (client && typeof client.removeAllListeners === 'function') {
+          client.removeAllListeners();
+        }
+        if (client && typeof client.close === 'function') {
+          try {
+            client.close();
+          } catch (err) {
+            // ignore errors during close
+          }
+        }
+      };
+
+      timeoutId = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
           this.available = false;
+          cleanupSocket();
+          reject(new Error('Command timed out'));
+        }
+      }, timeoutMs);
+      this.activeTimeouts.push(timeoutId);
+
+      client.on('message', (data) => {
+        if (!isResolved) {
+          isResolved = true;
+          this.available = true;
+          cleanupSocket();
+          resolve(data.toString());
+        }
+      });
+
+      client.on('error', (error) => {
+        if (!isResolved) {
+          isResolved = true;
+          this.available = false;
+          cleanupSocket();
           reject(error);
         }
       });
 
-      client.on('message', (data) => {
-        this.available = true;
-        resolve(data.toString());
-        client.close();
-      });
-
-      client.on('error', (error) => {
-        this.available = false;
-        reject(error);
+      // Send command
+      client.send(command, this.port, this.ip, (error) => {
+        if (error && !isResolved) {
+          isResolved = true;
+          this.available = false;
+          cleanupSocket();
+          reject(error);
+        }
       });
     });
   }
