@@ -20,6 +20,9 @@ on:
       - 'docs/**'
       - 'LICENSE'
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     name: 🔍 Validate
