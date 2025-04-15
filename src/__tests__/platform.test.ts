@@ -9,19 +9,37 @@ import { TfiacPlatformAccessory } from '../platformAccessory';
 // Collection to store TfiacPlatformAccessory instances for cleanup
 const tfiacAccessoryInstances: TfiacPlatformAccessory[] = [];
 
+// Collection to store mock accessory instances for cleanup
+const tfiacAccessoryInstancesForCleanup: TfiacPlatformAccessory[] = [];
+
+// Type for mock with cleanupInstances method
+interface TfiacPlatformAccessoryMockStatic {
+  cleanupInstances?: () => void;
+}
+
 // Mock the TfiacPlatformAccessory module
 jest.mock('../platformAccessory', () => {
-  const originalModule = jest.requireActual('../platformAccessory') as { 
-    TfiacPlatformAccessory: typeof TfiacPlatformAccessory 
+  const MockTfiacAccessory = jest.fn().mockImplementation((platform, accessory) => {
+    const instance = {
+      accessory: accessory,
+      platform: platform,
+      stopPolling: jest.fn(),
+      startPolling: jest.fn(),
+    };
+    tfiacAccessoryInstancesForCleanup.push(instance as unknown as TfiacPlatformAccessory);
+    return instance as unknown as TfiacPlatformAccessory;
+  });
+  (MockTfiacAccessory as TfiacPlatformAccessoryMockStatic).cleanupInstances = () => {
+    tfiacAccessoryInstancesForCleanup.forEach(inst => {
+      if (inst && typeof inst.stopPolling === 'function') {
+        inst.stopPolling();
+      }
+    });
+    tfiacAccessoryInstancesForCleanup.length = 0;
   };
-  
   return {
     __esModule: true,
-    TfiacPlatformAccessory: jest.fn().mockImplementation((platform, accessory) => {
-      const instance = new originalModule.TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-      tfiacAccessoryInstances.push(instance);
-      return instance;
-    }),
+    TfiacPlatformAccessory: MockTfiacAccessory,
   };
 });
 
@@ -296,6 +314,12 @@ describe('TfiacPlatform', () => {
       }
     });
     tfiacAccessoryInstances.length = 0;
+
+    // Guaranteed cleanup of mock accessories
+    const ActualMock = (jest.requireMock('../platformAccessory') as { TfiacPlatformAccessory: TfiacPlatformAccessoryMockStatic }).TfiacPlatformAccessory;
+    if (ActualMock.cleanupInstances) {
+      ActualMock.cleanupInstances();
+    }
     
     jest.clearAllMocks();
   });
