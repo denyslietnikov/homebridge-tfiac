@@ -494,17 +494,59 @@ describe('TfiacPlatformAccessory', () => {
         handler(21, callback);
         jest.advanceTimersByTime(1);
       });
+
+      it('handleThresholdTemperatureGet should return error if cache null', (done) => {
+        (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+        const handler = getHandlerByIdentifier(coolingCharId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeInstanceOf(Error);
+          expect(value).toBeUndefined();
+          done();
+        };
+        handler(callback);
+      });
     });
 
     describe('CurrentHeaterCoolerState', () => {
       it('should return COOLING based on cache mode', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, operation_mode: 'cool' };
+        const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.CurrentHeaterCoolerState, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.CurrentHeaterCoolerState.COOLING);
+          done();
+        };
+        handler(callback);
       });
       it('should return HEATING based on cache mode', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, operation_mode: 'heat' };
+        const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.CurrentHeaterCoolerState, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.CurrentHeaterCoolerState.HEATING);
+          done();
+        };
+        handler(callback);
       });
       it('should return IDLE based on cache mode', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, operation_mode: 'other' };
+        const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.CurrentHeaterCoolerState, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.CurrentHeaterCoolerState.IDLE);
+          done();
+        };
+        handler(callback);
+      });
+      it('should return error if cache is null', (done) => {
+        (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+        const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.CurrentHeaterCoolerState, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeInstanceOf(Error);
+          expect(value).toBeUndefined();
+          done();
+        };
+        handler(callback);
       });
     });
 
@@ -512,13 +554,34 @@ describe('TfiacPlatformAccessory', () => {
       const charId = hapIdentifiers.Characteristic.TargetHeaterCoolerState;
 
       it('should return COOL based on cache mode', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, operation_mode: 'cool' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.TargetHeaterCoolerState.COOL);
+          done();
+        };
+        handler(callback);
       });
       it('should return HEAT based on cache mode', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, operation_mode: 'heat' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.TargetHeaterCoolerState.HEAT);
+          done();
+        };
+        handler(callback);
       });
       it('should return AUTO based on cache mode (default)', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, operation_mode: 'other' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO);
+          done();
+        };
+        handler(callback);
       });
 
       it('should set mode to cool via API', (done) => {
@@ -571,22 +634,61 @@ describe('TfiacPlatformAccessory', () => {
         handler(value, callback);
         jest.advanceTimersByTime(1);
       });
+
+      it('should return error if cache is null', (done) => {
+        (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeInstanceOf(Error);
+          expect(value).toBeUndefined();
+          done();
+        };
+        handler(callback);
+      });
     });
 
     describe('RotationSpeed', () => {
       const charId = hapIdentifiers.Characteristic.RotationSpeed;
 
       it('should get speed percentage for High', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'High' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(75);
+          done();
+        };
+        handler(callback);
       });
       it('should get speed percentage for Middle', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'Middle' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(50);
+          done();
+        };
+        handler(callback);
       });
       it('should get speed percentage for Low', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'Low' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(25);
+          done();
+        };
+        handler(callback);
       });
       it('should get speed percentage for Auto', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'Auto' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(50);
+          done();
+        };
+        handler(callback);
       });
 
       it('should set fan mode to High based on percentage > 50', (done) => {
@@ -656,16 +758,41 @@ describe('TfiacPlatformAccessory', () => {
         handler(value, callback);
         jest.advanceTimersByTime(1);
       });
+
+      it('should return error if cache is null', (done) => {
+        (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeInstanceOf(Error);
+          expect(value).toBeUndefined();
+          done();
+        };
+        handler(callback);
+      });
     });
 
     describe('SwingMode', () => {
       const charId = hapIdentifiers.Characteristic.SwingMode;
 
       it('should get SWING_DISABLED based on cache', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, swing_mode: 'Off' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(0);
+          done();
+        };
+        handler(callback);
       });
       it('should get SWING_ENABLED based on cache', (done) => {
-        done();
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, swing_mode: 'Both' };
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(1);
+          done();
+        };
+        handler(callback);
       });
 
       it('should set swing mode to Both (ENABLED)', (done) => {
@@ -700,6 +827,43 @@ describe('TfiacPlatformAccessory', () => {
         };
         handler(value, callback);
         jest.advanceTimersByTime(1);
+      });
+
+      it('should return error if cache is null', (done) => {
+        (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+        const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeInstanceOf(Error);
+          expect(value).toBeUndefined();
+          done();
+        };
+        handler(callback);
+      });
+    });
+
+    describe('FanMode/RotationSpeed mapping', () => {
+      type MapHelpers = {
+        mapFanModeToRotationSpeed: (mode: string) => number;
+        mapRotationSpeedToFanMode: (speed: number) => string;
+      };
+      const getHelpers = (acc: TfiacPlatformAccessory): MapHelpers => ({
+        mapFanModeToRotationSpeed: (acc as unknown as MapHelpers).mapFanModeToRotationSpeed.bind(acc),
+        mapRotationSpeedToFanMode: (acc as unknown as MapHelpers).mapRotationSpeedToFanMode.bind(acc),
+      });
+      it('should map all fan modes to correct rotation speed', () => {
+        const helpers = getHelpers(accessory);
+        expect(helpers.mapFanModeToRotationSpeed('High')).toBe(75);
+        expect(helpers.mapFanModeToRotationSpeed('Middle')).toBe(50);
+        expect(helpers.mapFanModeToRotationSpeed('Low')).toBe(25);
+        expect(helpers.mapFanModeToRotationSpeed('Auto')).toBe(50);
+        expect(helpers.mapFanModeToRotationSpeed('Unknown')).toBe(50);
+      });
+      it('should map all rotation speeds to correct fan mode', () => {
+        const helpers = getHelpers(accessory);
+        expect(helpers.mapRotationSpeedToFanMode(10)).toBe('Low');
+        expect(helpers.mapRotationSpeedToFanMode(30)).toBe('Middle');
+        expect(helpers.mapRotationSpeedToFanMode(60)).toBe('High');
+        expect(helpers.mapRotationSpeedToFanMode(80)).toBe('Auto');
       });
     });
 
