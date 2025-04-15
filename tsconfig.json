@@ -19,7 +19,12 @@
   },
   "include": [
     "eslint.config.js",
-    "homebridge-ui",
     "src"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/__tests__",
+    "**/*.test.ts"
   ]
 }
