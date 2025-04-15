@@ -264,6 +264,11 @@ jobs:
         if: steps.cache-restore.outputs.cache-hit != 'true'
         run: npm run build
 
+      - name: 🔑 Set up .npmrc for npmjs.org
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: 🚀 Publish to npm
         run: npm publish
         env:
