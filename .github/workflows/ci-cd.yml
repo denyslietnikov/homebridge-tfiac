@@ -170,7 +170,7 @@ jobs:
           script: |
             const { execSync } = require('child_process');
             const lastTag = execSync('git describe --tags --abbrev=0 HEAD^').toString().trim();
-            const changelog = execSync(`git log ${lastTag}..HEAD --pretty=format:"- %s"'`).toString();
+            const changelog = execSync(`git log ${lastTag}..HEAD --pretty=format:"- %s"`).toString();
             return changelog;
 
       - name: 📦 Create GitHub Release
