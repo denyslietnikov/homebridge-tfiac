@@ -27,4 +27,5 @@ export interface TfiacDeviceConfig {
  */
 export interface TfiacPlatformConfig extends PlatformConfig {
     devices?: TfiacDeviceConfig[];
+    enableDiscovery?: boolean; // Add this line
   }
