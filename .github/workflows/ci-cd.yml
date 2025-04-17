@@ -20,6 +20,9 @@ on:
       - 'docs/**'
       - 'LICENSE'
 
+permissions:
+  contents: write
+
 jobs:
   validate:
     name: 🔍 Validate
@@ -170,7 +173,7 @@ jobs:
           script: |
             const { execSync } = require('child_process');
             const lastTag = execSync('git describe --tags --abbrev=0 HEAD^').toString().trim();
-            const changelog = execSync(`git log ${lastTag}..HEAD --pretty=format:"- %s"'`).toString();
+            const changelog = execSync(`git log ${lastTag}..HEAD --pretty=format:"- %s"`).toString();
             return changelog;
 
       - name: 📦 Create GitHub Release
@@ -178,56 +181,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tag_name: ${{ github.ref }}
+          tag_name: ${{ github.ref_name }}
           release_name: Release ${{ github.ref_name }}
           body: ${{ steps.changelog.outputs.result }}
           draft: false
           prerelease: false
 
-  publish-staging:
-    name: 📦 Publish to Staging
-    needs: [prepare-release]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: ⬇️ Checkout repository
-        uses: actions/checkout@v4
-
-      - name: 🔧 Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20.x
-          registry-url: 'https://npm.pkg.github.com'
-          scope: '@${{ github.repository_owner }}'
-          cache: 'npm'
-
-      - name: 📦 Install dependencies
-        run: npm ci
-
-      - name: ♻️ Restore cached build
-        id: cache-restore
-        uses: actions/cache@v4
-        with:
-          path: dist
-          key: ${{ runner.os }}-build-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-build-
-
-      - name: 🏗️ Build if needed
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        run: npm run build
-
-      - name: 📦 Publish to GitHub Package Registry
-        run: |
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > .npmrc
-          npm publish --tag staging
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
   publish-production:
     name: 🚀 Publish to Production
-    needs: [publish-staging]
+    needs: [prepare-release]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment:
@@ -260,6 +222,11 @@ jobs:
       - name: 🏗️ Build if needed
         if: steps.cache-restore.outputs.cache-hit != 'true'
         run: npm run build
+
+      - name: 🔑 Set up .npmrc for npmjs.org
+        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: 🚀 Publish to npm
         run: npm publish
