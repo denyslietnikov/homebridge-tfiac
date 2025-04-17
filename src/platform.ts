@@ -5,12 +5,20 @@ import {
   DynamicPlatformPlugin,
   Logger,
   PlatformAccessory,
-  PlatformConfig,
   Service,
   Characteristic,
 } from 'homebridge';
-import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig } from './settings.js';
+import * as dgram from 'dgram';
+import * as xml2js from 'xml2js';
+import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } from './settings.js';
 import { TfiacPlatformAccessory } from './platformAccessory.js';
+
+// Define a structure for discovered devices
+interface DiscoveredDevice {
+  ip: string;
+  name?: string; // Name might not be available via discovery
+  port?: number; // Port might be discovered or assumed
+}
 
 export class TfiacPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
@@ -18,10 +26,11 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
   // Array of discovered accessories
   private readonly accessories: PlatformAccessory[] = [];
+  private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory> = new Map();
 
   constructor(
     public readonly log: Logger,
-    public readonly config: PlatformConfig, // or TfiacPlatformConfig
+    public readonly config: TfiacPlatformConfig, // Use specific type
     public readonly api: API,
   ) {
     // Initialize Service and Characteristic after api is assigned
@@ -31,73 +40,229 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     this.log.debug('TfiacPlatform constructor called');
 
     // Homebridge will fire "didFinishLaunching" when it has loaded all configs
-    this.api.on('didFinishLaunching', () => {
+    this.api.on('didFinishLaunching', async () => {
       this.log.debug('didFinishLaunching callback');
-      this.discoverDevices();
+      await this.discoverDevices(); // Make discoverDevices async
     });
   }
 
   /**
-   * Main logic: read devices from config and register accessories.
+   * Discover devices from config and optionally via network broadcast.
    */
-  discoverDevices() {
-    // The platform config may contain a "devices" array 
-    const devices = (this.config.devices || []) as TfiacPlatformConfig[];
+  async discoverDevices() {
+    const configuredDevices = (this.config.devices || []) as TfiacDeviceConfig[];
+    const discoveredDevicesMap = new Map<string, DiscoveredDevice>();
+    const enableDiscovery = this.config.enableDiscovery !== false; // default true
 
-    if (!devices || devices.length === 0) {
-      this.log.info('No devices to register');
-      return;
-    }
-
-    for (const device of devices) {
-      if (!device.ip) {
-        this.log.error('Missing required IP address for device:', device.name);
+    // 1. Process configured devices first
+    for (const deviceConfig of configuredDevices) {
+      if (!deviceConfig.ip) {
+        this.log.error('Missing required IP address for configured device:', deviceConfig.name);
         continue;
       }
+      // Use IP as the key to handle potential duplicates between config and discovery
+      discoveredDevicesMap.set(deviceConfig.ip, {
+        ip: deviceConfig.ip,
+        name: deviceConfig.name,
+        port: deviceConfig.port,
+        // Include other config properties if needed later
+      });
+      this.log.debug(`Found configured device: ${deviceConfig.name} (${deviceConfig.ip})`);
+    }
 
+    if (enableDiscovery) {
+      // 2. Perform network discovery (if enabled, add config option later)
+      // For now, let's assume discovery is always attempted
+      this.log.info('Starting network discovery for TFIAC devices...');
       try {
-        // Generate a unique UUID based on IP + device name
-        const uuid = this.api.hap.uuid.generate(device.ip + device.name);
+        const networkDiscoveredIPs = await this.discoverDevicesNetwork(5000); // Discover for 5 seconds
+        this.log.info(`Network discovery finished. Found ${networkDiscoveredIPs.size} potential devices.`);
 
-        // Check if we already have an accessory for this device
-        const existingAccessory = this.accessories.find((acc) => acc.UUID === uuid);
-
-        if (existingAccessory) {
-          // Update context and re-initialize
-          existingAccessory.context.deviceConfig = device;
-          existingAccessory.displayName = device.name ?? 'Unnamed Tfiac Device';
-          this.api.updatePlatformAccessories([existingAccessory]);
-          new TfiacPlatformAccessory(this, existingAccessory);
-
-          this.log.info(`Updated existing accessory: ${device.name}`);
-        } else {
-          // Create a brand new accessory
-          const safeName = device.name ?? 'Unnamed TFIAC Device';
-          this.log.info(`Adding new accessory: ${safeName}`);
-
-          try {
-            const accessory = new this.api.platformAccessory(safeName, uuid);
-            accessory.context.deviceConfig = device;
-            new TfiacPlatformAccessory(this, accessory);
-
-            // Register the accessory with Homebridge
-            this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-          } catch (error) {
-            this.log.error('Failed to initialize device:', error);
+        for (const ip of networkDiscoveredIPs) {
+          if (!discoveredDevicesMap.has(ip)) {
+            // Add newly discovered device if not already configured
+            discoveredDevicesMap.set(ip, { ip: ip, name: `TFIAC ${ip}` }); // Default name
+            this.log.debug(`Discovered new device via network: ${ip}`);
+          } else {
+            this.log.debug(`Network discovered device ${ip} is already configured.`);
           }
         }
       } catch (error) {
-        this.log.error('Failed to register platform accessories:', error);
+        this.log.error('Network discovery failed:', error);
       }
+    } else {
+      this.log.info('Network discovery is disabled in the configuration.');
+    }
+
+    const allDevices = Array.from(discoveredDevicesMap.values());
+
+    if (allDevices.length === 0) {
+      this.log.info('No configured or discovered devices found.');
+      return;
+    }
+
+    // 3. Register or update accessories based on the combined list
+    const currentAccessoryUUIDs = new Set<string>();
+
+    for (const device of allDevices) {
+      const uuid = this.api.hap.uuid.generate(device.ip + (device.name || ''));
+      currentAccessoryUUIDs.add(uuid);
+
+      const existingAccessory = this.accessories.find((acc) => acc.UUID === uuid);
+
+      const deviceConfigForAccessory: TfiacDeviceConfig = {
+        name: device.name || `TFIAC ${device.ip}`,
+        ip: device.ip,
+        port: device.port,
+      };
+
+      if (existingAccessory) {
+        // Update existing accessory
+        this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
+        existingAccessory.context.deviceConfig = deviceConfigForAccessory;
+        existingAccessory.displayName = deviceConfigForAccessory.name;
+        this.api.updatePlatformAccessories([existingAccessory]);
+        try {
+          if (!this.discoveredAccessories.has(uuid)) {
+            const tfiacAccessory = new TfiacPlatformAccessory(this, existingAccessory);
+            this.discoveredAccessories.set(uuid, tfiacAccessory);
+          }
+        } catch (error) {
+          this.log.error('Failed to initialize device:', error);
+        }
+      } else {
+        // Create new accessory
+        this.log.info(`Adding new accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
+        const accessory = new this.api.platformAccessory(deviceConfigForAccessory.name, uuid);
+        accessory.context.deviceConfig = deviceConfigForAccessory;
+        try {
+          const tfiacAccessory = new TfiacPlatformAccessory(this, accessory);
+          this.discoveredAccessories.set(uuid, tfiacAccessory);
+          this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+        } catch (error) {
+          this.log.error('Failed to initialize device:', error);
+        }
+      }
+    }
+
+    // 4. Unregister accessories that are no longer found/configured
+    const accessoriesToRemove = this.accessories.filter(acc => !currentAccessoryUUIDs.has(acc.UUID));
+    if (accessoriesToRemove.length > 0) {
+      this.log.info(`Removing ${accessoriesToRemove.length} stale accessories.`);
+      accessoriesToRemove.forEach(acc => {
+        const tfiacAcc = this.discoveredAccessories.get(acc.UUID);
+        if (tfiacAcc) {
+          tfiacAcc.stopPolling(); // Clean up polling interval
+          this.discoveredAccessories.delete(acc.UUID);
+        }
+      });
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
     }
   }
 
   /**
+   * Performs UDP broadcast to discover TFIAC devices on the network.
+   * @param timeoutMs - Duration to listen for responses.
+   * @returns A Promise resolving to a Set of discovered IP addresses.
+   */
+  private discoverDevicesNetwork(timeoutMs: number): Promise<Set<string>> {
+    return new Promise((resolve, reject) => {
+      const discoveredIPs = new Set<string>();
+      const discoveryMessage = Buffer.from(
+        `<msg msgid="SyncStatusReq" type="Control" seq="${Date.now() % 10000000}">` +
+        '<SyncStatusReq></SyncStatusReq></msg>',
+      );
+      const broadcastAddress = '255.255.255.255';
+      const discoveryPort = 7777; // Standard TFIAC port
+
+      const socket = dgram.createSocket('udp4');
+      let discoveryTimeout: NodeJS.Timeout | null = null;
+
+      const cleanup = () => {
+        if (discoveryTimeout) {
+          clearTimeout(discoveryTimeout);
+          discoveryTimeout = null;
+        }
+        try {
+          socket.close();
+        } catch (e) {
+          this.log.debug('Error closing discovery socket:', e);
+        }
+        this.log.debug('Discovery socket closed.');
+      };
+
+      socket.on('error', (err) => {
+        this.log.error('Discovery socket error:', err);
+        cleanup();
+        reject(err);
+      });
+
+      socket.on('message', async (msg, rinfo) => {
+        this.log.debug(`Received discovery response from ${rinfo.address}:${rinfo.port}`);
+        // Basic validation: Check if it's likely a TFIAC XML response
+        try {
+          const xmlString = msg.toString();
+          if (xmlString.includes('<statusUpdateMsg>')) {
+            // Attempt to parse for more robust validation
+            const xmlObject = await xml2js.parseStringPromise(xmlString);
+            if (xmlObject?.msg?.statusUpdateMsg?.[0]?.IndoorTemp?.[0]) {
+              if (!discoveredIPs.has(rinfo.address)) {
+                this.log.info(`Discovered TFIAC device at ${rinfo.address}`);
+                discoveredIPs.add(rinfo.address);
+              }
+            } else {
+              this.log.debug(`Ignoring non-status response from ${rinfo.address}`);
+            }
+          } else {
+            this.log.debug(`Ignoring non-XML/non-status response from ${rinfo.address}`);
+          }
+        } catch (parseError) {
+          this.log.debug(`Error parsing response from ${rinfo.address}:`, parseError);
+        }
+      });
+
+      socket.on('listening', () => {
+        try {
+          socket.setBroadcast(true);
+          this.log.debug(`Discovery socket listening on ${socket.address().address}:${socket.address().port}`);
+          socket.send(discoveryMessage, discoveryPort, broadcastAddress, (err) => {
+            if (err) {
+              this.log.error('Error sending discovery broadcast:', err);
+              // Don't necessarily reject, maybe discovery just won't work
+            } else {
+              this.log.debug('Discovery broadcast message sent.');
+            }
+          });
+
+          // Set timeout to stop discovery
+          discoveryTimeout = setTimeout(() => {
+            this.log.debug('Discovery timeout reached.');
+            cleanup();
+            resolve(discoveredIPs);
+          }, timeoutMs);
+
+        } catch (err) {
+          this.log.error('Error setting up broadcast socket:', err);
+          cleanup();
+          reject(err);
+        }
+      });
+
+      try {
+        // Bind to a random available port on all interfaces
+        socket.bind();
+      } catch (bindErr) {
+        this.log.error('Failed to bind discovery socket:', bindErr);
+        reject(bindErr);
+      }
+    });
+  }
+
+  /**
    * Homebridge will call this method for restored cached accessories.
-   * We just store them in the array for reference and later usage.
    */
   configureAccessory(accessory: PlatformAccessory) {
-    this.log.debug(`Loading accessory from cache: ${accessory.displayName}`);
+    this.log.info(`Loading accessory from cache: ${accessory.displayName}`);
     this.accessories.push(accessory);
   }
 }
