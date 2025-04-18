@@ -14,6 +14,7 @@ import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } fr
 import { TfiacPlatformAccessory } from './platformAccessory.js';
 import { DisplaySwitchAccessory } from './DisplaySwitchAccessory.js';
 import { SleepSwitchAccessory } from './SleepSwitchAccessory.js';
+import { FanSpeedAccessory } from './FanSpeedAccessory.js';  // Add fan speed accessory import
 
 // Define a structure for discovered devices
 interface DiscoveredDevice {
@@ -31,6 +32,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory> = new Map();
   private readonly displayAccessories: Map<string, DisplaySwitchAccessory> = new Map();
   private readonly sleepAccessories: Map<string, SleepSwitchAccessory> = new Map();
+  private readonly fanSpeedAccessories: Map<string, FanSpeedAccessory> = new Map();  // Track fan speed accessories
 
   constructor(
     public readonly log: Logger,
@@ -102,7 +104,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     if (allDevices.length === 0) {
       this.log.info('No configured or discovered devices found.');
-      return;
+      // Proceed to remove any stale accessories even when no devices are configured or discovered
     }
 
     // 3. Register or update accessories based on the combined list
@@ -144,6 +146,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             // Create Sleep Switch accessory
             const sleepSwitch = new SleepSwitchAccessory(this, existingAccessory);
             this.sleepAccessories.set(uuid, sleepSwitch);
+            // Create Fan Speed accessory
+            const fanSpeed = new FanSpeedAccessory(this, existingAccessory);
+            this.fanSpeedAccessories.set(uuid, fanSpeed);
           }
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -162,6 +167,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           // Create Sleep Switch accessory
           const sleepSwitch = new SleepSwitchAccessory(this, accessory);
           this.sleepAccessories.set(uuid, sleepSwitch);
+          // Create Fan Speed accessory
+          const fanSpeed = new FanSpeedAccessory(this, accessory);
+          this.fanSpeedAccessories.set(uuid, fanSpeed);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -191,8 +199,21 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           sleepSwitch.stopPolling();
           this.sleepAccessories.delete(acc.UUID);
         }
+        // Stop polling for Fan Speed
+        const fanSpeed = this.fanSpeedAccessories.get(acc.UUID);
+        if (fanSpeed) {
+          fanSpeed.stopPolling();
+          this.fanSpeedAccessories.delete(acc.UUID);
+        }
       });
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
+      // Remove stale accessories from internal cache
+      accessoriesToRemove.forEach(acc => {
+        const idx = this.accessories.findIndex(a => a.UUID === acc.UUID);
+        if (idx > -1) {
+          this.accessories.splice(idx, 1);
+        }
+      });
     }
   }
 

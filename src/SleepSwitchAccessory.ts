@@ -56,6 +56,8 @@ export class SleepSwitchAccessory {
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
+    // Ensure timer does not keep node process alive
+    this.pollingInterval.unref();
   }
 
   private async updateCachedStatus(): Promise<void> {

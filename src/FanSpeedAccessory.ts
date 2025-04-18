@@ -9,7 +9,7 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 
-export class DisplaySwitchAccessory {
+export class FanSpeedAccessory {
   private service: Service;
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null;
@@ -24,18 +24,24 @@ export class DisplaySwitchAccessory {
     const ip = deviceConfig.ip;
     const port = deviceConfig.port ?? 7777;
     this.deviceAPI = new AirConditionerAPI(ip, port);
-    this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
+    this.pollInterval =
+      deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
 
-    // Create or retrieve the Switch service
+    // Create or retrieve the Fan service
     this.service =
-      this.accessory.getService(this.platform.Service.Switch) ||
-      this.accessory.addService(this.platform.Service.Switch, 'Display');
-    this.service.setCharacteristic(this.platform.Characteristic.Name, 'Display');
+      this.accessory.getService(this.platform.Service.Fan) ||
+      this.accessory.addService(this.platform.Service.Fan, 'Fan Speed');
+    this.service.setCharacteristic(
+      this.platform.Characteristic.Name,
+      'Fan Speed',
+    );
 
     this.startPolling();
 
     this.service
-      .getCharacteristic(this.platform.Characteristic.On)
+      .getCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+      )
       .on('get', this.handleGet.bind(this))
       .on('set', this.handleSet.bind(this));
   }
@@ -45,10 +51,11 @@ export class DisplaySwitchAccessory {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
-    if (this.deviceAPI) {
-      this.deviceAPI.cleanup();
-    }
-    this.platform.log.debug('Display polling stopped for %s', this.accessory.context.deviceConfig.name);
+    this.deviceAPI.cleanup();
+    this.platform.log.debug(
+      'FanSpeed polling stopped for %s',
+      this.accessory.context.deviceConfig.name,
+    );
   }
 
   private startPolling(): void {
@@ -64,31 +71,38 @@ export class DisplaySwitchAccessory {
     try {
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
-      if (typeof status.opt_display !== 'undefined') {
-        const isOn = status.opt_display === 'on';
-        this.service.updateCharacteristic(this.platform.Characteristic.On, isOn);
+      if (typeof status.fan_mode !== 'undefined') {
+        const speed = parseInt(status.fan_mode as string, 10) || 0;
+        this.service.updateCharacteristic(
+          this.platform.Characteristic.RotationSpeed,
+          speed,
+        );
       }
     } catch (error) {
-      this.platform.log.error('Error updating display status:', error);
+      this.platform.log.error('Error updating fan speed status:', error);
     }
   }
 
   private handleGet(callback: CharacteristicGetCallback): void {
-    if (this.cachedStatus && typeof this.cachedStatus.opt_display !== 'undefined') {
-      callback(null, this.cachedStatus.opt_display === 'on');
+    if (this.cachedStatus && typeof this.cachedStatus.fan_mode !== 'undefined') {
+      const speed = parseInt(this.cachedStatus.fan_mode as string, 10) || 0;
+      callback(null, speed);
     } else {
-      callback(new Error('Display status not available'));
+      callback(new Error('Fan speed status not available'));
     }
   }
 
-  private async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  private async handleSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
     try {
-      const displayValue = value ? 'on' : 'off';
-      await this.deviceAPI.setDisplayState(displayValue);
+      const speedStr = String(value as number);
+      await this.deviceAPI.setFanSpeed(speedStr);
       this.updateCachedStatus();
       callback(null);
     } catch (error) {
-      this.platform.log.error('Error setting display state:', error);
+      this.platform.log.error('Error setting fan speed:', error);
       callback(error as Error);
     }
   }
