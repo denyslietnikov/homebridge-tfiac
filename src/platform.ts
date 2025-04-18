@@ -13,6 +13,7 @@ import * as xml2js from 'xml2js';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } from './settings.js';
 import { TfiacPlatformAccessory } from './platformAccessory.js';
 import { DisplaySwitchAccessory } from './DisplaySwitchAccessory.js';
+import { SleepSwitchAccessory } from './SleepSwitchAccessory.js';
 
 // Define a structure for discovered devices
 interface DiscoveredDevice {
@@ -29,6 +30,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly accessories: PlatformAccessory[] = [];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory> = new Map();
   private readonly displayAccessories: Map<string, DisplaySwitchAccessory> = new Map();
+  private readonly sleepAccessories: Map<string, SleepSwitchAccessory> = new Map();
 
   constructor(
     public readonly log: Logger,
@@ -139,6 +141,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             // Create Display Switch accessory
             const displaySwitch = new DisplaySwitchAccessory(this, existingAccessory);
             this.displayAccessories.set(uuid, displaySwitch);
+            // Create Sleep Switch accessory
+            const sleepSwitch = new SleepSwitchAccessory(this, existingAccessory);
+            this.sleepAccessories.set(uuid, sleepSwitch);
           }
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -154,6 +159,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           // Create Display Switch accessory
           const displaySwitch = new DisplaySwitchAccessory(this, accessory);
           this.displayAccessories.set(uuid, displaySwitch);
+          // Create Sleep Switch accessory
+          const sleepSwitch = new SleepSwitchAccessory(this, accessory);
+          this.sleepAccessories.set(uuid, sleepSwitch);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -176,6 +184,12 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         if (displaySwitch) {
           displaySwitch.stopPolling();
           this.displayAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Sleep Switch
+        const sleepSwitch = this.sleepAccessories.get(acc.UUID);
+        if (sleepSwitch) {
+          sleepSwitch.stopPolling();
+          this.sleepAccessories.delete(acc.UUID);
         }
       });
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
