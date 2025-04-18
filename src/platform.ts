@@ -12,6 +12,7 @@ import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } from './settings.js';
 import { TfiacPlatformAccessory } from './platformAccessory.js';
+import { DisplaySwitchAccessory } from './DisplaySwitchAccessory.js';
 
 // Define a structure for discovered devices
 interface DiscoveredDevice {
@@ -27,6 +28,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   // Array of discovered accessories
   private readonly accessories: PlatformAccessory[] = [];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory> = new Map();
+  private readonly displayAccessories: Map<string, DisplaySwitchAccessory> = new Map();
 
   constructor(
     public readonly log: Logger,
@@ -134,6 +136,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           if (!this.discoveredAccessories.has(uuid)) {
             const tfiacAccessory = new TfiacPlatformAccessory(this, existingAccessory);
             this.discoveredAccessories.set(uuid, tfiacAccessory);
+            // Create Display Switch accessory
+            const displaySwitch = new DisplaySwitchAccessory(this, existingAccessory);
+            this.displayAccessories.set(uuid, displaySwitch);
           }
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -146,6 +151,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         try {
           const tfiacAccessory = new TfiacPlatformAccessory(this, accessory);
           this.discoveredAccessories.set(uuid, tfiacAccessory);
+          // Create Display Switch accessory
+          const displaySwitch = new DisplaySwitchAccessory(this, accessory);
+          this.displayAccessories.set(uuid, displaySwitch);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -162,6 +170,12 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         if (tfiacAcc) {
           tfiacAcc.stopPolling(); // Clean up polling interval
           this.discoveredAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Display Switch
+        const displaySwitch = this.displayAccessories.get(acc.UUID);
+        if (displaySwitch) {
+          displaySwitch.stopPolling();
+          this.displayAccessories.delete(acc.UUID);
         }
       });
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);

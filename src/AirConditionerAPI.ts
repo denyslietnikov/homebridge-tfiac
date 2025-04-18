@@ -11,6 +11,7 @@ interface AirConditionerStatusInternal {
   fan_mode: string;
   is_on: string;
   swing_mode: string;
+  opt_display?: string; // Display state (on/off), optional
 }
 
 export type AirConditionerStatus = AirConditionerStatusInternal;
@@ -23,6 +24,7 @@ interface StatusUpdateMsg {
   TurnOn: string[];
   WindDirection_H: string[];
   WindDirection_V: string[];
+  Opt_display?: string[]; // Optional display state
 }
 
 type AirConditionerMode = keyof AirConditionerStatusInternal;
@@ -172,6 +174,7 @@ export class AirConditionerAPI extends EventEmitter {
       fan_mode: statusUpdateMsg.WindSpeed[0],
       is_on: statusUpdateMsg.TurnOn[0],
       swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg),
+      opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] : undefined,
     };
     return status;
   }
@@ -207,6 +210,15 @@ export class AirConditionerAPI extends EventEmitter {
   async setFanSpeed(value: string): Promise<void> {
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><WindSpeed>${value}</WindSpeed></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
+   * Set the display state (on/off) for the air conditioner.
+   */
+  async setDisplayState(value: 'on' | 'off'): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                      <SetMessage><Opt_display>${value}</Opt_display></SetMessage></msg>`;
     await this.sendCommand(command);
   }
 }

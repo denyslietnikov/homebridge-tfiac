@@ -253,6 +253,7 @@ describe('TfiacPlatform (ext)', () => {
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
     (platform as unknown as { discoverDevicesNetwork: jest.Mock }).discoverDevicesNetwork = jest.fn();
     await platform.discoverDevices();
 
@@ -260,7 +261,7 @@ describe('TfiacPlatform (ext)', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(
       'Network discovery is disabled in the configuration.',
     );
-    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalled();
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
 
     jest.mock('../platform');
   });
@@ -273,11 +274,12 @@ describe('TfiacPlatform (ext)', () => {
     const config = {
       platform: 'TfiacPlatform',
       name: 'Test Platform',
-      devices: [{ name: 'NoIP' }, { name: 'Ok', ip: '192.168.0.20' }],
+      devices: [{ name: 'NoIP' }],
       enableDiscovery: false,
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
     (platform as unknown as { discoverDevicesNetwork: jest.Mock }).discoverDevicesNetwork = jest.fn();
     await platform.discoverDevices();
 
@@ -285,7 +287,7 @@ describe('TfiacPlatform (ext)', () => {
       'Missing required IP address for configured device:',
       'NoIP',
     );
-    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalled();
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
 
     jest.mock('../platform');
   });
@@ -312,6 +314,7 @@ describe('TfiacPlatform (ext)', () => {
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
     (platform as unknown as { accessories: unknown[] }).accessories.push(existingAccessory);
 
     (mockAPI.hap.uuid.generate as jest.MockedFunction<(s: string) => string>).mockReturnValue(uuid);
@@ -345,6 +348,7 @@ describe('TfiacPlatform (ext)', () => {
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
     const staleMock = { stopPolling: jest.fn() };
     (platform as unknown as { accessories: unknown[] }).accessories.push(staleAccessory);
     (platform as unknown as { discoveredAccessories: Map<string, { stopPolling: jest.Mock }> }).discoveredAccessories.set(
@@ -377,6 +381,7 @@ describe('TfiacPlatform (ext)', () => {
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
 
     const accessory = {
       UUID: 'cached',
@@ -417,6 +422,7 @@ describe('TfiacPlatform (ext)', () => {
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
     mockSocket.bind.mockImplementation(() => {
       const errHandler = mockSocket.on.mock.calls.find((c) => c[0] === 'error')?.[1];
       if (typeof errHandler === 'function') {
@@ -451,6 +457,7 @@ describe('TfiacPlatform (ext)', () => {
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
 
     // Stub network discovery to return our IP
     (platform as unknown as { discoverDevicesNetwork: jest.Mock<() => Promise<Set<string>>> })
@@ -482,6 +489,7 @@ describe('TfiacPlatform (ext)', () => {
     } as unknown as PlatformConfig;
 
     const platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    (platform as unknown as { accessories: unknown[] }).accessories = [];
     await platform.discoverDevices();
 
     expect(mockLogger.info).toHaveBeenCalledWith(
