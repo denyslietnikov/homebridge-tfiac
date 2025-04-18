@@ -13,6 +13,7 @@ import { TfiacDeviceConfig } from './settings.js';
 
 export class TfiacPlatformAccessory {
   private service: Service;
+  private turboService: Service;
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null; // Explicitly typed
   private pollInterval: number;
@@ -45,6 +46,16 @@ export class TfiacPlatformAccessory {
       this.platform.Characteristic.Name,
       deviceConfig.name ?? 'Unnamed AC',
     );
+
+    // --- Turbo Switch Service ---
+    this.turboService =
+      this.accessory.getService(this.platform.Service.Switch) ||
+      this.accessory.addService(this.platform.Service.Switch);
+    this.turboService.setCharacteristic(this.platform.Characteristic.Name, 'Turbo');
+    this.turboService
+      .getCharacteristic(this.platform.Characteristic.On)
+      .on('get', this.handleTurboGet.bind(this))
+      .on('set', this.handleTurboSet.bind(this));
 
     // Start background polling to update cached status
     this.startPolling();
@@ -291,6 +302,30 @@ export class TfiacPlatformAccessory {
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting swing mode:', error);
+      callback(error as Error);
+    }
+  }
+
+  private handleTurboGet(callback: CharacteristicGetCallback): void {
+    this.platform.log.debug('Triggered GET Turbo');
+    if (this.cachedStatus && typeof this.cachedStatus.opt_super !== 'undefined') {
+      callback(null, this.cachedStatus.opt_super === 'on');
+    } else {
+      callback(null, false); // Default: off
+    }
+  }
+
+  private async handleTurboSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
+    this.platform.log.debug('Triggered SET Turbo:', value);
+    try {
+      await this.deviceAPI.setTurboState(value ? 'on' : 'off');
+      this.updateCachedStatus();
+      callback(null);
+    } catch (error) {
+      this.platform.log.error('Error setting Turbo state:', error);
       callback(error as Error);
     }
   }

@@ -12,6 +12,7 @@ interface AirConditionerStatusInternal {
   is_on: string;
   swing_mode: string;
   opt_display?: string; // Display state (on/off), optional
+  opt_super?: string; // Turbo state (on/off), optional
 }
 
 export type AirConditionerStatus = AirConditionerStatusInternal;
@@ -25,6 +26,7 @@ interface StatusUpdateMsg {
   WindDirection_H: string[];
   WindDirection_V: string[];
   Opt_display?: string[]; // Optional display state
+  Opt_super?: string[]; // Optional turbo state
 }
 
 type AirConditionerMode = keyof AirConditionerStatusInternal;
@@ -175,6 +177,7 @@ export class AirConditionerAPI extends EventEmitter {
       is_on: statusUpdateMsg.TurnOn[0],
       swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg),
       opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] : undefined,
+      opt_super: statusUpdateMsg.Opt_super ? statusUpdateMsg.Opt_super[0] : undefined,
     };
     return status;
   }
@@ -219,6 +222,15 @@ export class AirConditionerAPI extends EventEmitter {
   async setDisplayState(value: 'on' | 'off'): Promise<void> {
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><Opt_display>${value}</Opt_display></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
+   * Set the Turbo (Opt_super) state (on/off) for the air conditioner.
+   */
+  async setTurboState(value: 'on' | 'off'): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                      <SetMessage><Opt_super>${value}</Opt_super></SetMessage></msg>`;
     await this.sendCommand(command);
   }
 }
