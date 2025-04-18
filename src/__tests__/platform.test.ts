@@ -439,6 +439,29 @@ describe('TfiacPlatform', () => {
       // Restore original method
       platform.discoverDevices = originalDiscoverDevices;
     }, 15000);
+
+    it('should update accessory if config changes (name or port)', () => {
+      const initialDevice = { name: 'AC', ip: '1.2.3.4', port: 7777 };
+      const updatedDevice = { name: 'AC Updated', ip: '1.2.3.4', port: 8888 };
+      const uuid = mockAPI.hap.uuid.generate(initialDevice.ip + initialDevice.name);
+      const accessory = new mockPlatformAccessory(initialDevice.name, uuid);
+      accessory.context.deviceConfig = { ...initialDevice };
+      platform = new TfiacPlatform(mockLogger, { ...config, devices: [initialDevice], enableDiscovery: false }, mockAPI);
+      // @ts-expect-error: test is pushing directly to private array for coverage
+      platform.accessories.push(accessory);
+      // Initial discover (should not trigger update)
+      platform.discoverDevices();
+      expect(mockAPI.updatePlatformAccessories).not.toHaveBeenCalled();
+      // Now update config and run discover again
+      platform.config.devices = [updatedDevice];
+      platform.discoverDevices();
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Updating existing accessory: AC Updated'),
+      );
+      expect(accessory.displayName).toBe('AC Updated');
+      expect(accessory.context.deviceConfig).toEqual(updatedDevice);
+      expect(mockAPI.updatePlatformAccessories).toHaveBeenCalledWith([accessory]);
+    });
   });
 
   describe('Accessory Management', () => {

@@ -117,11 +117,19 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       };
 
       if (existingAccessory) {
-        // Update existing accessory
-        this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
-        existingAccessory.context.deviceConfig = deviceConfigForAccessory;
-        existingAccessory.displayName = deviceConfigForAccessory.name;
-        this.api.updatePlatformAccessories([existingAccessory]);
+        // Check if config has changed
+        const prevConfig = existingAccessory.context.deviceConfig as TfiacDeviceConfig | undefined;
+        const configChanged = !prevConfig ||
+          prevConfig.name !== deviceConfigForAccessory.name ||
+          prevConfig.ip !== deviceConfigForAccessory.ip ||
+          prevConfig.port !== deviceConfigForAccessory.port;
+
+        if (configChanged) {
+          this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
+          existingAccessory.context.deviceConfig = deviceConfigForAccessory;
+          existingAccessory.displayName = deviceConfigForAccessory.name;
+          this.api.updatePlatformAccessories([existingAccessory]);
+        }
         try {
           if (!this.discoveredAccessories.has(uuid)) {
             const tfiacAccessory = new TfiacPlatformAccessory(this, existingAccessory);
