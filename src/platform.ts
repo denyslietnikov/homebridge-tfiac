@@ -12,6 +12,9 @@ import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } from './settings.js';
 import { TfiacPlatformAccessory } from './platformAccessory.js';
+import { DisplaySwitchAccessory } from './DisplaySwitchAccessory.js';
+import { SleepSwitchAccessory } from './SleepSwitchAccessory.js';
+import { FanSpeedAccessory } from './FanSpeedAccessory.js';  // Add fan speed accessory import
 
 // Define a structure for discovered devices
 interface DiscoveredDevice {
@@ -27,6 +30,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   // Array of discovered accessories
   private readonly accessories: PlatformAccessory[] = [];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory> = new Map();
+  private readonly displayAccessories: Map<string, DisplaySwitchAccessory> = new Map();
+  private readonly sleepAccessories: Map<string, SleepSwitchAccessory> = new Map();
+  private readonly fanSpeedAccessories: Map<string, FanSpeedAccessory> = new Map();  // Track fan speed accessories
 
   constructor(
     public readonly log: Logger,
@@ -98,7 +104,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     if (allDevices.length === 0) {
       this.log.info('No configured or discovered devices found.');
-      return;
+      // Proceed to remove any stale accessories even when no devices are configured or discovered
     }
 
     // 3. Register or update accessories based on the combined list
@@ -117,15 +123,32 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       };
 
       if (existingAccessory) {
-        // Update existing accessory
-        this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
-        existingAccessory.context.deviceConfig = deviceConfigForAccessory;
-        existingAccessory.displayName = deviceConfigForAccessory.name;
-        this.api.updatePlatformAccessories([existingAccessory]);
+        // Check if config has changed
+        const prevConfig = existingAccessory.context.deviceConfig as TfiacDeviceConfig | undefined;
+        const configChanged = !prevConfig ||
+          prevConfig.name !== deviceConfigForAccessory.name ||
+          prevConfig.ip !== deviceConfigForAccessory.ip ||
+          prevConfig.port !== deviceConfigForAccessory.port;
+
+        if (configChanged) {
+          this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
+          existingAccessory.context.deviceConfig = deviceConfigForAccessory;
+          existingAccessory.displayName = deviceConfigForAccessory.name;
+          this.api.updatePlatformAccessories([existingAccessory]);
+        }
         try {
           if (!this.discoveredAccessories.has(uuid)) {
             const tfiacAccessory = new TfiacPlatformAccessory(this, existingAccessory);
             this.discoveredAccessories.set(uuid, tfiacAccessory);
+            // Create Display Switch accessory
+            const displaySwitch = new DisplaySwitchAccessory(this, existingAccessory);
+            this.displayAccessories.set(uuid, displaySwitch);
+            // Create Sleep Switch accessory
+            const sleepSwitch = new SleepSwitchAccessory(this, existingAccessory);
+            this.sleepAccessories.set(uuid, sleepSwitch);
+            // Create Fan Speed accessory
+            const fanSpeed = new FanSpeedAccessory(this, existingAccessory);
+            this.fanSpeedAccessories.set(uuid, fanSpeed);
           }
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -138,6 +161,15 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         try {
           const tfiacAccessory = new TfiacPlatformAccessory(this, accessory);
           this.discoveredAccessories.set(uuid, tfiacAccessory);
+          // Create Display Switch accessory
+          const displaySwitch = new DisplaySwitchAccessory(this, accessory);
+          this.displayAccessories.set(uuid, displaySwitch);
+          // Create Sleep Switch accessory
+          const sleepSwitch = new SleepSwitchAccessory(this, accessory);
+          this.sleepAccessories.set(uuid, sleepSwitch);
+          // Create Fan Speed accessory
+          const fanSpeed = new FanSpeedAccessory(this, accessory);
+          this.fanSpeedAccessories.set(uuid, fanSpeed);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -155,8 +187,33 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           tfiacAcc.stopPolling(); // Clean up polling interval
           this.discoveredAccessories.delete(acc.UUID);
         }
+        // Stop polling for Display Switch
+        const displaySwitch = this.displayAccessories.get(acc.UUID);
+        if (displaySwitch) {
+          displaySwitch.stopPolling();
+          this.displayAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Sleep Switch
+        const sleepSwitch = this.sleepAccessories.get(acc.UUID);
+        if (sleepSwitch) {
+          sleepSwitch.stopPolling();
+          this.sleepAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Fan Speed
+        const fanSpeed = this.fanSpeedAccessories.get(acc.UUID);
+        if (fanSpeed) {
+          fanSpeed.stopPolling();
+          this.fanSpeedAccessories.delete(acc.UUID);
+        }
       });
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
+      // Remove stale accessories from internal cache
+      accessoriesToRemove.forEach(acc => {
+        const idx = this.accessories.findIndex(a => a.UUID === acc.UUID);
+        if (idx > -1) {
+          this.accessories.splice(idx, 1);
+        }
+      });
     }
   }
 

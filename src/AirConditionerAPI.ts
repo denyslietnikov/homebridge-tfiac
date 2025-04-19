@@ -11,6 +11,9 @@ interface AirConditionerStatusInternal {
   fan_mode: string;
   is_on: string;
   swing_mode: string;
+  opt_display?: string; // Display state (on/off), optional
+  opt_super?: string; // Turbo state (on/off), optional
+  opt_sleepMode?: string; // Sleep mode state (string, e.g. 'sleepMode1:0:0:0:...'), optional
 }
 
 export type AirConditionerStatus = AirConditionerStatusInternal;
@@ -23,6 +26,9 @@ interface StatusUpdateMsg {
   TurnOn: string[];
   WindDirection_H: string[];
   WindDirection_V: string[];
+  Opt_display?: string[]; // Optional display state
+  Opt_super?: string[]; // Optional turbo state
+  Opt_sleepMode?: string[]; // Optional sleep mode state
 }
 
 type AirConditionerMode = keyof AirConditionerStatusInternal;
@@ -172,6 +178,9 @@ export class AirConditionerAPI extends EventEmitter {
       fan_mode: statusUpdateMsg.WindSpeed[0],
       is_on: statusUpdateMsg.TurnOn[0],
       swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg),
+      opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] : undefined,
+      opt_super: statusUpdateMsg.Opt_super ? statusUpdateMsg.Opt_super[0] : undefined,
+      opt_sleepMode: statusUpdateMsg.Opt_sleepMode ? statusUpdateMsg.Opt_sleepMode[0] : undefined,
     };
     return status;
   }
@@ -207,6 +216,37 @@ export class AirConditionerAPI extends EventEmitter {
   async setFanSpeed(value: string): Promise<void> {
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><WindSpeed>${value}</WindSpeed></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
+   * Set the display state (on/off) for the air conditioner.
+   */
+  async setDisplayState(value: 'on' | 'off'): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                      <SetMessage><Opt_display>${value}</Opt_display></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
+   * Set the Turbo (Opt_super) state (on/off) for the air conditioner.
+   */
+  async setTurboState(value: 'on' | 'off'): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                      <SetMessage><Opt_super>${value}</Opt_super></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
+   * Set the Sleep (Opt_sleepMode) state (on/off) for the air conditioner.
+   * For 'on', sends 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0', for 'off' sends 'off'.
+   */
+  async setSleepState(value: 'on' | 'off'): Promise<void> {
+    const sleepValue = value === 'on'
+      ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
+      : 'off';
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                      <SetMessage><Opt_sleepMode>${sleepValue}</Opt_sleepMode></SetMessage></msg>`;
     await this.sendCommand(command);
   }
 }

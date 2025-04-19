@@ -86,9 +86,9 @@ const createMockService = (): MockService => {
     characteristics,
     getCharacteristic: jest.fn(
       (charIdentifier: string | typeof Characteristic) => {
-        const key = typeof charIdentifier === 'string'
-          ? charIdentifier
-          : (charIdentifier as { UUID?: string }).UUID ?? String(charIdentifier);
+        const key = (charIdentifier && typeof charIdentifier === 'object' && 'UUID' in charIdentifier)
+          ? (charIdentifier as { UUID: string }).UUID
+          : String(charIdentifier);
         if (!characteristics.has(key)) {
           characteristics.set(key, createMockCharacteristic());
         }

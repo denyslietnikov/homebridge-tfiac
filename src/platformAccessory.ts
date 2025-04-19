@@ -13,6 +13,8 @@ import { TfiacDeviceConfig } from './settings.js';
 
 export class TfiacPlatformAccessory {
   private service: Service;
+  private turboService: Service;
+  private temperatureSensorService: Service;
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null; // Explicitly typed
   private pollInterval: number;
@@ -45,6 +47,28 @@ export class TfiacPlatformAccessory {
       this.platform.Characteristic.Name,
       deviceConfig.name ?? 'Unnamed AC',
     );
+
+    // --- Turbo Switch Service ---
+    this.turboService =
+      this.accessory.getService(this.platform.Service.Switch) ||
+      this.accessory.addService(this.platform.Service.Switch);
+    this.turboService.setCharacteristic(this.platform.Characteristic.Name, 'Turbo');
+    this.turboService
+      .getCharacteristic(this.platform.Characteristic.On)
+      .on('get', this.handleTurboGet.bind(this))
+      .on('set', this.handleTurboSet.bind(this));
+
+    // --- Temperature Sensor Service ---
+    this.temperatureSensorService =
+      this.accessory.getService(this.platform.Service.TemperatureSensor) ||
+      this.accessory.addService(this.platform.Service.TemperatureSensor, deviceConfig.name + ' Indoor Temp');
+    this.temperatureSensorService.setCharacteristic(
+      this.platform.Characteristic.Name,
+      (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temp',
+    );
+    this.temperatureSensorService
+      .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+      .on('get', this.handleTemperatureSensorCurrentTemperatureGet.bind(this));
 
     // Start background polling to update cached status
     this.startPolling();
@@ -116,6 +140,8 @@ export class TfiacPlatformAccessory {
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
+    // Ensure timer does not keep node process alive
+    this.pollingInterval.unref();
   }
 
   /**
@@ -126,6 +152,14 @@ export class TfiacPlatformAccessory {
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
       this.platform.log.debug('Cached status updated:', status);
+      // Update TemperatureSensor characteristic
+      if (this.temperatureSensorService && status) {
+        const temperatureCelsius = this.fahrenheitToCelsius(status.current_temp);
+        this.temperatureSensorService.updateCharacteristic(
+          this.platform.Characteristic.CurrentTemperature,
+          temperatureCelsius,
+        );
+      }
     } catch (error) {
       this.platform.log.error('Error updating cached status:', error);
     }
@@ -292,6 +326,41 @@ export class TfiacPlatformAccessory {
     } catch (error) {
       this.platform.log.error('Error setting swing mode:', error);
       callback(error as Error);
+    }
+  }
+
+  private handleTurboGet(callback: CharacteristicGetCallback): void {
+    this.platform.log.debug('Triggered GET Turbo');
+    if (this.cachedStatus && typeof this.cachedStatus.opt_super !== 'undefined') {
+      callback(null, this.cachedStatus.opt_super === 'on');
+    } else {
+      callback(null, false); // Default: off
+    }
+  }
+
+  private async handleTurboSet(
+    value: CharacteristicValue,
+    callback: CharacteristicSetCallback,
+  ): Promise<void> {
+    this.platform.log.debug('Triggered SET Turbo:', value);
+    try {
+      await this.deviceAPI.setTurboState(value ? 'on' : 'off');
+      this.updateCachedStatus();
+      callback(null);
+    } catch (error) {
+      this.platform.log.error('Error setting Turbo state:', error);
+      callback(error as Error);
+    }
+  }
+
+  private handleTemperatureSensorCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
+    this.platform.log.debug('Triggered GET TemperatureSensor.CurrentTemperature');
+    if (this.cachedStatus) {
+      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.current_temp);
+      this.platform.log.debug(`[TemperatureSensor] Current temperature: ${temperatureCelsius}°C`);
+      callback(null, temperatureCelsius);
+    } else {
+      callback(new Error('Cached status not available'));
     }
   }
 
