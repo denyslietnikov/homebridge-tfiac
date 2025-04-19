@@ -563,3 +563,105 @@ describe('AirConditionerAPI', () => {
     }, 10000);
   });
 });
+
+describe('AirConditionerAPI extra coverage', () => {
+  let api: AirConditionerAPI;
+  const ip = '127.0.0.1';
+  const port = 7777;
+
+  beforeEach(() => {
+    api = new AirConditionerAPI(ip, port);
+  });
+
+  it('should reject on sendCommand timeout', async () => {
+    jest.useFakeTimers();
+    const origCreateSocket = require('dgram').createSocket;
+    require('dgram').createSocket = jest.fn().mockReturnValue({
+      on: jest.fn(),
+      send: jest.fn(),
+      unref: jest.fn(),
+      removeAllListeners: jest.fn(),
+      close: jest.fn(),
+    });
+    const promise = api["sendCommand"]('<msg></msg>', 10);
+    jest.advanceTimersByTime(20);
+    await expect(promise).rejects.toThrow('Command timed out');
+    require('dgram').createSocket = origCreateSocket;
+    jest.useRealTimers();
+  });
+
+  it('should reject on sendCommand error event', async () => {
+    const origCreateSocket = require('dgram').createSocket;
+    let errorHandler: ((err: Error) => void) | undefined;
+    require('dgram').createSocket = jest.fn().mockReturnValue({
+      on: (event: string, cb: any) => { if (event === 'error') errorHandler = cb; return this; },
+      send: jest.fn(),
+      unref: jest.fn(),
+      removeAllListeners: jest.fn(),
+      close: jest.fn(),
+    });
+    const promise = api["sendCommand"]('<msg></msg>', 1000);
+    errorHandler && errorHandler(new Error('fail')); // simulate error
+    await expect(promise).rejects.toThrow('fail');
+    require('dgram').createSocket = origCreateSocket;
+  });
+
+  it('should set available=false on send error', async () => {
+    const origCreateSocket = require('dgram').createSocket;
+    let sendCb: ((err?: Error) => void) | undefined;
+    require('dgram').createSocket = jest.fn().mockReturnValue({
+      on: jest.fn(),
+      send: (msg: any, port: any, ip: any, cb: any) => { sendCb = cb; },
+      unref: jest.fn(),
+      removeAllListeners: jest.fn(),
+      close: jest.fn(),
+    });
+    const promise = api["sendCommand"]('<msg></msg>', 1000);
+    sendCb && sendCb(new Error('fail'));
+    await expect(promise).rejects.toThrow('fail');
+    expect(api.available).toBe(false);
+    require('dgram').createSocket = origCreateSocket;
+  });
+
+  it('should handle XML parse error in updateState', async () => {
+    jest.spyOn(api as any, 'sendCommand').mockResolvedValue('<badxml>');
+    await expect(api.updateState()).rejects.toThrow();
+  });
+
+  it('should handle error in setAirConditionerState if updateState fails', async () => {
+    jest.spyOn(api, 'updateState').mockRejectedValue(new Error('fail'));
+    await expect(api.setAirConditionerState('operation_mode', 'cool')).rejects.toThrow('fail');
+  });
+
+  it('should call setDisplayState for on and off', async () => {
+    const spy = jest.spyOn(api as any, 'sendCommand').mockResolvedValue('ok');
+    await api.setDisplayState('on');
+    await api.setDisplayState('off');
+    expect(spy).toHaveBeenCalledTimes(2);
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_display>on</Opt_display>'));
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_display>off</Opt_display>'));
+  });
+
+  it('should call setTurboState for on and off', async () => {
+    const spy = jest.spyOn(api as any, 'sendCommand').mockResolvedValue('ok');
+    await api.setTurboState('on');
+    await api.setTurboState('off');
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_super>on</Opt_super>'));
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_super>off</Opt_super>'));
+  });
+
+  it('should call setSleepState for on and off', async () => {
+    const spy = jest.spyOn(api as any, 'sendCommand').mockResolvedValue('ok');
+    await api.setSleepState('on');
+    await api.setSleepState('off');
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_sleepMode>sleepMode1:'));
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_sleepMode>off</Opt_sleepMode>'));
+  });
+
+  it('should cleanup all timeouts', () => {
+    const timeout = setTimeout(() => {}, 1000);
+    (api as any).activeTimeouts.push(timeout);
+    api.cleanup();
+    expect((api as any).activeTimeouts.length).toBe(0);
+  });
+});

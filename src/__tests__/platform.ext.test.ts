@@ -100,9 +100,14 @@ jest.mock('xml2js', () => ({
     const xml = args[0] as string;
     const options = args[1] as { explicitArray: boolean } | undefined;
 
-    // Check if the XML contains the expected tag to simulate parsing
+    // Incomplete statusUpdateMsg without closing tag should throw parse error
+    if (xml.includes('<statusUpdateMsg>') && !xml.includes('</statusUpdateMsg>')) {
+      throw new Error('Parse error');
+    }
+    if (xml.includes('<statusUpdateMsg>') && !xml.includes('IndoorTemp')) {
+      return { msg: { statusUpdateMsg: [{}] } };
+    }
     if (xml.includes('<statusUpdateMsg>')) {
-      // If explicitArray is specifically false, return non-array structure
       if (options?.explicitArray === false) {
         return {
           msg: {
@@ -110,16 +115,14 @@ jest.mock('xml2js', () => ({
           },
         };
       }
-      // Otherwise (explicitArray is true or undefined), return the default array structure
       return {
         msg: {
-          statusUpdateMsg: [ // Array for statusUpdateMsg
-            { IndoorTemp: ['25'] }, // Array for IndoorTemp
+          statusUpdateMsg: [
+            { IndoorTemp: ['25'] },
           ],
         },
       };
     }
-    // Return empty or throw error if XML is unexpected
     return {};
   }),
 }));
@@ -193,6 +196,7 @@ const createMocks = () => {
     version: '1.0.0',
     serverVersion: '1.0.0',
     user: { storagePath: () => '/tmp' },
+    hapLegacyTypes: {},
   } as unknown as API;
 
   return { mockLogger, mockAPI };
@@ -499,4 +503,175 @@ describe('TfiacPlatform (ext)', () => {
 
     jest.mock('../platform');
   });
+});
+
+/* ------------------------------------------------------------------ */
+/*  7.  TfiacPlatform UDP discovery error branches                     */
+/* ------------------------------------------------------------------ */
+describe('TfiacPlatform UDP discovery error branches', () => {
+  jest.unmock('../platform');
+  const RealMod = jest.requireActual('../platform') as typeof import('../platform');
+
+  const mockLogger = {
+    debug: jest.fn(),
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    success: jest.fn(),
+    log: jest.fn(),
+  };
+  const mockAPI = {
+    hap: {
+      uuid: { generate: jest.fn((str: string) => 'uuid-' + str) },
+      Service: {},
+      Characteristic: {},
+    },
+    on: jest.fn(),
+    platformAccessory: jest.fn((name: string, uuid: string) => ({ UUID: uuid, displayName: name, context: {} })),
+    registerPlatformAccessories: jest.fn(),
+    updatePlatformAccessories: jest.fn(),
+    unregisterPlatformAccessories: jest.fn(),
+    version: '1.0.0',
+    serverVersion: '1.0.0',
+    user: { storagePath: () => '/tmp' },
+    hapLegacyTypes: {},
+  } as any;
+  const config = { platform: 'TfiacPlatform', name: 'Test Platform', devices: [], enableDiscovery: true };
+
+  let platform: any;
+  let errorHandler: ((err: Error) => void) | undefined;
+  let listeningHandler: (() => void) | undefined;
+  let messageHandler: ((msg: Buffer, rinfo: { address: string; port: number }) => void) | undefined;
+
+  beforeEach(() => {
+    errorHandler = undefined;
+    listeningHandler = undefined;
+    messageHandler = undefined;
+    // platform will be created in each test after dgram.createSocket is mocked
+  });
+
+  it('should log error if socket.close throws in cleanup', async () => {
+    require('dgram').createSocket = jest.fn().mockReturnValue({
+      on: (event: string, cb: (...args: any[]) => void) => { if (event === 'error') errorHandler = cb as (err: Error) => void; return this; },
+      setBroadcast: jest.fn(),
+      send: jest.fn((msg: any, port: any, addr: any, cb: (...args: any[]) => void) => cb()),
+      close: jest.fn(() => { throw new Error('close fail'); }),
+      address: jest.fn(() => ({ address: '0.0.0.0', port: 1234 })),
+      removeAllListeners: jest.fn(),
+      bind: jest.fn(),
+    });
+    platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    const promise = platform["discoverDevicesNetwork"](10);
+    if (typeof errorHandler === 'function') errorHandler(new Error('socket error'));
+    await expect(Promise.resolve(promise)).rejects.toThrow('socket error');
+    expect(mockLogger.debug).toHaveBeenCalledWith('Error closing discovery socket:', expect.any(Error));
+  });
+
+  it('should log error if send discovery broadcast fails', async () => {
+    require('dgram').createSocket = jest.fn().mockReturnValue({
+      on: (event: string, cb: (...args: any[]) => void) => { if (event === 'listening') listeningHandler = cb as () => void; return this; },
+      setBroadcast: jest.fn(),
+      send: jest.fn((msg: any, port: any, addr: any, cb: (...args: any[]) => void) => cb(new Error('send fail'))),
+      close: jest.fn(),
+      address: jest.fn(() => ({ address: '0.0.0.0', port: 1234 })),
+      removeAllListeners: jest.fn(),
+      bind: jest.fn(),
+    });
+    platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    const promise = platform["discoverDevicesNetwork"](10);
+    if (typeof listeningHandler === 'function') listeningHandler();
+    await expect(Promise.resolve(promise)).resolves.toBeInstanceOf(Set);
+    expect(mockLogger.error).toHaveBeenCalledWith('Error sending discovery broadcast:', expect.any(Error));
+  });
+
+  it('should log debug for non-status and non-XML responses', async () => {
+    // Clear debug logs from previous tests
+    mockLogger.debug.mockClear();
+    
+    // Create a proper mock implementation for the XML parser to directly capture errors
+    const originalParseStringPromise = require('xml2js').parseStringPromise;
+    require('xml2js').parseStringPromise = jest.fn().mockImplementation(async (xml) => {
+      const xmlString = xml as string;
+      if (xmlString.includes('<statusUpdateMsg>') && !xmlString.includes('</statusUpdateMsg>')) {
+        throw new Error('Parse error');
+      }
+      return originalParseStringPromise(xml);
+    });
+    
+    // Capture when the error logging happens
+    const debugCalls: any[][] = [];
+    const originalDebug = mockLogger.debug;
+    mockLogger.debug = jest.fn().mockImplementation((...args: any[]) => {
+      debugCalls.push(args);
+      return originalDebug(...args);
+    });
+    
+    // Set up socket mock
+    require('dgram').createSocket = jest.fn().mockReturnValue({
+      on: (event: string, cb: (...args: any[]) => void) => {
+        if (event === 'message') messageHandler = cb as (msg: Buffer, rinfo: { address: string; port: number }) => void;
+        if (event === 'listening') {
+          setTimeout(() => {
+            if (typeof cb === 'function') cb();
+          }, 10);
+        }
+        return this;
+      },
+      setBroadcast: jest.fn(),
+      send: jest.fn((msg: any, port: any, addr: any, cb: (...args: any[]) => void) => {
+        if (typeof cb === 'function') cb();
+      }),
+      close: jest.fn(),
+      address: jest.fn(() => ({ address: '0.0.0.0', port: 1234 })),
+      removeAllListeners: jest.fn(),
+      bind: jest.fn(),
+    });
+    
+    platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    
+    // Create a short discoveryPromise
+    const discoveryPromise = platform["discoverDevicesNetwork"](100);
+    
+    // Send test messages with small delays
+    await new Promise(resolve => setTimeout(resolve, 20));
+    
+    if (typeof messageHandler === 'function') {
+      // Send regular XML that will be recognized as non-XML (our response intercepts it)
+      messageHandler(Buffer.from('not xml'), { address: '1.2.3.4', port: 7777 });
+      
+      // Wait a bit to ensure message is processed
+      await new Promise(resolve => setTimeout(resolve, 20));
+      
+      // Send message that will be recognized as non-status
+      messageHandler(Buffer.from('<msg><statusUpdateMsg></statusUpdateMsg></msg>'), { address: '1.2.3.5', port: 7777 });
+      
+      // Wait a bit to ensure message is processed  
+      await new Promise(resolve => setTimeout(resolve, 20));
+      
+      // Send malformed XML that will trigger our parse error
+      messageHandler(Buffer.from('<msg><statusUpdateMsg>'), { address: '1.2.3.6', port: 7777 });
+      
+      // Wait longer to ensure error message is processed
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    // Complete the discovery
+    await discoveryPromise;
+    
+    // Now inspect debug calls to verify all expected logs happened
+    const nonXmlLog = debugCalls.find(args => 
+      args[0] === 'Ignoring non-XML/non-status response from 1.2.3.4');
+    const nonStatusLog = debugCalls.find(args => 
+      args[0] === 'Ignoring non-status response from 1.2.3.5');
+    const parseErrorLog = debugCalls.find(args => 
+      args[0] === 'Error parsing response from 1.2.3.6:');
+    
+    // Assert each logging call happened
+    expect(nonXmlLog).toBeTruthy();
+    expect(nonStatusLog).toBeTruthy();
+    expect(parseErrorLog).toBeTruthy();
+    
+    // Clean up our mock to not affect other tests
+    require('xml2js').parseStringPromise = originalParseStringPromise;
+  }, 10000); // Increase timeout to 10 seconds
 });
