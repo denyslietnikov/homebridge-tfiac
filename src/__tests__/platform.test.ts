@@ -620,6 +620,7 @@ describe('TfiacPlatform (unit, coverage)', () => {
       })) as unknown as typeof PlatformAccessory,
       updatePlatformAccessories: jest.fn() as jest.Mock,
       registerPlatformAccessories: jest.fn() as jest.Mock,
+      unregisterPlatformAccessories: jest.fn() as jest.Mock,
       version: 1,
       serverVersion: 'mock-server-version',
       user: {
@@ -634,7 +635,6 @@ describe('TfiacPlatform (unit, coverage)', () => {
       versionGreaterOrEqual: jest.fn().mockReturnValue(true),
       registerAccessory: jest.fn(),
       registerPlatform: jest.fn(),
-      unregisterPlatformAccessories: jest.fn(),
       publishExternalAccessories: jest.fn(),
     } as unknown as API;
     config = { platform: 'TfiacPlatform', name: 'Test Platform', devices: [], enableDiscovery: false };
@@ -725,5 +725,104 @@ describe('TfiacPlatform (unit, coverage)', () => {
     // @ts-expect-error: test is accessing private array for coverage
     expect(platform.accessories).toContain(accessory);
     expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Loading accessory from cache'));
+  });
+});
+
+describe('TfiacPlatform (extra coverage)', () => {
+  let platform: TfiacPlatform;
+  let mockLogger: Logger;
+  let mockAPI: API;
+  let config: TfiacPlatformConfig;
+
+  beforeEach(() => {
+    mockLogger = {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+      success: jest.fn(),
+      log: jest.fn(),
+    } as unknown as Logger;
+    mockAPI = {
+      hap: {
+        Service: {},
+        Characteristic: {},
+        uuid: { generate: jest.fn((str: string) => 'uuid-' + str) },
+      } as unknown as typeof import('hap-nodejs'),
+      on: jest.fn() as jest.Mock,
+      platformAccessory: jest.fn((name, uuid) => ({
+        UUID: uuid,
+        displayName: name,
+        context: {},
+      })) as unknown as typeof PlatformAccessory,
+      updatePlatformAccessories: jest.fn() as jest.Mock,
+      registerPlatformAccessories: jest.fn() as jest.Mock,
+      unregisterPlatformAccessories: jest.fn() as jest.Mock,
+      version: 1,
+      serverVersion: 'mock-server-version',
+      user: {
+        configPath: () => '/mock/config/path',
+        storagePath: () => '/mock/storage/path',
+        prototype: {},
+        persistPath: '/mock/persist/path',
+        cachedAccessoryPath: () => '/mock/cached/accessory/path',
+        setStoragePath: jest.fn(),
+      } as unknown as typeof User,
+      hapLegacyTypes: {},
+      versionGreaterOrEqual: jest.fn().mockReturnValue(true),
+      registerAccessory: jest.fn(),
+      registerPlatform: jest.fn(),
+      publishExternalAccessories: jest.fn(),
+    } as unknown as API;
+    config = { platform: 'TfiacPlatform', name: 'Test Platform', devices: [], enableDiscovery: false };
+  });
+
+  it('should handle network discovery (enableDiscovery: true)', async () => {
+    config.enableDiscovery = true;
+    // Patch discoverDevicesNetwork to simulate discovery
+    const discoveredIPs = new Set(['10.0.0.1']);
+    const platformInstance = new TfiacPlatform(mockLogger, config, mockAPI);
+    jest.spyOn(platformInstance as any, 'discoverDevicesNetwork').mockResolvedValue(discoveredIPs);
+    await platformInstance.discoverDevices();
+    expect(mockLogger.info).toHaveBeenCalledWith('Starting network discovery for TFIAC devices...');
+    expect(mockLogger.info).toHaveBeenCalledWith('Network discovery finished. Found 1 potential devices.');
+    expect(mockLogger.debug).toHaveBeenCalledWith('Discovered new device via network: 10.0.0.1');
+  });
+
+  it('should handle error in discoverDevicesNetwork', async () => {
+    config.enableDiscovery = true;
+    const platformInstance = new TfiacPlatform(mockLogger, config, mockAPI);
+    jest.spyOn(platformInstance as any, 'discoverDevicesNetwork').mockRejectedValue(new Error('network fail'));
+    await platformInstance.discoverDevices();
+    expect(mockLogger.error).toHaveBeenCalledWith('Network discovery failed:', expect.any(Error));
+  });
+
+  it('should handle allDevices.length === 0 and accessoriesToRemove.length === 0', async () => {
+    const platformInstance = new TfiacPlatform(mockLogger, { ...config, devices: [] }, mockAPI);
+    // No accessories in platformInstance.accessories
+    await platformInstance.discoverDevices();
+    expect(mockLogger.info).toHaveBeenCalledWith('No configured or discovered devices found.');
+    // Should not call unregisterPlatformAccessories
+    expect(mockAPI.unregisterPlatformAccessories).not.toHaveBeenCalled();
+  });
+
+  it('should handle accessoriesToRemove with accessory not found in array', async () => {
+    const platformInstance = new TfiacPlatform(mockLogger, config, mockAPI);
+    // Add a fake accessory to accessories
+    const fakeAccessory = { UUID: 'uuid-fake', context: {}, displayName: 'Fake' } as PlatformAccessory;
+    (platformInstance as any).accessories.push(fakeAccessory);
+    // Simulate config with no devices, so fakeAccessory will be removed
+    platformInstance.config.devices = [];
+    // Patch discoveredAccessories, displayAccessories, sleepAccessories, fanSpeedAccessories to empty
+    (platformInstance as any).discoveredAccessories.clear();
+    (platformInstance as any).displayAccessories.clear();
+    (platformInstance as any).sleepAccessories.clear();
+    (platformInstance as any).fanSpeedAccessories.clear();
+    // Do NOT remove accessory from array before discoverDevices!
+    await platformInstance.discoverDevices();
+    // unregisterPlatformAccessories should be called
+    expect(mockAPI.unregisterPlatformAccessories).toHaveBeenCalled();
+    // accessories should be empty
+    expect((platformInstance as any).accessories).not.toContain(fakeAccessory);
   });
 });
