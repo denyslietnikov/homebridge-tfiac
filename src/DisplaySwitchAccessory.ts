@@ -74,22 +74,40 @@ export class DisplaySwitchAccessory {
   }
 
   private handleGet(callback: CharacteristicGetCallback): void {
-    if (this.cachedStatus && typeof this.cachedStatus.opt_display !== 'undefined') {
-      callback(null, this.cachedStatus.opt_display === 'on');
-    } else {
-      callback(new Error('Display status not available'));
+    let called = false;
+    const safeCallback = (...args: Parameters<CharacteristicGetCallback>) => {
+      if (!called) {
+        called = true;
+        callback(...args);
+      }
+    };
+    try {
+      if (this.cachedStatus && typeof this.cachedStatus.opt_display !== 'undefined') {
+        safeCallback(null, this.cachedStatus.opt_display === 'on');
+      } else {
+        safeCallback(new Error('Display status not available'));
+      }
+    } catch (err) {
+      safeCallback(err as Error);
     }
   }
 
   private async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+    let called = false;
+    const safeCallback = (...args: Parameters<CharacteristicSetCallback>) => {
+      if (!called) {
+        called = true;
+        callback(...args);
+      }
+    };
     try {
       const displayValue = value ? 'on' : 'off';
       await this.deviceAPI.setDisplayState(displayValue);
       this.updateCachedStatus();
-      callback(null);
+      safeCallback(null);
     } catch (error) {
       this.platform.log.error('Error setting display state:', error);
-      callback(error as Error);
+      safeCallback(error as Error);
     }
   }
 }
