@@ -84,11 +84,22 @@ export class FanSpeedAccessory {
   }
 
   private handleGet(callback: CharacteristicGetCallback): void {
-    if (this.cachedStatus && typeof this.cachedStatus.fan_mode !== 'undefined') {
-      const speed = parseInt(this.cachedStatus.fan_mode as string, 10) || 0;
-      callback(null, speed);
-    } else {
-      callback(new Error('Fan speed status not available'));
+    let called = false;
+    const safeCallback = (...args: Parameters<CharacteristicGetCallback>) => {
+      if (!called) {
+        called = true;
+        callback(...args);
+      }
+    };
+    try {
+      if (this.cachedStatus && typeof this.cachedStatus.fan_mode !== 'undefined') {
+        const speed = parseInt(this.cachedStatus.fan_mode as string, 10) || 0;
+        safeCallback(null, speed);
+      } else {
+        safeCallback(new Error('Fan speed status not available'));
+      }
+    } catch (err) {
+      safeCallback(err as Error);
     }
   }
 
@@ -96,14 +107,21 @@ export class FanSpeedAccessory {
     value: CharacteristicValue,
     callback: CharacteristicSetCallback,
   ): Promise<void> {
+    let called = false;
+    const safeCallback = (...args: Parameters<CharacteristicSetCallback>) => {
+      if (!called) {
+        called = true;
+        callback(...args);
+      }
+    };
     try {
       const speedStr = String(value as number);
       await this.deviceAPI.setFanSpeed(speedStr);
       this.updateCachedStatus();
-      callback(null);
+      safeCallback(null);
     } catch (error) {
       this.platform.log.error('Error setting fan speed:', error);
-      callback(error as Error);
+      safeCallback(error as Error);
     }
   }
 }

@@ -74,23 +74,41 @@ export class SleepSwitchAccessory {
   }
 
   private handleGet(callback: CharacteristicGetCallback): void {
-    if (this.cachedStatus && typeof this.cachedStatus.opt_sleepMode !== 'undefined') {
-      const isOn = this.cachedStatus.opt_sleepMode !== 'off' && this.cachedStatus.opt_sleepMode !== '';
-      callback(null, isOn);
-    } else {
-      callback(new Error('Sleep status not available'));
+    let called = false;
+    const safeCallback = (...args: Parameters<CharacteristicGetCallback>) => {
+      if (!called) {
+        called = true;
+        callback(...args);
+      }
+    };
+    try {
+      if (this.cachedStatus && typeof this.cachedStatus.opt_sleepMode !== 'undefined') {
+        const isOn = this.cachedStatus.opt_sleepMode !== 'off' && this.cachedStatus.opt_sleepMode !== '';
+        safeCallback(null, isOn);
+      } else {
+        safeCallback(new Error('Sleep status not available'));
+      }
+    } catch (err) {
+      safeCallback(err as Error);
     }
   }
 
   private async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+    let called = false;
+    const safeCallback = (...args: Parameters<CharacteristicSetCallback>) => {
+      if (!called) {
+        called = true;
+        callback(...args);
+      }
+    };
     try {
       const sleepValue = value ? 'on' : 'off';
       await this.deviceAPI.setSleepState(sleepValue as 'on' | 'off');
       this.updateCachedStatus();
-      callback(null);
+      safeCallback(null);
     } catch (error) {
       this.platform.log.error('Error setting sleep state:', error);
-      callback(error as Error);
+      safeCallback(error as Error);
     }
   }
 }
