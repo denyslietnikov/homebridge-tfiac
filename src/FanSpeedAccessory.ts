@@ -2,8 +2,6 @@ import {
   PlatformAccessory,
   Service,
   CharacteristicValue,
-  CharacteristicSetCallback,
-  CharacteristicGetCallback,
 } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
@@ -42,8 +40,8 @@ export class FanSpeedAccessory {
       .getCharacteristic(
         this.platform.Characteristic.RotationSpeed,
       )
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
+      .on('get', (callback) => this.handleGet(callback))
+      .on('set', (value, callback) => this.handleSet(value, callback));
   }
 
   public stopPolling(): void {
@@ -83,45 +81,30 @@ export class FanSpeedAccessory {
     }
   }
 
-  private handleGet(callback: CharacteristicGetCallback): void {
-    let called = false;
-    const safeCallback = (...args: Parameters<CharacteristicGetCallback>) => {
-      if (!called) {
-        called = true;
-        callback(...args);
+  private handleGet(callback: (err: Error | null, value?: number) => void): void {
+    (async () => {
+      try {
+        if (this.cachedStatus && typeof this.cachedStatus.fan_mode !== 'undefined') {
+          callback(null, parseInt(this.cachedStatus.fan_mode as string, 10) || 0);
+        } else {
+          throw new Error('Fan speed status not available');
+        }
+      } catch (err) {
+        callback(err as Error);
       }
-    };
-    try {
-      if (this.cachedStatus && typeof this.cachedStatus.fan_mode !== 'undefined') {
-        const speed = parseInt(this.cachedStatus.fan_mode as string, 10) || 0;
-        safeCallback(null, speed);
-      } else {
-        safeCallback(new Error('Fan speed status not available'));
-      }
-    } catch (err) {
-      safeCallback(err as Error);
-    }
+    })();
   }
 
-  private async handleSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback,
-  ): Promise<void> {
-    let called = false;
-    const safeCallback = (...args: Parameters<CharacteristicSetCallback>) => {
-      if (!called) {
-        called = true;
-        callback(...args);
+  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
+    (async () => {
+      try {
+        const speedStr = String(value as number);
+        await this.deviceAPI.setFanSpeed(speedStr);
+        this.updateCachedStatus();
+        callback(null);
+      } catch (err) {
+        callback(err as Error);
       }
-    };
-    try {
-      const speedStr = String(value as number);
-      await this.deviceAPI.setFanSpeed(speedStr);
-      this.updateCachedStatus();
-      safeCallback(null);
-    } catch (error) {
-      this.platform.log.error('Error setting fan speed:', error);
-      safeCallback(error as Error);
-    }
+    })();
   }
 }

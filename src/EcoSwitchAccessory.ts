@@ -7,7 +7,7 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 
-export class DisplaySwitchAccessory {
+export class EcoSwitchAccessory {
   private service: Service;
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null;
@@ -24,18 +24,16 @@ export class DisplaySwitchAccessory {
     this.deviceAPI = new AirConditionerAPI(ip, port);
     this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
 
-    // Create or retrieve the Switch service
     this.service =
-      this.accessory.getService(this.platform.Service.Switch) ||
-      this.accessory.addService(this.platform.Service.Switch, 'Display');
-    this.service.setCharacteristic(this.platform.Characteristic.Name, 'Display');
-
-    this.startPolling();
-
+      this.accessory.getService('Eco') ||
+      this.accessory.addService(this.platform.Service.Switch);
+    this.service.setCharacteristic(this.platform.Characteristic.Name, 'ECO Mode');
     this.service
       .getCharacteristic(this.platform.Characteristic.On)
       .on('get', this.handleGet.bind(this))
       .on('set', this.handleSet.bind(this));
+
+    this.startPolling();
   }
 
   public stopPolling(): void {
@@ -43,10 +41,8 @@ export class DisplaySwitchAccessory {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
-    if (this.deviceAPI) {
-      this.deviceAPI.cleanup();
-    }
-    this.platform.log.debug('Display polling stopped for %s', this.accessory.context.deviceConfig.name);
+    this.deviceAPI.cleanup();
+    this.platform.log.debug('Eco polling stopped for %s', this.accessory.context.deviceConfig.name);
   }
 
   private startPolling(): void {
@@ -54,7 +50,6 @@ export class DisplaySwitchAccessory {
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
-    // Ensure timer does not keep node process alive
     this.pollingInterval.unref();
   }
 
@@ -62,39 +57,32 @@ export class DisplaySwitchAccessory {
     try {
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
-      if (typeof status.opt_display !== 'undefined') {
-        const isOn = status.opt_display === 'on';
-        this.service.updateCharacteristic(this.platform.Characteristic.On, isOn);
+      if (this.service && status && typeof status.opt_eco !== 'undefined') {
+        this.service.updateCharacteristic(
+          this.platform.Characteristic.On,
+          status.opt_eco === 'on',
+        );
       }
     } catch (error) {
-      this.platform.log.error('Error updating display status:', error);
+      this.platform.log.error('Error updating eco status:', error);
     }
   }
 
   private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
-    (async () => {
-      try {
-        if (this.cachedStatus && typeof this.cachedStatus.opt_display !== 'undefined') {
-          callback(null, this.cachedStatus.opt_display === 'on');
-        } else {
-          throw new Error('Display status not available');
-        }
-      } catch (err) {
-        callback(err as Error);
-      }
-    })();
+    if (this.cachedStatus && typeof this.cachedStatus.opt_eco !== 'undefined') {
+      callback(null, this.cachedStatus.opt_eco === 'on');
+    } else {
+      callback(new Error('Eco status not available'));
+    }
   }
 
-  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
-    (async () => {
-      try {
-        const displayValue = value ? 'on' : 'off';
-        await this.deviceAPI.setDisplayState(displayValue);
-        this.updateCachedStatus();
-        callback(null);
-      } catch (err) {
-        callback(err as Error);
-      }
-    })();
+  private async handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): Promise<void> {
+    try {
+      await this.deviceAPI.setEcoState(value ? 'on' : 'off');
+      await this.updateCachedStatus();
+      callback(null);
+    } catch (err) {
+      callback(err as Error);
+    }
   }
 }

@@ -14,7 +14,14 @@ import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } fr
 import { TfiacPlatformAccessory } from './platformAccessory.js';
 import { DisplaySwitchAccessory } from './DisplaySwitchAccessory.js';
 import { SleepSwitchAccessory } from './SleepSwitchAccessory.js';
-import { FanSpeedAccessory } from './FanSpeedAccessory.js';  // Add fan speed accessory import
+import { FanSpeedAccessory } from './FanSpeedAccessory.js';
+import { DrySwitchAccessory } from './DrySwitchAccessory.js';
+import { FanOnlySwitchAccessory } from './FanOnlySwitchAccessory.js';
+import { StandaloneFanAccessory } from './StandaloneFanAccessory.js';
+import { HorizontalSwingSwitchAccessory } from './HorizontalSwingSwitchAccessory.js'; // Add Horizontal Swing accessory import
+import { TurboSwitchAccessory } from './TurboSwitchAccessory.js'; // Add Turbo accessory import
+import { EcoSwitchAccessory } from './EcoSwitchAccessory.js';
+import { BeepSwitchAccessory } from './BeepSwitchAccessory.js';
 
 // Define a structure for discovered devices
 interface DiscoveredDevice {
@@ -32,7 +39,14 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory> = new Map();
   private readonly displayAccessories: Map<string, DisplaySwitchAccessory> = new Map();
   private readonly sleepAccessories: Map<string, SleepSwitchAccessory> = new Map();
-  private readonly fanSpeedAccessories: Map<string, FanSpeedAccessory> = new Map();  // Track fan speed accessories
+  private readonly fanSpeedAccessories: Map<string, FanSpeedAccessory> = new Map();
+  private readonly dryAccessories: Map<string, DrySwitchAccessory> = new Map(); // Track dry switch accessories
+  private readonly fanOnlyAccessories: Map<string, FanOnlySwitchAccessory> = new Map(); // Track Fan Only Mode accessories
+  private readonly standaloneFanAccessories: Map<string, StandaloneFanAccessory> = new Map(); // Track Standalone Fan accessories
+  private readonly horizontalSwingAccessories: Map<string, HorizontalSwingSwitchAccessory> = new Map(); // Track Horizontal Swing accessories
+  private readonly turboAccessories: Map<string, TurboSwitchAccessory> = new Map(); // Track Turbo accessories
+  private readonly ecoAccessories: Map<string, EcoSwitchAccessory> = new Map();
+  private readonly beepAccessories: Map<string, BeepSwitchAccessory> = new Map();
 
   constructor(
     public readonly log: Logger,
@@ -149,6 +163,27 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             // Create Fan Speed accessory
             const fanSpeed = new FanSpeedAccessory(this, existingAccessory);
             this.fanSpeedAccessories.set(uuid, fanSpeed);
+            // Create Dry Mode accessory
+            const drySwitch = new DrySwitchAccessory(this, existingAccessory);
+            this.dryAccessories.set(uuid, drySwitch);
+            // Create Fan Only Mode accessory
+            const fanOnlySwitch = new FanOnlySwitchAccessory(this, existingAccessory);
+            this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
+            // Create Standalone Fan accessory
+            const standaloneFan = new StandaloneFanAccessory(this, existingAccessory);
+            this.standaloneFanAccessories.set(uuid, standaloneFan);
+            // Create Horizontal Swing accessory
+            const horizontalSwing = new HorizontalSwingSwitchAccessory(this, existingAccessory);
+            this.horizontalSwingAccessories.set(uuid, horizontalSwing);
+            // Create Turbo accessory
+            const turboSwitch = new TurboSwitchAccessory(this, existingAccessory);
+            this.turboAccessories.set(uuid, turboSwitch);
+            // Create Eco accessory
+            const ecoSwitch = new EcoSwitchAccessory(this, existingAccessory);
+            this.ecoAccessories.set(uuid, ecoSwitch);
+            // Create Beep accessory
+            const beepSwitch = new BeepSwitchAccessory(this, existingAccessory);
+            this.beepAccessories.set(uuid, beepSwitch);
           }
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -170,6 +205,27 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           // Create Fan Speed accessory
           const fanSpeed = new FanSpeedAccessory(this, accessory);
           this.fanSpeedAccessories.set(uuid, fanSpeed);
+          // Create Dry Mode accessory
+          const drySwitch = new DrySwitchAccessory(this, accessory);
+          this.dryAccessories.set(uuid, drySwitch);
+          // Create Fan Only Mode accessory
+          const fanOnlySwitch = new FanOnlySwitchAccessory(this, accessory);
+          this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
+          // Create Standalone Fan accessory
+          const standaloneFan = new StandaloneFanAccessory(this, accessory);
+          this.standaloneFanAccessories.set(uuid, standaloneFan);
+          // Create Horizontal Swing accessory
+          const horizontalSwing = new HorizontalSwingSwitchAccessory(this, accessory);
+          this.horizontalSwingAccessories.set(uuid, horizontalSwing);
+          // Create Turbo accessory
+          const turboSwitch = new TurboSwitchAccessory(this, accessory);
+          this.turboAccessories.set(uuid, turboSwitch);
+          // Create Eco accessory
+          const ecoSwitch = new EcoSwitchAccessory(this, accessory);
+          this.ecoAccessories.set(uuid, ecoSwitch);
+          // Create Beep accessory
+          const beepSwitch = new BeepSwitchAccessory(this, accessory);
+          this.beepAccessories.set(uuid, beepSwitch);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -204,6 +260,48 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         if (fanSpeed) {
           fanSpeed.stopPolling();
           this.fanSpeedAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Dry Switch
+        const drySwitch = this.dryAccessories.get(acc.UUID);
+        if (drySwitch) {
+          drySwitch.stopPolling();
+          this.dryAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Fan Only Switch
+        const fanOnlySwitch = this.fanOnlyAccessories.get(acc.UUID);
+        if (fanOnlySwitch) {
+          fanOnlySwitch.stopPolling();
+          this.fanOnlyAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Standalone Fan
+        const standaloneFan = this.standaloneFanAccessories.get(acc.UUID);
+        if (standaloneFan) {
+          standaloneFan.stopPolling();
+          this.standaloneFanAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Horizontal Swing
+        const horizontalSwing = this.horizontalSwingAccessories.get(acc.UUID);
+        if (horizontalSwing) {
+          horizontalSwing.stopPolling();
+          this.horizontalSwingAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Turbo Switch
+        const turboSwitch = this.turboAccessories.get(acc.UUID);
+        if (turboSwitch) {
+          turboSwitch.stopPolling();
+          this.turboAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Eco Switch
+        const ecoSwitch = this.ecoAccessories.get(acc.UUID);
+        if (ecoSwitch) {
+          ecoSwitch.stopPolling();
+          this.ecoAccessories.delete(acc.UUID);
+        }
+        // Stop polling for Beep Switch
+        const beepSwitch = this.beepAccessories.get(acc.UUID);
+        if (beepSwitch) {
+          beepSwitch.stopPolling();
+          this.beepAccessories.delete(acc.UUID);
         }
       });
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
@@ -241,11 +339,12 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           discoveryTimeout = null;
         }
         try {
-          socket.close();
+          socket.close(() => {
+            this.log.debug('Discovery socket closed.');
+          });
         } catch (e) {
           this.log.debug('Error closing discovery socket:', e);
         }
-        this.log.debug('Discovery socket closed.');
       };
 
       socket.on('error', (err) => {
@@ -268,49 +367,38 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
                 discoveredIPs.add(rinfo.address);
               }
             } else {
-              this.log.debug(`Ignoring non-status response from ${rinfo.address}`);
+              this.log.debug(`Ignoring non-status response from ${rinfo.address}`, xmlString);
             }
           } else {
-            this.log.debug(`Ignoring non-XML/non-status response from ${rinfo.address}`);
+            this.log.debug(`Ignoring non-XML/non-status response from ${rinfo.address}`, xmlString);
           }
         } catch (parseError) {
           this.log.debug(`Error parsing response from ${rinfo.address}:`, parseError);
         }
       });
 
-      socket.on('listening', () => {
-        try {
-          socket.setBroadcast(true);
-          this.log.debug(`Discovery socket listening on ${socket.address().address}:${socket.address().port}`);
-          socket.send(discoveryMessage, discoveryPort, broadcastAddress, (err) => {
-            if (err) {
-              this.log.error('Error sending discovery broadcast:', err);
-              // Don't necessarily reject, maybe discovery just won't work
-            } else {
-              this.log.debug('Discovery broadcast message sent.');
-            }
-          });
-
-          // Set timeout to stop discovery
-          discoveryTimeout = setTimeout(() => {
-            this.log.debug('Discovery timeout reached.');
-            cleanup();
-            resolve(discoveredIPs);
-          }, timeoutMs);
-
-        } catch (err) {
-          this.log.error('Error setting up broadcast socket:', err);
-          cleanup();
-          reject(err);
-        }
-      });
-
       try {
-        // Bind to a random available port on all interfaces
+        // Start discovery immediately after binding
         socket.bind();
-      } catch (bindErr) {
-        this.log.error('Failed to bind discovery socket:', bindErr);
-        reject(bindErr);
+        socket.setBroadcast(true);
+        this.log.debug(`Discovery socket listening on ${socket.address().address}:${socket.address().port}`);
+        socket.send(discoveryMessage, discoveryPort, broadcastAddress, (err) => {
+          if (err) {
+            this.log.error('Error sending discovery broadcast:', err);
+          } else {
+            this.log.debug('Discovery broadcast message sent.');
+          }
+        });
+        // Set timeout to stop discovery
+        discoveryTimeout = setTimeout(() => {
+          this.log.debug('Discovery timeout reached.');
+          cleanup();
+          resolve(discoveredIPs);
+        }, timeoutMs);
+      } catch (err) {
+        this.log.error('Error setting up discovery socket:', err);
+        cleanup();
+        reject(err);
       }
     });
   }

@@ -15,6 +15,7 @@ export class TfiacPlatformAccessory {
   private service: Service;
   private turboService: Service;
   private temperatureSensorService: Service;
+  private outdoorTemperatureSensorService: Service | null = null;
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null; // Explicitly typed
   private pollInterval: number;
@@ -61,14 +62,20 @@ export class TfiacPlatformAccessory {
     // --- Temperature Sensor Service ---
     this.temperatureSensorService =
       this.accessory.getService(this.platform.Service.TemperatureSensor) ||
-      this.accessory.addService(this.platform.Service.TemperatureSensor, deviceConfig.name + ' Indoor Temp');
+      this.accessory.addService(
+        this.platform.Service.TemperatureSensor,
+        (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temperature',
+      );
     this.temperatureSensorService.setCharacteristic(
       this.platform.Characteristic.Name,
-      (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temp',
+      (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temperature',
     );
     this.temperatureSensorService
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
       .on('get', this.handleTemperatureSensorCurrentTemperatureGet.bind(this));
+
+    // --- Outdoor Temperature Sensor Service (optional) ---
+    this.outdoorTemperatureSensorService = null;
 
     // Start background polling to update cached status
     this.startPolling();
@@ -152,13 +159,40 @@ export class TfiacPlatformAccessory {
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
       this.platform.log.debug('Cached status updated:', status);
-      // Update TemperatureSensor characteristic
+      // Update Indoor TemperatureSensor characteristic
       if (this.temperatureSensorService && status) {
         const temperatureCelsius = this.fahrenheitToCelsius(status.current_temp);
         this.temperatureSensorService.updateCharacteristic(
           this.platform.Characteristic.CurrentTemperature,
           temperatureCelsius,
         );
+      }
+      // --- Outdoor TemperatureSensor ---
+      if (typeof status.outdoor_temp === 'number' && status.outdoor_temp !== 0 && !isNaN(status.outdoor_temp)) {
+        if (!this.outdoorTemperatureSensorService) {
+          this.outdoorTemperatureSensorService =
+            this.accessory.getService('Outdoor Temperature') ||
+            this.accessory.addService(
+              this.platform.Service.TemperatureSensor,
+              'Outdoor Temperature',
+            );
+          this.outdoorTemperatureSensorService.setCharacteristic(
+            this.platform.Characteristic.Name,
+            (this.accessory.context.deviceConfig.name ?? 'Unnamed AC') + ' Outdoor Temperature',
+          );
+          this.outdoorTemperatureSensorService
+            .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
+            .on('get', this.handleOutdoorTemperatureSensorCurrentTemperatureGet.bind(this));
+        }
+        const outdoorCelsius = this.fahrenheitToCelsius(status.outdoor_temp);
+        this.outdoorTemperatureSensorService.updateCharacteristic(
+          this.platform.Characteristic.CurrentTemperature,
+          outdoorCelsius,
+        );
+      } else if (this.outdoorTemperatureSensorService) {
+        // Remove the service if outdoor_temp is not available or zero
+        this.accessory.removeService(this.outdoorTemperatureSensorService);
+        this.outdoorTemperatureSensorService = null;
       }
     } catch (error) {
       this.platform.log.error('Error updating cached status:', error);
@@ -361,6 +395,17 @@ export class TfiacPlatformAccessory {
       callback(null, temperatureCelsius);
     } else {
       callback(new Error('Cached status not available'));
+    }
+  }
+
+  private handleOutdoorTemperatureSensorCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
+    this.platform.log.debug('Triggered GET OutdoorTemperatureSensor.CurrentTemperature');
+    if (this.cachedStatus && typeof this.cachedStatus.outdoor_temp === 'number' && !isNaN(this.cachedStatus.outdoor_temp)) {
+      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.outdoor_temp);
+      this.platform.log.debug(`[TemperatureSensor] Outdoor temperature: ${temperatureCelsius}°C`);
+      callback(null, temperatureCelsius);
+    } else {
+      callback(new Error('Outdoor temperature not available'));
     }
   }
 
