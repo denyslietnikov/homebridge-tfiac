@@ -2,8 +2,6 @@ import {
   PlatformAccessory,
   Service,
   CharacteristicValue,
-  CharacteristicSetCallback,
-  CharacteristicGetCallback,
 } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
@@ -73,41 +71,30 @@ export class DisplaySwitchAccessory {
     }
   }
 
-  private handleGet(callback: CharacteristicGetCallback): void {
-    let called = false;
-    const safeCallback = (...args: Parameters<CharacteristicGetCallback>) => {
-      if (!called) {
-        called = true;
-        callback(...args);
+  private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
+    (async () => {
+      try {
+        if (this.cachedStatus && typeof this.cachedStatus.opt_display !== 'undefined') {
+          callback(null, this.cachedStatus.opt_display === 'on');
+        } else {
+          throw new Error('Display status not available');
+        }
+      } catch (err) {
+        callback(err as Error);
       }
-    };
-    try {
-      if (this.cachedStatus && typeof this.cachedStatus.opt_display !== 'undefined') {
-        safeCallback(null, this.cachedStatus.opt_display === 'on');
-      } else {
-        safeCallback(new Error('Display status not available'));
-      }
-    } catch (err) {
-      safeCallback(err as Error);
-    }
+    })();
   }
 
-  private async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
-    let called = false;
-    const safeCallback = (...args: Parameters<CharacteristicSetCallback>) => {
-      if (!called) {
-        called = true;
-        callback(...args);
+  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
+    (async () => {
+      try {
+        const displayValue = value ? 'on' : 'off';
+        await this.deviceAPI.setDisplayState(displayValue);
+        this.updateCachedStatus();
+        callback(null);
+      } catch (err) {
+        callback(err as Error);
       }
-    };
-    try {
-      const displayValue = value ? 'on' : 'off';
-      await this.deviceAPI.setDisplayState(displayValue);
-      this.updateCachedStatus();
-      safeCallback(null);
-    } catch (error) {
-      this.platform.log.error('Error setting display state:', error);
-      safeCallback(error as Error);
-    }
+    })();
   }
 }

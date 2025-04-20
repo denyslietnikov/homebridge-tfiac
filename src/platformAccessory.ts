@@ -61,10 +61,13 @@ export class TfiacPlatformAccessory {
     // --- Temperature Sensor Service ---
     this.temperatureSensorService =
       this.accessory.getService(this.platform.Service.TemperatureSensor) ||
-      this.accessory.addService(this.platform.Service.TemperatureSensor, deviceConfig.name + ' Indoor Temp');
+      this.accessory.addService(
+        this.platform.Service.TemperatureSensor,
+        (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temperature',
+      );
     this.temperatureSensorService.setCharacteristic(
       this.platform.Characteristic.Name,
-      (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temp',
+      (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temperature',
     );
     this.temperatureSensorService
       .getCharacteristic(this.platform.Characteristic.CurrentTemperature)

@@ -2,8 +2,6 @@ import {
   PlatformAccessory,
   Service,
   CharacteristicValue,
-  CharacteristicSetCallback,
-  CharacteristicGetCallback,
 } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
@@ -36,8 +34,8 @@ export class SleepSwitchAccessory {
 
     this.service
       .getCharacteristic(this.platform.Characteristic.On)
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
+      .on('get', (callback) => this.handleGet(callback))
+      .on('set', (value, callback) => this.handleSet(value, callback));
   }
 
   public stopPolling(): void {
@@ -73,42 +71,30 @@ export class SleepSwitchAccessory {
     }
   }
 
-  private handleGet(callback: CharacteristicGetCallback): void {
-    let called = false;
-    const safeCallback = (...args: Parameters<CharacteristicGetCallback>) => {
-      if (!called) {
-        called = true;
-        callback(...args);
+  private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
+    (async () => {
+      try {
+        if (this.cachedStatus && typeof this.cachedStatus.opt_sleepMode !== 'undefined') {
+          callback(null, this.cachedStatus.opt_sleepMode !== 'off' && this.cachedStatus.opt_sleepMode !== '');
+        } else {
+          throw new Error('Sleep status not available');
+        }
+      } catch (err) {
+        callback(err as Error);
       }
-    };
-    try {
-      if (this.cachedStatus && typeof this.cachedStatus.opt_sleepMode !== 'undefined') {
-        const isOn = this.cachedStatus.opt_sleepMode !== 'off' && this.cachedStatus.opt_sleepMode !== '';
-        safeCallback(null, isOn);
-      } else {
-        safeCallback(new Error('Sleep status not available'));
-      }
-    } catch (err) {
-      safeCallback(err as Error);
-    }
+    })();
   }
 
-  private async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
-    let called = false;
-    const safeCallback = (...args: Parameters<CharacteristicSetCallback>) => {
-      if (!called) {
-        called = true;
-        callback(...args);
+  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
+    (async () => {
+      try {
+        const sleepValue = value ? 'on' : 'off';
+        await this.deviceAPI.setSleepState(sleepValue as 'on' | 'off');
+        this.updateCachedStatus();
+        callback(null);
+      } catch (err) {
+        callback(err as Error);
       }
-    };
-    try {
-      const sleepValue = value ? 'on' : 'off';
-      await this.deviceAPI.setSleepState(sleepValue as 'on' | 'off');
-      this.updateCachedStatus();
-      safeCallback(null);
-    } catch (error) {
-      this.platform.log.error('Error setting sleep state:', error);
-      safeCallback(error as Error);
-    }
+    })();
   }
 }
