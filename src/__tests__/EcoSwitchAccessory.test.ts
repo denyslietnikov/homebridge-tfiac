@@ -65,7 +65,7 @@ describe('EcoSwitchAccessory', () => {
 
   it('should initialize correctly', () => {
     ecoAccessory = new EcoSwitchAccessory(mockPlatform, mockAccessory);
-    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch);
+    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, 'Eco', 'eco');
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'ECO Mode');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
     expect(mockService.on).toHaveBeenCalledTimes(2); // get and set handlers

@@ -26,7 +26,7 @@ export class EcoSwitchAccessory {
 
     this.service =
       this.accessory.getService('Eco') ||
-      this.accessory.addService(this.platform.Service.Switch);
+      this.accessory.addService(this.platform.Service.Switch, 'Eco', 'eco');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'ECO Mode');
     this.service
       .getCharacteristic(this.platform.Characteristic.On)

@@ -42,7 +42,7 @@ describe('FanSpeedAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Fan, 'Fan Speed');
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Fanv2, 'Fan Speed', 'fan_speed');
     expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Fan Speed');
     expect(service.getCharacteristic).toHaveBeenCalledWith('RotationSpeed');
     expect(service.on).toHaveBeenCalledTimes(2);
@@ -146,6 +146,6 @@ describe('FanSpeedAccessory', () => {
     accessory.getService = jest.fn().mockReturnValue(service);
     const inst = new FanSpeedAccessory(platform, accessory);
     expect(accessory.addService).not.toHaveBeenCalled();
-    expect(accessory.getService).toHaveBeenCalledWith(platform.Service.Fan);
+    expect(accessory.getService).toHaveBeenCalledWith('Fan Speed');
   });
 });

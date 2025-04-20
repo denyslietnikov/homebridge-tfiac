@@ -26,7 +26,7 @@ export class DrySwitchAccessory {
 
     this.service =
       this.accessory.getService('Dry Mode') ||
-      this.accessory.addService(this.platform.Service.Switch, 'Dry Mode');
+      this.accessory.addService(this.platform.Service.Switch, 'Dry Mode', 'dry_mode');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Dry Mode');
     this.service
       .getCharacteristic(this.platform.Characteristic.On)

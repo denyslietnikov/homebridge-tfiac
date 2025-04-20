@@ -47,7 +47,7 @@ describe('StandaloneFanAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     const inst = new StandaloneFanAccessory(platform, accessory);
-    expect(accessory.addService).toHaveBeenCalled();
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Fan, 'Standalone Fan', 'standalone_fan');
     expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Fan');
     expect(service.on).toHaveBeenCalledTimes(4); // Two characteristics with get and set
   });

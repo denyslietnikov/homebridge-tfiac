@@ -26,7 +26,7 @@ export class HorizontalSwingSwitchAccessory {
 
     this.service =
       this.accessory.getService('Horizontal Swing') ||
-      this.accessory.addService(this.platform.Service.Switch, 'Horizontal Swing');
+      this.accessory.addService(this.platform.Service.Switch, 'Horizontal Swing', 'horizontal_swing');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Horizontal Swing');
     this.service
       .getCharacteristic(this.platform.Characteristic.On)

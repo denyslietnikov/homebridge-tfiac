@@ -26,7 +26,7 @@ export class FanOnlySwitchAccessory {
 
     this.service =
       this.accessory.getService('Fan Only Mode') ||
-      this.accessory.addService(this.platform.Service.Switch, 'Fan Only Mode');
+      this.accessory.addService(this.platform.Service.Switch, 'Fan Only Mode', 'fan_only_mode');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Fan Only Mode');
     this.service
       .getCharacteristic(this.platform.Characteristic.On)

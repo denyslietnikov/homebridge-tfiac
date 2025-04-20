@@ -26,8 +26,8 @@ export class SleepSwitchAccessory {
 
     // Create or retrieve the Switch service
     this.service =
-      this.accessory.getService(this.platform.Service.Switch) ||
-      this.accessory.addService(this.platform.Service.Switch, 'Sleep');
+      this.accessory.getService('Sleep Mode') ||
+      this.accessory.addService(this.platform.Service.Switch, 'Sleep Mode', 'sleep_mode');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Sleep');
 
     this.startPolling();

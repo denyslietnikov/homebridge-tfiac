@@ -27,8 +27,8 @@ export class FanSpeedAccessory {
 
     // Create or retrieve the Fan service
     this.service =
-      this.accessory.getService(this.platform.Service.Fan) ||
-      this.accessory.addService(this.platform.Service.Fan, 'Fan Speed');
+      this.accessory.getService('Fan Speed') ||
+      this.accessory.addService(this.platform.Service.Fanv2, 'Fan Speed', 'fan_speed');
     this.service.setCharacteristic(
       this.platform.Characteristic.Name,
       'Fan Speed',

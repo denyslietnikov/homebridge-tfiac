@@ -24,10 +24,9 @@ export class DisplaySwitchAccessory {
     this.deviceAPI = new AirConditionerAPI(ip, port);
     this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
 
-    // Create or retrieve the Switch service
     this.service =
-      this.accessory.getService(this.platform.Service.Switch) ||
-      this.accessory.addService(this.platform.Service.Switch, 'Display');
+      this.accessory.getService('Display') ||
+      this.accessory.addService(this.platform.Service.Switch, 'Display', 'display');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Display');
 
     this.startPolling();

@@ -65,7 +65,7 @@ describe('BeepSwitchAccessory', () => {
 
   it('should initialize correctly', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
-    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch);
+    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, 'Beep', 'beep');
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Beep');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
     expect(mockService.on).toHaveBeenCalledTimes(2); // get and set handlers

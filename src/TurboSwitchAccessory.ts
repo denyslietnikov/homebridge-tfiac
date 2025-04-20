@@ -26,7 +26,7 @@ export class TurboSwitchAccessory {
 
     this.service =
       this.accessory.getService('Turbo') ||
-      this.accessory.addService(this.platform.Service.Switch);
+      this.accessory.addService(this.platform.Service.Switch, 'Turbo', 'turbo');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Turbo Mode');
     this.service
       .getCharacteristic(this.platform.Characteristic.On)

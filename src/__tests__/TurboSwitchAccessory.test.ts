@@ -65,7 +65,7 @@ describe('TurboSwitchAccessory', () => {
 
   it('should initialize correctly', () => {
     turboAccessory = new TurboSwitchAccessory(mockPlatform, mockAccessory);
-    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch);
+    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, 'Turbo', 'turbo');
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Turbo Mode');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
     expect(mockService.on).toHaveBeenCalledTimes(2); // get and set handlers

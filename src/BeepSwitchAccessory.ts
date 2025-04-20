@@ -25,8 +25,8 @@ export class BeepSwitchAccessory {
     this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
 
     this.service =
-      this.accessory.getService(this.platform.Service.Switch) ||
-      this.accessory.addService(this.platform.Service.Switch);
+      this.accessory.getService('Beep') ||
+      this.accessory.addService(this.platform.Service.Switch, 'Beep', 'beep');
     this.service.setCharacteristic(this.platform.Characteristic.Name, 'Beep');
     this.service
       .getCharacteristic(this.platform.Characteristic.On)

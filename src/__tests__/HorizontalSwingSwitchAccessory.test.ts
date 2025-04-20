@@ -42,7 +42,7 @@ describe('HorizontalSwingSwitchAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
-    expect(accessory.addService).toHaveBeenCalled();
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Horizontal Swing', 'horizontal_swing');
     expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Horizontal Swing');
     expect(service.on).toHaveBeenCalled();
   });
