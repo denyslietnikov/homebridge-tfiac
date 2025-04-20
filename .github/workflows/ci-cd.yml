@@ -170,7 +170,24 @@ jobs:
         run: npm install --no-save conventional-changelog-cli
 
       - name: 📝 Generate changelog
-        run: npx conventional-changelog -p angular -r 1 > CHANGELOG_RELEASE.md
+        id: gen_changelog
+        run: |
+          # Try conventional‑changelog (last release only)
+          npx conventional-changelog -p angular -r 1 > CHANGELOG_RELEASE.md || true
+
+          # If the file is empty (no commits matched the preset) — fall back to raw git log
+          if [ ! -s CHANGELOG_RELEASE.md ]; then
+            echo "Conventional changelog is empty – falling back to simple git log"
+            LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 || echo "")
+            if [ -n "$LAST_TAG" ]; then
+              git log --pretty=format:'* %s (%h)' ${LAST_TAG}..HEAD > CHANGELOG_RELEASE.md
+            else
+              # first release or cannot find previous tag
+              git log --pretty=format:'* %s (%h)' > CHANGELOG_RELEASE.md
+            fi
+          fi
+
+          cat CHANGELOG_RELEASE.md
 
       - name: 📦 Create GitHub Release
         uses: actions/create-release@v1
