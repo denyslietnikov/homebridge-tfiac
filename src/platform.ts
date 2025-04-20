@@ -148,6 +148,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
           existingAccessory.context.deviceConfig = deviceConfigForAccessory;
           existingAccessory.displayName = deviceConfigForAccessory.name;
+          // Set device category for proper HomeKit behavior
+          existingAccessory.category = this.api.hap.Categories.AIR_CONDITIONER;
           this.api.updatePlatformAccessories([existingAccessory]);
         }
         try {
@@ -192,6 +194,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         // Create new accessory
         this.log.info(`Adding new accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
         const accessory = new this.api.platformAccessory(deviceConfigForAccessory.name, uuid);
+        // Set device category for proper HomeKit behavior
+        accessory.category = this.api.hap.Categories.AIR_CONDITIONER;
         accessory.context.deviceConfig = deviceConfigForAccessory;
         try {
           const tfiacAccessory = new TfiacPlatformAccessory(this, accessory);
@@ -422,6 +426,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
    */
   configureAccessory(accessory: PlatformAccessory) {
     this.log.info(`Loading accessory from cache: ${accessory.displayName}`);
+    // Ensure the category is set for cached accessories
+    accessory.category = this.api.hap.Categories.AIR_CONDITIONER;
     this.accessories.push(accessory);
   }
 }
