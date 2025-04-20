@@ -71,6 +71,41 @@
               "required": false,
               "minimum": 1,
               "maximum": 3
+            },
+            "enableDry": {
+              "title": "Enable Dry Mode Switch",
+              "type": "boolean",
+              "required": false
+            },
+            "enableFanOnly": {
+              "title": "Enable Fan Only Mode Switch",
+              "type": "boolean",
+              "required": false
+            },
+            "enableTurbo": {
+              "title": "Enable Turbo Switch",
+              "type": "boolean",
+              "required": false
+            },
+            "enableEco": {
+              "title": "Enable Eco Switch",
+              "type": "boolean",
+              "required": false
+            },
+            "enableBeep": {
+              "title": "Enable Beep Switch",
+              "type": "boolean",
+              "required": false
+            },
+            "enableHorizontalSwing": {
+              "title": "Enable Horizontal Swing Switch",
+              "type": "boolean",
+              "required": false
+            },
+            "enableStandaloneFan": {
+              "title": "Enable Standalone Fan Service",
+              "type": "boolean",
+              "required": false
             }
           }
         }

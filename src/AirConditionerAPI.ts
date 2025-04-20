@@ -14,6 +14,9 @@ interface AirConditionerStatusInternal {
   opt_display?: string; // Display state (on/off), optional
   opt_super?: string; // Turbo state (on/off), optional
   opt_sleepMode?: string; // Sleep mode state (string, e.g. 'sleepMode1:0:0:0:...'), optional
+  outdoor_temp?: number; // Outdoor temperature, optional
+  opt_beep?: string; // Beep state (on/off), optional
+  opt_eco?: string; // Eco state (on/off), optional
 }
 
 export type AirConditionerStatus = AirConditionerStatusInternal;
@@ -29,6 +32,7 @@ interface StatusUpdateMsg {
   Opt_display?: string[]; // Optional display state
   Opt_super?: string[]; // Optional turbo state
   Opt_sleepMode?: string[]; // Optional sleep mode state
+  OutdoorTemp?: string[]; // Optional outdoor temperature
 }
 
 type AirConditionerMode = keyof AirConditionerStatusInternal;
@@ -114,7 +118,15 @@ export class AirConditionerAPI extends EventEmitter {
           isResolved = true;
           this.available = true;
           cleanupSocket();
-          resolve(data.toString());
+          const response = data.toString();
+          // Graceful fallback for UnknownCmd
+          if (response.includes('<UnknownCmd>')) {
+            // Log warning and resolve as no-op
+            console.warn('[TFIAC] Device responded with <UnknownCmd>. Command ignored.');
+            resolve(response);
+            return;
+          }
+          resolve(response);
         }
       });
 
@@ -181,6 +193,7 @@ export class AirConditionerAPI extends EventEmitter {
       opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] : undefined,
       opt_super: statusUpdateMsg.Opt_super ? statusUpdateMsg.Opt_super[0] : undefined,
       opt_sleepMode: statusUpdateMsg.Opt_sleepMode ? statusUpdateMsg.Opt_sleepMode[0] : undefined,
+      outdoor_temp: statusUpdateMsg.OutdoorTemp && statusUpdateMsg.OutdoorTemp[0] !== undefined ? parseFloat(statusUpdateMsg.OutdoorTemp[0]) : undefined,
     };
     return status;
   }
@@ -247,6 +260,24 @@ export class AirConditionerAPI extends EventEmitter {
       : 'off';
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><Opt_sleepMode>${sleepValue}</Opt_sleepMode></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
+   * Set the Eco (opt_eco) state (on/off) for the air conditioner.
+   */
+  async setEcoState(value: 'on' | 'off'): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+      <SetMessage><opt_eco>${value}</opt_eco></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
+   * Set the Beep (Opt_beep) state (on/off) for the air conditioner.
+   */
+  async setBeepState(value: 'on' | 'off'): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                      <SetMessage><Opt_beep>${value}</Opt_beep></SetMessage></msg>`;
     await this.sendCommand(command);
   }
 }

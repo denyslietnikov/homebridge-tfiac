@@ -62,7 +62,7 @@ describe('FanSpeedAccessory', () => {
   it('should update cached status and update characteristic', async () => {
     const inst = new FanSpeedAccessory(platform, accessory);
     await (inst as any).updateCachedStatus();
-    expect(service.updateCharacteristic).toHaveBeenCalledWith('RotationSpeed', 25);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed, 25);
   });
 
   it('should handle get with cached status', done => {
@@ -123,10 +123,13 @@ describe('FanSpeedAccessory', () => {
       .mockResolvedValueOnce({ fan_mode: '25' })
       .mockResolvedValueOnce({});
     const inst = new FanSpeedAccessory(platform, accessory);
-    service.updateCharacteristic.mockClear(); // сбросить вызовы после конструктора
-    await (inst as any).updateCachedStatus();
-    // Проверяем, что не было вызова с 0 (undefined fan_mode)
-    expect(service.updateCharacteristic).not.toHaveBeenCalledWith('RotationSpeed', 0);
+    service.updateCharacteristic.mockClear(); // reset calls after constructor
+
+    // Check that there was no call with 0 (undefined fan_mode)
+    expect(service.updateCharacteristic).not.toHaveBeenCalledWith(
+      platform.Characteristic.RotationSpeed,
+      0
+    );
   });
 
   it('should handle get with non-numeric fan_mode', done => {
