@@ -377,18 +377,32 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         }
       });
 
+      // Add listener for the 'listening' event
+      socket.on('listening', () => {
+        try {
+          // Now it's safe to set broadcast flag
+          socket.setBroadcast(true);
+          this.log.debug(`Discovery socket listening on ${socket.address().address}:${socket.address().port}`);
+          
+          // Send discovery broadcast
+          socket.send(discoveryMessage, discoveryPort, broadcastAddress, (err) => {
+            if (err) {
+              this.log.error('Error sending discovery broadcast:', err);
+            } else {
+              this.log.debug('Discovery broadcast message sent.');
+            }
+          });
+        } catch (err) {
+          this.log.error('Error setting up broadcast:', err);
+          cleanup();
+          reject(err);
+        }
+      });
+
       try {
-        // Start discovery immediately after binding
+        // Start discovery by binding the socket
         socket.bind();
-        socket.setBroadcast(true);
-        this.log.debug(`Discovery socket listening on ${socket.address().address}:${socket.address().port}`);
-        socket.send(discoveryMessage, discoveryPort, broadcastAddress, (err) => {
-          if (err) {
-            this.log.error('Error sending discovery broadcast:', err);
-          } else {
-            this.log.debug('Discovery broadcast message sent.');
-          }
-        });
+        
         // Set timeout to stop discovery
         discoveryTimeout = setTimeout(() => {
           this.log.debug('Discovery timeout reached.');
