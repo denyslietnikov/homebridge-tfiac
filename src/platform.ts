@@ -156,34 +156,35 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           if (!this.discoveredAccessories.has(uuid)) {
             const tfiacAccessory = new TfiacPlatformAccessory(this, existingAccessory);
             this.discoveredAccessories.set(uuid, tfiacAccessory);
-            // Create Display Switch accessory
-            const displaySwitch = new DisplaySwitchAccessory(this, existingAccessory);
-            this.displayAccessories.set(uuid, displaySwitch);
-            // Create Sleep Switch accessory
-            const sleepSwitch = new SleepSwitchAccessory(this, existingAccessory);
-            this.sleepAccessories.set(uuid, sleepSwitch);
-            // Create Fan Speed accessory
+            // Check enable flags before creating accessories
+            if (deviceConfigForAccessory.enableDisplay === false) {
+              this.log.info(`Skipping Display Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
+            } else {
+              const displaySwitch = new DisplaySwitchAccessory(this, existingAccessory);
+              this.displayAccessories.set(uuid, displaySwitch);
+            }
+
+            if (deviceConfigForAccessory.enableSleep === false) {
+              this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
+            } else {
+              const sleepSwitch = new SleepSwitchAccessory(this, existingAccessory);
+              this.sleepAccessories.set(uuid, sleepSwitch);
+            }
+
             const fanSpeed = new FanSpeedAccessory(this, existingAccessory);
             this.fanSpeedAccessories.set(uuid, fanSpeed);
-            // Create Dry Mode accessory
             const drySwitch = new DrySwitchAccessory(this, existingAccessory);
             this.dryAccessories.set(uuid, drySwitch);
-            // Create Fan Only Mode accessory
             const fanOnlySwitch = new FanOnlySwitchAccessory(this, existingAccessory);
             this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
-            // Create Standalone Fan accessory
             const standaloneFan = new StandaloneFanAccessory(this, existingAccessory);
             this.standaloneFanAccessories.set(uuid, standaloneFan);
-            // Create Horizontal Swing accessory
             const horizontalSwing = new HorizontalSwingSwitchAccessory(this, existingAccessory);
             this.horizontalSwingAccessories.set(uuid, horizontalSwing);
-            // Create Turbo accessory
             const turboSwitch = new TurboSwitchAccessory(this, existingAccessory);
             this.turboAccessories.set(uuid, turboSwitch);
-            // Create Eco accessory
             const ecoSwitch = new EcoSwitchAccessory(this, existingAccessory);
             this.ecoAccessories.set(uuid, ecoSwitch);
-            // Create Beep accessory
             const beepSwitch = new BeepSwitchAccessory(this, existingAccessory);
             this.beepAccessories.set(uuid, beepSwitch);
           }
@@ -200,34 +201,35 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         try {
           const tfiacAccessory = new TfiacPlatformAccessory(this, accessory);
           this.discoveredAccessories.set(uuid, tfiacAccessory);
-          // Create Display Switch accessory
-          const displaySwitch = new DisplaySwitchAccessory(this, accessory);
-          this.displayAccessories.set(uuid, displaySwitch);
-          // Create Sleep Switch accessory
-          const sleepSwitch = new SleepSwitchAccessory(this, accessory);
-          this.sleepAccessories.set(uuid, sleepSwitch);
-          // Create Fan Speed accessory
+          // Check enable flags before creating accessories
+          if (deviceConfigForAccessory.enableDisplay === false) {
+            this.log.info(`Skipping Display Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
+          } else {
+            const displaySwitch = new DisplaySwitchAccessory(this, accessory);
+            this.displayAccessories.set(uuid, displaySwitch);
+          }
+
+          if (deviceConfigForAccessory.enableSleep === false) {
+            this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
+          } else {
+            const sleepSwitch = new SleepSwitchAccessory(this, accessory);
+            this.sleepAccessories.set(uuid, sleepSwitch);
+          }
+
           const fanSpeed = new FanSpeedAccessory(this, accessory);
           this.fanSpeedAccessories.set(uuid, fanSpeed);
-          // Create Dry Mode accessory
           const drySwitch = new DrySwitchAccessory(this, accessory);
           this.dryAccessories.set(uuid, drySwitch);
-          // Create Fan Only Mode accessory
           const fanOnlySwitch = new FanOnlySwitchAccessory(this, accessory);
           this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
-          // Create Standalone Fan accessory
           const standaloneFan = new StandaloneFanAccessory(this, accessory);
           this.standaloneFanAccessories.set(uuid, standaloneFan);
-          // Create Horizontal Swing accessory
           const horizontalSwing = new HorizontalSwingSwitchAccessory(this, accessory);
           this.horizontalSwingAccessories.set(uuid, horizontalSwing);
-          // Create Turbo accessory
           const turboSwitch = new TurboSwitchAccessory(this, accessory);
           this.turboAccessories.set(uuid, turboSwitch);
-          // Create Eco accessory
           const ecoSwitch = new EcoSwitchAccessory(this, accessory);
           this.ecoAccessories.set(uuid, ecoSwitch);
-          // Create Beep accessory
           const beepSwitch = new BeepSwitchAccessory(this, accessory);
           this.beepAccessories.set(uuid, beepSwitch);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);

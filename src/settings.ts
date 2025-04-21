@@ -20,7 +20,9 @@ export interface TfiacDeviceConfig {
     ip: string;            // <== mandatory
     port?: number;         // optional
     updateInterval?: number;
-  }
+    enableSleep?: boolean; // optional
+    enableDisplay?: boolean; // optional
+}
 
 /**
  * Describes the overall platform config, which may include multiple devices.
@@ -28,4 +30,4 @@ export interface TfiacDeviceConfig {
 export interface TfiacPlatformConfig extends PlatformConfig {
     devices?: TfiacDeviceConfig[];
     enableDiscovery?: boolean; // Add this line
-  }
+}
