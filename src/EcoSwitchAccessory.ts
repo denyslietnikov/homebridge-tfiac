@@ -47,6 +47,12 @@ export class EcoSwitchAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial eco state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -72,7 +78,8 @@ export class EcoSwitchAccessory {
     if (this.cachedStatus && typeof this.cachedStatus.opt_eco !== 'undefined') {
       callback(null, this.cachedStatus.opt_eco === 'on');
     } else {
-      callback(new Error('Eco status not available'));
+      // Return a default value (off) instead of an error
+      callback(null, false);
     }
   }
 

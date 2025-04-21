@@ -58,6 +58,12 @@ export class FanSpeedAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial fan speed state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -87,10 +93,12 @@ export class FanSpeedAccessory {
         if (this.cachedStatus && typeof this.cachedStatus.fan_mode !== 'undefined') {
           callback(null, parseInt(this.cachedStatus.fan_mode as string, 10) || 0);
         } else {
-          throw new Error('Fan speed status not available');
+          // Return a default value (medium speed - 50) instead of an error
+          callback(null, 50);
         }
       } catch (err) {
-        callback(err as Error);
+        // Return a default value instead of an error
+        callback(null, 50);
       }
     })();
   }

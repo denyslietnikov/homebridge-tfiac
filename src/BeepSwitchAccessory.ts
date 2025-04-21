@@ -47,6 +47,12 @@ export class BeepSwitchAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial beep state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -72,7 +78,8 @@ export class BeepSwitchAccessory {
     if (this.cachedStatus && typeof this.cachedStatus.opt_beep !== 'undefined') {
       callback(null, this.cachedStatus.opt_beep === 'on');
     } else {
-      callback(new Error('Beep status not available'));
+      // Return a default value (off) instead of an error
+      callback(null, false);
     }
   }
 

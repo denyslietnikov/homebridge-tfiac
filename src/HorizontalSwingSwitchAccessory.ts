@@ -47,6 +47,12 @@ export class HorizontalSwingSwitchAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial horizontal swing state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -72,7 +78,8 @@ export class HorizontalSwingSwitchAccessory {
     if (this.cachedStatus) {
       callback(null, this.cachedStatus.swing_mode === 'Horizontal' || this.cachedStatus.swing_mode === 'Both');
     } else {
-      callback(new Error('Horizontal swing status not available'));
+      // Return a default value (off) instead of an error
+      callback(null, false);
     }
   }
 

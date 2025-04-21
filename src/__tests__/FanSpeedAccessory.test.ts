@@ -79,7 +79,9 @@ describe('FanSpeedAccessory', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
     (inst as any).cachedStatus = null;
     (inst as any).handleGet((err: any, val: any) => {
-      expect(err).toBeInstanceOf(Error);
+      // Now expecting default value (50) instead of error
+      expect(err).toBeNull();
+      expect(val).toBe(50);
       done();
     });
   });

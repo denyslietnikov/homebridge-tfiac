@@ -82,9 +82,11 @@ describe('TurboSwitchAccessory', () => {
   it('should start polling on initialization', () => {
     jest.useFakeTimers();
     turboAccessory = new TurboSwitchAccessory(mockPlatform, mockAccessory);
-    expect(mockAPI.updateState).toHaveBeenCalledTimes(1);
-    jest.advanceTimersByTime(10000);
+    // updateState is now called twice upon initialization (original + warm-up call)
     expect(mockAPI.updateState).toHaveBeenCalledTimes(2);
+    jest.advanceTimersByTime(10000);
+    // After time passes, updateState is called again
+    expect(mockAPI.updateState).toHaveBeenCalledTimes(3);
     turboAccessory.stopPolling();
   });
 
@@ -98,7 +100,7 @@ describe('TurboSwitchAccessory', () => {
       'Test Device'
     );
     jest.advanceTimersByTime(10000);
-    expect(mockAPI.updateState).toHaveBeenCalledTimes(1);
+    expect(mockAPI.updateState).toHaveBeenCalledTimes(2);
   });
 
   it('should update cached status and characteristics', async () => {
@@ -143,12 +145,13 @@ describe('TurboSwitchAccessory', () => {
     expect(callback).toHaveBeenCalledWith(null, true);
   });
 
-  it('should handle get characteristic callback with error when no status', () => {
+  it('should handle get characteristic callback with no cached status', () => {
     turboAccessory = new TurboSwitchAccessory(mockPlatform, mockAccessory);
     (turboAccessory as any).cachedStatus = null;
     const callback = jest.fn();
     (turboAccessory as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(expect.any(Error));
+    // Now we expect a default value (false) instead of an error
+    expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('should handle set characteristic callback', async () => {

@@ -51,6 +51,12 @@ export class SleepSwitchAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial sleep state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -77,10 +83,12 @@ export class SleepSwitchAccessory {
         if (this.cachedStatus && typeof this.cachedStatus.opt_sleepMode !== 'undefined') {
           callback(null, this.cachedStatus.opt_sleepMode !== 'off' && this.cachedStatus.opt_sleepMode !== '');
         } else {
-          throw new Error('Sleep status not available');
+          // Return a default value (off) instead of an error
+          callback(null, false);
         }
       } catch (err) {
-        callback(err as Error);
+        // Return a default value instead of an error
+        callback(null, false);
       }
     })();
   }

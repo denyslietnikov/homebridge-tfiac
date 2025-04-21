@@ -82,12 +82,12 @@ describe('BeepSwitchAccessory', () => {
   it('should start polling on initialization', () => {
     jest.useFakeTimers();
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
-    // updateState is called immediately upon initialization
-    expect(mockAPI.updateState).toHaveBeenCalledTimes(1);
+    // updateState is called twice upon initialization (original + warm-up call)
+    expect(mockAPI.updateState).toHaveBeenCalledTimes(2);
     // Fast-forward time
     jest.advanceTimersByTime(10000);
     // After time passes, updateState is called again
-    expect(mockAPI.updateState).toHaveBeenCalledTimes(2);
+    expect(mockAPI.updateState).toHaveBeenCalledTimes(3);
     beepAccessory.stopPolling();
   });
 
@@ -103,7 +103,7 @@ describe('BeepSwitchAccessory', () => {
     // Fast-forward time
     jest.advanceTimersByTime(10000);
     // Should not call updateState again after stopping
-    expect(mockAPI.updateState).toHaveBeenCalledTimes(1);
+    expect(mockAPI.updateState).toHaveBeenCalledTimes(2);
   });
 
   it('should update cached status and characteristics', async () => {
@@ -152,14 +152,15 @@ describe('BeepSwitchAccessory', () => {
     expect(callback).toHaveBeenCalledWith(null, true);
   });
 
-  it('should handle get characteristic callback with error when no status', () => {
+  it('should handle get characteristic callback with no cached status', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
     // Set up empty cached status
     (beepAccessory as any).cachedStatus = null;
     const callback = jest.fn();
     // Call the private method using any
     (beepAccessory as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(expect.any(Error));
+    // Now we expect a default value (false) instead of an error
+    expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('should handle set characteristic callback', async () => {

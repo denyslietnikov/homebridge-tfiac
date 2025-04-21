@@ -47,6 +47,12 @@ export class DrySwitchAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial dry mode state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -72,7 +78,8 @@ export class DrySwitchAccessory {
     if (this.cachedStatus) {
       callback(null, this.cachedStatus.operation_mode === 'dry');
     } else {
-      callback(new Error('Dry mode status not available'));
+      // Return a default value (off) instead of an error
+      callback(null, false);
     }
   }
 
