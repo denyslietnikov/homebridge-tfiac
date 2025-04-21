@@ -150,4 +150,53 @@ describe('FanSpeedAccessory', () => {
     expect(accessory.addService).not.toHaveBeenCalled();
     expect(accessory.getService).toHaveBeenCalledWith('Fan Speed');
   });
+
+  it('should use existing service if available', () => {
+    accessory.getService = jest.fn().mockReturnValue(service);
+    const inst = new FanSpeedAccessory(platform, accessory);
+    expect(accessory.addService).not.toHaveBeenCalled();
+    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Fan Speed');
+  });
+
+  it('should handle startPolling and stopPolling', () => {
+    jest.useFakeTimers();
+    const inst = new FanSpeedAccessory(platform, accessory);
+    
+    // Test that polling is started
+    expect(deviceAPI.updateState).toHaveBeenCalled();
+    const callCountAtStart = deviceAPI.updateState.mock.calls.length;
+    
+    // Advance timers to trigger polling
+    jest.advanceTimersByTime(30000);
+    expect(deviceAPI.updateState.mock.calls.length).toBeGreaterThan(callCountAtStart);
+    
+    // Test stopping the polling
+    inst.stopPolling();
+    const callsAfterStop = deviceAPI.updateState.mock.calls.length;
+    jest.advanceTimersByTime(30000);
+    expect(deviceAPI.updateState.mock.calls.length).toBe(callsAfterStop);
+    
+    jest.useRealTimers();
+  });
+
+  it('should handle error during update cached status', async () => {
+    deviceAPI.updateState.mockRejectedValueOnce(new Error('Network error'));
+    const inst = new FanSpeedAccessory(platform, accessory);
+    await (inst as any).updateCachedStatus();
+    expect(log.error).toHaveBeenCalled();
+  });
+
+  it('should handle exception in handleGet callback', () => {
+    jest.useFakeTimers();
+    const inst = new FanSpeedAccessory(platform, accessory);
+    // Force an error by defining a getter that throws
+    Object.defineProperty(inst as any, 'cachedStatus', { get: () => { throw new Error('Test error'); } });
+
+    // Now call the GET handler
+    (inst as any).handleGet((err: any, val: any) => {
+      // Should return default value instead of error
+      expect(err).toBeNull();
+      expect(val).toBe(50);
+    });
+  });
 });

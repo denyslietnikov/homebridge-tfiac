@@ -882,4 +882,369 @@ describe('TfiacPlatformAccessory', () => {
 
   }); // End Characteristic Handlers
 
+  describe('OutdoorTemperatureSensor', () => {
+    it('should return default value when no cached status', done => {
+      (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+      const handler = (accessory as any)
+        .handleOutdoorTemperatureSensorCurrentTemperatureGet
+        .bind(accessory) as MockCharacteristicGetHandler;
+      const callback: CharacteristicGetCallback = (error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBe(20); // Default value is 20°C
+        done();
+      };
+      handler(callback);
+    });
+
+    it('should return outdoor temperature when available', done => {
+      const status = { ...initialStatusFahrenheit, outdoor_temp: 77 }; // 77°F = 25°C
+      (accessory as unknown as TestAccessoryContext).cachedStatus = status;
+      const handler = (accessory as any)
+        .handleOutdoorTemperatureSensorCurrentTemperatureGet
+        .bind(accessory) as MockCharacteristicGetHandler;
+      const callback: CharacteristicGetCallback = (error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBeCloseTo(25); // Should convert F to C
+        done();
+      };
+      handler(callback);
+    });
+  });
+
+  describe('Temperature Sensor Handlers', () => {
+    it('should handle outdoor temperature get with cached status', (done) => {
+      const outdoorTempF = 68;
+      (accessory as unknown as TestAccessoryContext).cachedStatus = { 
+        ...initialStatusFahrenheit, 
+        outdoor_temp: outdoorTempF 
+      };
+      
+      const handler = (accessory as any)
+        .handleOutdoorTemperatureSensorCurrentTemperatureGet
+        .bind(accessory);
+      
+      const callback: CharacteristicGetCallback = (error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBeCloseTo(20); // 68F = 20C
+        done();
+      };
+      
+      handler(callback);
+    });
+
+    it('should handle outdoor temperature get with no cached status', (done) => {
+      (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+      
+      const handler = (accessory as any)
+        .handleOutdoorTemperatureSensorCurrentTemperatureGet
+        .bind(accessory);
+      
+      const callback: CharacteristicGetCallback = (error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBe(20); // Default value
+        done();
+      };
+      
+      handler(callback);
+    });
+
+    it('should handle outdoor temperature get with undefined outdoor_temp', (done) => {
+      (accessory as unknown as TestAccessoryContext).cachedStatus = { 
+        ...initialStatusFahrenheit,
+        outdoor_temp: undefined
+      };
+      
+      const handler = (accessory as any)
+        .handleOutdoorTemperatureSensorCurrentTemperatureGet
+        .bind(accessory);
+      
+      const callback: CharacteristicGetCallback = (error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBe(20); // Default value
+        done();
+      };
+      
+      handler(callback);
+    });
+
+    // New tests for Temperature Sensor Handlers that properly bind to the accessory
+    describe('Temperature Sensor Handlers', () => {
+      it('should handle indoor temperature get with cached status', (done) => {
+        const indoorTempF = 68;
+        (accessory as unknown as TestAccessoryContext).cachedStatus = { 
+          ...initialStatusFahrenheit, 
+          current_temp: indoorTempF 
+        };
+        
+        const handler = (accessory as any)
+          .handleTemperatureSensorCurrentTemperatureGet
+          .bind(accessory);
+        
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBeCloseTo(20); // 68F = 20C
+          done();
+        };
+        
+        handler(callback);
+      });
+
+      it('should handle indoor temperature get with no cached status', (done) => {
+        (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+        
+        const handler = (accessory as any)
+          .handleTemperatureSensorCurrentTemperatureGet
+          .bind(accessory);
+        
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(20); // Default value
+          done();
+        };
+        
+        handler(callback);
+      });
+    });
+  });
+
+  describe('Utility Methods', () => {
+    let helperMethods: any;
+
+    beforeEach(() => {
+      helperMethods = accessory as any;
+    });
+
+    describe('Temperature Conversion', () => {
+      it('should convert from Fahrenheit to Celsius correctly', () => {
+        expect(helperMethods.fahrenheitToCelsius(32)).toBeCloseTo(0);
+        expect(helperMethods.fahrenheitToCelsius(77)).toBeCloseTo(25);
+        expect(helperMethods.fahrenheitToCelsius(212)).toBeCloseTo(100);
+      });
+
+      it('should convert from Celsius to Fahrenheit correctly', () => {
+        expect(helperMethods.celsiusToFahrenheit(0)).toBeCloseTo(32);
+        expect(helperMethods.celsiusToFahrenheit(25)).toBeCloseTo(77);
+        expect(helperMethods.celsiusToFahrenheit(100)).toBeCloseTo(212);
+      });
+    });
+  });
+
+  describe('Utility Functions', () => {
+    describe('celsiusToFahrenheit', () => {
+      it('should convert celsius to fahrenheit', () => {
+        expect((accessory as any).celsiusToFahrenheit(0)).toBe(32);
+        expect((accessory as any).celsiusToFahrenheit(10)).toBe(50);
+        expect((accessory as any).celsiusToFahrenheit(20)).toBe(68);
+        expect((accessory as any).celsiusToFahrenheit(37.5)).toBe(99.5);
+      });
+    });
+
+    describe('fahrenheitToCelsius', () => {
+      it('should convert fahrenheit to celsius', () => {
+        expect((accessory as any).fahrenheitToCelsius(32)).toBe(0);
+        expect((accessory as any).fahrenheitToCelsius(50)).toBe(10);
+        expect((accessory as any).fahrenheitToCelsius(68)).toBe(20);
+        expect((accessory as any).fahrenheitToCelsius(99.5)).toBe(37.5);
+      });
+    });
+
+    describe('convertTemperatureToDisplay', () => {
+      it('should convert from celsius to fahrenheit when displayUnits is FAHRENHEIT', () => {
+        const result = (accessory as any).convertTemperatureToDisplay(
+          25, 
+          (accessory as any).platform.api.hap.Characteristic.TemperatureDisplayUnits.FAHRENHEIT
+        );
+        expect(result).toBe(77);
+      });
+
+      it('should return the same value when displayUnits is CELSIUS', () => {
+        const result = (accessory as any).convertTemperatureToDisplay(
+          25, 
+          (accessory as any).platform.api.hap.Characteristic.TemperatureDisplayUnits.CELSIUS
+        );
+        expect(result).toBe(25);
+      });
+    });
+
+    describe('convertTemperatureFromDisplay', () => {
+      it('should convert from fahrenheit to celsius when displayUnits is FAHRENHEIT', () => {
+        const result = (accessory as any).convertTemperatureFromDisplay(
+          77, 
+          (accessory as any).platform.api.hap.Characteristic.TemperatureDisplayUnits.FAHRENHEIT
+        );
+        expect(result).toBe(25);
+      });
+
+      it('should return the same value when displayUnits is CELSIUS', () => {
+        const result = (accessory as any).convertTemperatureFromDisplay(
+          25, 
+          (accessory as any).platform.api.hap.Characteristic.TemperatureDisplayUnits.CELSIUS
+        );
+        expect(result).toBe(25);
+      });
+    });
+    
+    describe('mapHomebridgeModeToAPIMode', () => {
+      it('should map AUTO correctly', () => {
+        const result = (accessory as any).mapHomebridgeModeToAPIMode(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.AUTO
+        );
+        expect(result).toBe('auto');
+      });
+
+      it('should map HEAT correctly', () => {
+        const result = (accessory as any).mapHomebridgeModeToAPIMode(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.HEAT
+        );
+        expect(result).toBe('heat');
+      });
+
+      it('should map COOL correctly', () => {
+        const result = (accessory as any).mapHomebridgeModeToAPIMode(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.COOL
+        );
+        expect(result).toBe('cool');
+      });
+
+      it('should map dry to cool', () => {
+        const result = (accessory as any).mapAPIModeToHomebridgeMode('dry');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.COOL
+        );
+      });
+
+      it('should map fan to auto', () => {
+        const result = (accessory as any).mapAPIModeToHomebridgeMode('fan');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.AUTO
+        );
+      });
+
+      it('should return AUTO for unknown values', () => {
+        const result = (accessory as any).mapAPIModeToHomebridgeMode('unknown');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.AUTO
+        );
+      });
+    });
+
+    describe('mapAPIModeToHomebridgeMode', () => {
+      it('should map auto correctly', () => {
+        const result = (accessory as any).mapAPIModeToHomebridgeMode('auto');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.AUTO
+        );
+      });
+
+      it('should map heat correctly', () => {
+        const result = (accessory as any).mapAPIModeToHomebridgeMode('heat');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.HEAT
+        );
+      });
+
+      it('should map cool correctly', () => {
+        const result = (accessory as any).mapAPIModeToHomebridgeMode('cool');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.TargetHeaterCoolerState.COOL
+        );
+      });
+    });
+    
+    describe('mapAPIActiveToHomebridgeActive', () => {
+      it('should map on to ACTIVE', () => {
+        const result = (accessory as any).mapAPIActiveToHomebridgeActive('on');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.Active.ACTIVE
+        );
+      });
+
+      it('should map off to INACTIVE', () => {
+        const result = (accessory as any).mapAPIActiveToHomebridgeActive('off');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.Active.INACTIVE
+        );
+      });
+
+      it('should return INACTIVE for unknown values', () => {
+        const result = (accessory as any).mapAPIActiveToHomebridgeActive('unknown');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.Active.INACTIVE
+        );
+      });
+    });
+
+    describe('mapAPICurrentModeToHomebridgeCurrentMode', () => {
+      it('should map heat to HEATING', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('heat');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.HEATING
+        );
+      });
+
+      it('should map cool to COOLING', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('cool');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.COOLING
+        );
+      });
+
+      it('should map auto to IDLE when powerState is off', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('auto', 'off');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.IDLE
+        );
+      });
+
+      it('should map auto to IDLE when powerState is unknown', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('auto', 'unknown');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.IDLE
+        );
+      });
+
+      it('should map auto to HEATING when targetTemp > currentTemp and powerState is on', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('auto', 'on', 25, 20);
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.HEATING
+        );
+      });
+
+      it('should map auto to COOLING when targetTemp < currentTemp and powerState is on', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('auto', 'on', 20, 25);
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.COOLING
+        );
+      });
+
+      it('should map auto to IDLE when targetTemp = currentTemp and powerState is on', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('auto', 'on', 25, 25);
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.IDLE
+        );
+      });
+
+      it('should handle dry mode as COOLING', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('dry', 'on');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.COOLING
+        );
+      });
+
+      it('should handle fan mode as IDLE', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('fan', 'on');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.IDLE
+        );
+      });
+
+      it('should return IDLE for unknown values', () => {
+        const result = (accessory as any).mapAPICurrentModeToHomebridgeCurrentMode('unknown');
+        expect(result).toBe(
+          (accessory as any).platform.api.hap.Characteristic.CurrentHeaterCoolerState.IDLE
+        );
+      });
+    });
+  });
+
 }); // End TfiacPlatformAccessory Suite

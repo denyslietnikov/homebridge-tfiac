@@ -10,7 +10,7 @@ import { TfiacDeviceConfig } from './settings.js';
 export class EcoSwitchAccessory {
   private service: Service;
   private deviceAPI: AirConditionerAPI;
-  private cachedStatus: AirConditionerStatus | null = null;
+  protected cachedStatus: AirConditionerStatus | null = null;
   private pollInterval: number;
   private pollingInterval: NodeJS.Timeout | null = null;
 
@@ -46,8 +46,9 @@ export class EcoSwitchAccessory {
   }
 
   private startPolling(): void {
+    // Initial status fetch
     this.updateCachedStatus();
-    
+
     // Generate a random delay between 0 and 15 seconds to distribute network requests
     const warmupDelay = Math.floor(Math.random() * 15000);
     
@@ -61,14 +62,24 @@ export class EcoSwitchAccessory {
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
-    this.pollingInterval.unref();
+    // Only call unref if available (NodeJS environment); JSDOM returns number
+    if (this.pollingInterval && typeof (this.pollingInterval as NodeJS.Timeout).unref === 'function') {
+      (this.pollingInterval as NodeJS.Timeout).unref();
+    }
   }
 
-  private async updateCachedStatus(): Promise<void> {
+  protected async updateCachedStatus(): Promise<void> {
     try {
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
-      if (this.service && status && typeof status.opt_eco !== 'undefined') {
+      // Only update characteristics if opt_eco is present and not undefined
+      if (
+        this.pollingInterval &&
+        this.service &&
+        status &&
+        Object.prototype.hasOwnProperty.call(status, 'opt_eco') &&
+        typeof status.opt_eco !== 'undefined'
+      ) {
         this.service.updateCharacteristic(
           this.platform.Characteristic.On,
           status.opt_eco === 'on',

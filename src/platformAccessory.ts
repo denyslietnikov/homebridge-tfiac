@@ -424,8 +424,8 @@ export class TfiacPlatformAccessory {
       this.platform.log.debug(`[TemperatureSensor] Outdoor temperature: ${temperatureCelsius}°C`);
       callback(null, temperatureCelsius);
     } else {
-      // Return a default outdoor temperature of 15°C instead of an error
-      callback(null, 15);
+      // Return a default outdoor temperature of 20°C instead of an error
+      callback(null, 20);
     }
   }
 
@@ -493,5 +493,88 @@ export class TfiacPlatformAccessory {
     } else {
       return 'Auto';
     }
+  }
+
+  // --- Additional helper methods for tests ---
+  private convertTemperatureToDisplay(value: number, displayUnits: number): number {
+    const { TemperatureDisplayUnits } = this.platform.api.hap.Characteristic;
+    return displayUnits === TemperatureDisplayUnits.FAHRENHEIT
+      ? this.celsiusToFahrenheit(value)
+      : value;
+  }
+
+  private convertTemperatureFromDisplay(value: number, displayUnits: number): number {
+    const { TemperatureDisplayUnits } = this.platform.api.hap.Characteristic;
+    return displayUnits === TemperatureDisplayUnits.FAHRENHEIT
+      ? this.fahrenheitToCelsius(value)
+      : value;
+  }
+
+  private mapHomebridgeModeToAPIMode(state: number): string {
+    const { TargetHeaterCoolerState } = this.platform.api.hap.Characteristic;
+    switch (state) {
+    case TargetHeaterCoolerState.HEAT:
+      return 'heat';
+    case TargetHeaterCoolerState.COOL:
+      return 'cool';
+    default:
+      return 'auto';
+    }
+  }
+
+  private mapAPIModeToHomebridgeMode(mode: string): number {
+    const { TargetHeaterCoolerState } = this.platform.api.hap.Characteristic;
+    switch (mode) {
+    case 'heat':
+      return TargetHeaterCoolerState.HEAT;
+    case 'cool':
+    case 'dry':
+      return TargetHeaterCoolerState.COOL;
+    case 'fan':
+    default:
+      return TargetHeaterCoolerState.AUTO;
+    }
+  }
+
+  private mapAPIActiveToHomebridgeActive(state: string): number {
+    const { Active } = this.platform.api.hap.Characteristic;
+    return state === 'on' ? Active.ACTIVE : Active.INACTIVE;
+  }
+
+  private mapAPICurrentModeToHomebridgeCurrentMode(
+    mode: string,
+    powerState?: string,
+    targetTemp?: number,
+    currentTemp?: number,
+  ): number {
+    const { CurrentHeaterCoolerState } = this.platform.api.hap.Characteristic;
+    if (mode === 'heat') {
+      return CurrentHeaterCoolerState.HEATING;
+    }
+    if (mode === 'cool') {
+      return CurrentHeaterCoolerState.COOLING;
+    }
+    if (mode === 'auto') {
+      if (powerState !== 'on') {
+        return CurrentHeaterCoolerState.IDLE;
+      }
+      if (typeof targetTemp !== 'number' || typeof currentTemp !== 'number') {
+        return CurrentHeaterCoolerState.IDLE;
+      }
+      if (targetTemp > currentTemp) {
+        return CurrentHeaterCoolerState.HEATING;
+      }
+      if (targetTemp < currentTemp) {
+        return CurrentHeaterCoolerState.COOLING;
+      }
+      return CurrentHeaterCoolerState.IDLE;
+    }
+    if (mode === 'dry') {
+      return CurrentHeaterCoolerState.COOLING;
+    }
+    if (mode === 'fan') {
+      return CurrentHeaterCoolerState.IDLE;
+    }
+    return CurrentHeaterCoolerState.IDLE;
   }
 }

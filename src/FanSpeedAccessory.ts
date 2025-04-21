@@ -57,7 +57,7 @@ export class FanSpeedAccessory {
   }
 
   private startPolling(): void {
-    this.updateCachedStatus();
+    // Remove duplicate call to updateCachedStatus
     
     // Immediately warm up the cache
     this.updateCachedStatus().catch(err => {
