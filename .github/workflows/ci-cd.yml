@@ -22,10 +22,14 @@ on:
 
 permissions:
   contents: write
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   validate:
     name: 🔍 Validate
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -180,10 +184,10 @@ jobs:
             echo "Conventional changelog is empty – falling back to simple git log"
             LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 || echo "")
             if [ -n "$LAST_TAG" ]; then
-              git log --pretty=format:'* %s (%h)' ${LAST_TAG}..HEAD > CHANGELOG_RELEASE.md
+              git log --no-merges --pretty=format:'* %s (%h)' ${LAST_TAG}..HEAD > CHANGELOG_RELEASE.md
             else
               # first release or cannot find previous tag
-              git log --pretty=format:'* %s (%h)' > CHANGELOG_RELEASE.md
+              git log --no-merges --pretty=format:'* %s (%h)' > CHANGELOG_RELEASE.md
             fi
           fi
 

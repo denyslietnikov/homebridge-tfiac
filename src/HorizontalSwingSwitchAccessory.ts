@@ -48,10 +48,15 @@ export class HorizontalSwingSwitchAccessory {
   private startPolling(): void {
     this.updateCachedStatus();
     
-    // Immediately warm up the cache
-    this.updateCachedStatus().catch(err => {
-      this.platform.log.error('Initial horizontal swing state fetch failed:', err);
-    });
+    // Generate a random delay between 0 and 15 seconds to distribute network requests
+    const warmupDelay = Math.floor(Math.random() * 15000);
+    
+    // Warm up the cache with a delay to prevent network overload
+    setTimeout(() => {
+      this.updateCachedStatus().catch(err => {
+        this.platform.log.error('Initial horizontal swing state fetch failed:', err);
+      });
+    }, warmupDelay);
     
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
@@ -87,11 +92,11 @@ export class HorizontalSwingSwitchAccessory {
     (async () => {
       try {
         if (value) {
-          // Включить горизонтальный swing (или Both, если уже включён вертикальный)
+          // Enable horizontal swing (or Both, if vertical swing is already enabled)
           const newMode = (this.cachedStatus?.swing_mode === 'Vertical') ? 'Both' : 'Horizontal';
           await this.deviceAPI.setSwingMode(newMode);
         } else {
-          // Выключить только горизонтальный swing (если был Both — оставить Vertical)
+          // Disable only horizontal swing (if it was Both — leave Vertical)
           const newMode = (this.cachedStatus?.swing_mode === 'Both') ? 'Vertical' : 'Off';
           await this.deviceAPI.setSwingMode(newMode);
         }
