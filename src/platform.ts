@@ -81,12 +81,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         continue;
       }
       // Use IP as the key to handle potential duplicates between config and discovery
-      discoveredDevicesMap.set(deviceConfig.ip, {
-        ip: deviceConfig.ip,
-        name: deviceConfig.name,
-        port: deviceConfig.port,
-        // Include other config properties if needed later
-      });
+      // Preserve all properties including feature flags
+      discoveredDevicesMap.set(deviceConfig.ip, { ...deviceConfig });
       this.log.debug(`Found configured device: ${deviceConfig.name} (${deviceConfig.ip})`);
     }
 
@@ -131,9 +127,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       const existingAccessory = this.accessories.find((acc) => acc.UUID === uuid);
 
       const deviceConfigForAccessory: TfiacDeviceConfig = {
+        ...(device as TfiacDeviceConfig),
         name: device.name || `TFIAC ${device.ip}`,
-        ip: device.ip,
-        port: device.port,
       };
 
       if (existingAccessory) {
@@ -164,11 +159,11 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
               this.displayAccessories.set(uuid, displaySwitch);
             }
 
-            if (deviceConfigForAccessory.enableSleep === false) {
-              this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
-            } else {
+            if (deviceConfigForAccessory.enableSleep) {
               const sleepSwitch = new SleepSwitchAccessory(this, existingAccessory);
               this.sleepAccessories.set(uuid, sleepSwitch);
+            } else {
+              this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
             // Always include Fan Speed
@@ -179,42 +174,56 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             if (deviceConfigForAccessory.enableDry) {
               const drySwitch = new DrySwitchAccessory(this, existingAccessory);
               this.dryAccessories.set(uuid, drySwitch);
+            } else if (deviceConfigForAccessory.enableDry === false) {
+              this.log.info(`Skipping Dry Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
             // Conditional Fan Only Mode switch
             if (deviceConfigForAccessory.enableFanOnly) {
               const fanOnlySwitch = new FanOnlySwitchAccessory(this, existingAccessory);
               this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
+            } else if (deviceConfigForAccessory.enableFanOnly === false) {
+              this.log.info(`Skipping Fan Only Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
             // Conditional Standalone Fan switch
             if (deviceConfigForAccessory.enableStandaloneFan) {
               const standaloneFan = new StandaloneFanAccessory(this, existingAccessory);
               this.standaloneFanAccessories.set(uuid, standaloneFan);
+            } else if (deviceConfigForAccessory.enableStandaloneFan === false) {
+              this.log.info(`Skipping Standalone Fan for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
             // Conditional Horizontal Swing switch
             if (deviceConfigForAccessory.enableHorizontalSwing) {
               const horizontalSwing = new HorizontalSwingSwitchAccessory(this, existingAccessory);
               this.horizontalSwingAccessories.set(uuid, horizontalSwing);
+            } else if (deviceConfigForAccessory.enableHorizontalSwing === false) {
+              this.log.info(`Skipping Horizontal Swing Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
             // Conditional Turbo Mode switch
             if (deviceConfigForAccessory.enableTurbo) {
               const turboSwitch = new TurboSwitchAccessory(this, existingAccessory);
               this.turboAccessories.set(uuid, turboSwitch);
+            } else if (deviceConfigForAccessory.enableTurbo === false) {
+              this.log.info(`Skipping Turbo Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
             // Conditional ECO Mode switch
             if (deviceConfigForAccessory.enableEco) {
               const ecoSwitch = new EcoSwitchAccessory(this, existingAccessory);
               this.ecoAccessories.set(uuid, ecoSwitch);
+            } else if (deviceConfigForAccessory.enableEco === false) {
+              this.log.info(`Skipping Eco Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
             // Conditional Beep switch
             if (deviceConfigForAccessory.enableBeep) {
               const beepSwitch = new BeepSwitchAccessory(this, existingAccessory);
               this.beepAccessories.set(uuid, beepSwitch);
+            } else if (deviceConfigForAccessory.enableBeep === false) {
+              this.log.info(`Skipping Beep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
           }
         } catch (error) {
@@ -238,11 +247,11 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             this.displayAccessories.set(uuid, displaySwitch);
           }
 
-          if (deviceConfigForAccessory.enableSleep === false) {
-            this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
-          } else {
+          if (deviceConfigForAccessory.enableSleep) {
             const sleepSwitch = new SleepSwitchAccessory(this, accessory);
             this.sleepAccessories.set(uuid, sleepSwitch);
+          } else {
+            this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
           // Always include Fan Speed
@@ -253,42 +262,56 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           if (deviceConfigForAccessory.enableDry) {
             const drySwitch = new DrySwitchAccessory(this, accessory);
             this.dryAccessories.set(uuid, drySwitch);
+          } else if (deviceConfigForAccessory.enableDry === false) {
+            this.log.info(`Skipping Dry Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
           // Conditional Fan Only Mode switch
           if (deviceConfigForAccessory.enableFanOnly) {
             const fanOnlySwitch = new FanOnlySwitchAccessory(this, accessory);
             this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
+          } else if (deviceConfigForAccessory.enableFanOnly === false) {
+            this.log.info(`Skipping Fan Only Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
           // Conditional Standalone Fan switch
           if (deviceConfigForAccessory.enableStandaloneFan) {
             const standaloneFan = new StandaloneFanAccessory(this, accessory);
             this.standaloneFanAccessories.set(uuid, standaloneFan);
+          } else if (deviceConfigForAccessory.enableStandaloneFan === false) {
+            this.log.info(`Skipping Standalone Fan for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
           // Conditional Horizontal Swing switch
           if (deviceConfigForAccessory.enableHorizontalSwing) {
             const horizontalSwing = new HorizontalSwingSwitchAccessory(this, accessory);
             this.horizontalSwingAccessories.set(uuid, horizontalSwing);
+          } else if (deviceConfigForAccessory.enableHorizontalSwing === false) {
+            this.log.info(`Skipping Horizontal Swing Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
           // Conditional Turbo Mode switch
           if (deviceConfigForAccessory.enableTurbo) {
             const turboSwitch = new TurboSwitchAccessory(this, accessory);
             this.turboAccessories.set(uuid, turboSwitch);
+          } else if (deviceConfigForAccessory.enableTurbo === false) {
+            this.log.info(`Skipping Turbo Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
           // Conditional ECO Mode switch
           if (deviceConfigForAccessory.enableEco) {
             const ecoSwitch = new EcoSwitchAccessory(this, accessory);
             this.ecoAccessories.set(uuid, ecoSwitch);
+          } else if (deviceConfigForAccessory.enableEco === false) {
+            this.log.info(`Skipping Eco Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
           // Conditional Beep switch
           if (deviceConfigForAccessory.enableBeep) {
             const beepSwitch = new BeepSwitchAccessory(this, accessory);
             this.beepAccessories.set(uuid, beepSwitch);
+          } else if (deviceConfigForAccessory.enableBeep === false) {
+            this.log.info(`Skipping Beep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {

@@ -29,6 +29,7 @@ export interface TfiacDeviceConfig {
     enableTurbo?: boolean;            // show turbo mode switch
     enableEco?: boolean;              // show eco mode switch
     enableBeep?: boolean;             // show beep switch
+    [key: string]: string | number | boolean | undefined;  // Add index signature
 }
 
 /**
