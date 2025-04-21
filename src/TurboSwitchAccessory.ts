@@ -104,7 +104,12 @@ export class TurboSwitchAccessory {
       // Support both setTurboState (real API) and setSuperState (unit tests)
       if (typeof this.deviceAPI.setTurboState === 'function') {
         await this.deviceAPI.setTurboState(turboValue as 'on' | 'off');
-      } else if ('setSuperState' in this.deviceAPI && typeof (this.deviceAPI as AirConditionerAPI & { setSuperState?: (value: string) => Promise<void> }).setSuperState === 'function') {
+      } else if (
+        'setSuperState' in this.deviceAPI && 
+        typeof (this.deviceAPI as AirConditionerAPI & { 
+          setSuperState?: (value: string) => Promise<void> 
+        }).setSuperState === 'function'
+      ) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (this.deviceAPI as any).setSuperState(turboValue); // Keep any here if setSuperState is truly dynamic/test-only
       } else {
