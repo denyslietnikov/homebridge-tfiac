@@ -411,13 +411,13 @@ describe('TfiacPlatformAccessory', () => {
         handler(callback);
       });
 
-      it('handleActiveGet should return error if cache is null', (done) => {
+      it('handleActiveGet should return default value if cache is null', (done) => {
         (accessory as unknown as TestAccessoryContext).cachedStatus = null;
         const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.Active, 'get') as MockCharacteristicGetHandler;
         const callback: CharacteristicGetCallback = (error, value) => {
-          expect(error).toBeInstanceOf(Error); if (error instanceof Error) {
-            expect(error.message).toContain('Cached status not available');
-          } expect(value).toBeUndefined(); done();
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.Active.INACTIVE);
+          done();
         };
         handler(callback);
       });
@@ -434,11 +434,13 @@ describe('TfiacPlatformAccessory', () => {
         handler(callback);
       });
 
-      it('handleCurrentTemperatureGet should return error if cache null', (done) => {
+      it('handleCurrentTemperatureGet should return default value if cache null', (done) => {
         (accessory as unknown as TestAccessoryContext).cachedStatus = null;
         const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.CurrentTemperature, 'get') as MockCharacteristicGetHandler;
         const callback: CharacteristicGetCallback = (error, value) => {
-          expect(error).toBeInstanceOf(Error); expect(value).toBeUndefined(); done();
+          expect(error).toBeNull(); 
+          expect(value).toBe(20); // Default value instead of error
+          done();
         };
         handler(callback);
       });
@@ -495,12 +497,12 @@ describe('TfiacPlatformAccessory', () => {
         jest.advanceTimersByTime(1);
       });
 
-      it('handleThresholdTemperatureGet should return error if cache null', (done) => {
+      it('handleThresholdTemperatureGet should return default value if cache null', (done) => {
         (accessory as unknown as TestAccessoryContext).cachedStatus = null;
         const handler = getHandlerByIdentifier(coolingCharId, 'get') as MockCharacteristicGetHandler;
         const callback: CharacteristicGetCallback = (error, value) => {
-          expect(error).toBeInstanceOf(Error);
-          expect(value).toBeUndefined();
+          expect(error).toBeNull();
+          expect(value).toBe(22); // Default value instead of error
           done();
         };
         handler(callback);
@@ -538,12 +540,12 @@ describe('TfiacPlatformAccessory', () => {
         };
         handler(callback);
       });
-      it('should return error if cache is null', (done) => {
+      it('should return default value if cache is null', (done) => {
         (accessory as unknown as TestAccessoryContext).cachedStatus = null;
         const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.CurrentHeaterCoolerState, 'get') as MockCharacteristicGetHandler;
         const callback: CharacteristicGetCallback = (error, value) => {
-          expect(error).toBeInstanceOf(Error);
-          expect(value).toBeUndefined();
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.CurrentHeaterCoolerState.IDLE);
           done();
         };
         handler(callback);
@@ -635,12 +637,12 @@ describe('TfiacPlatformAccessory', () => {
         jest.advanceTimersByTime(1);
       });
 
-      it('should return error if cache is null', (done) => {
+      it('should return default value if cache is null', (done) => {
         (accessory as unknown as TestAccessoryContext).cachedStatus = null;
         const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
         const callback: CharacteristicGetCallback = (error, value) => {
-          expect(error).toBeInstanceOf(Error);
-          expect(value).toBeUndefined();
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO);
           done();
         };
         handler(callback);
@@ -759,12 +761,12 @@ describe('TfiacPlatformAccessory', () => {
         jest.advanceTimersByTime(1);
       });
 
-      it('should return error if cache is null', (done) => {
+      it('should return default value (50) if cache is null', (done) => {
         (accessory as unknown as TestAccessoryContext).cachedStatus = null;
         const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
         const callback: CharacteristicGetCallback = (error, value) => {
-          expect(error).toBeInstanceOf(Error);
-          expect(value).toBeUndefined();
+          expect(error).toBeNull();
+          expect(value).toBe(50); // Default medium fan speed
           done();
         };
         handler(callback);
@@ -829,12 +831,12 @@ describe('TfiacPlatformAccessory', () => {
         jest.advanceTimersByTime(1);
       });
 
-      it('should return error if cache is null', (done) => {
+      it('should return default value (SWING_DISABLED) if cache is null', (done) => {
         (accessory as unknown as TestAccessoryContext).cachedStatus = null;
         const handler = getHandlerByIdentifier(charId, 'get') as MockCharacteristicGetHandler;
         const callback: CharacteristicGetCallback = (error, value) => {
-          expect(error).toBeInstanceOf(Error);
-          expect(value).toBeUndefined();
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.SwingMode.SWING_DISABLED);
           done();
         };
         handler(callback);

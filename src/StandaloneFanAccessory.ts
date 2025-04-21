@@ -50,6 +50,12 @@ export class StandaloneFanAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial fan state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -79,7 +85,8 @@ export class StandaloneFanAccessory {
     if (this.cachedStatus) {
       callback(null, this.cachedStatus.is_on === 'on');
     } else {
-      callback(new Error('Fan status not available'));
+      // Return a default value (off) instead of an error
+      callback(null, false);
     }
   }
 
@@ -103,7 +110,8 @@ export class StandaloneFanAccessory {
     if (this.cachedStatus) {
       callback(null, this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode));
     } else {
-      callback(new Error('Fan speed not available'));
+      // Return a default medium speed (50) instead of an error
+      callback(null, 50);
     }
   }
 

@@ -50,6 +50,12 @@ export class DisplaySwitchAccessory {
 
   private startPolling(): void {
     this.updateCachedStatus();
+    
+    // Immediately warm up the cache
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial display state fetch failed:', err);
+    });
+    
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
@@ -76,10 +82,12 @@ export class DisplaySwitchAccessory {
         if (this.cachedStatus && typeof this.cachedStatus.opt_display !== 'undefined') {
           callback(null, this.cachedStatus.opt_display === 'on');
         } else {
-          throw new Error('Display status not available');
+          // Return a default value (off) instead of an error
+          callback(null, false);
         }
       } catch (err) {
-        callback(err as Error);
+        // Return a default value instead of an error
+        callback(null, false);
       }
     })();
   }

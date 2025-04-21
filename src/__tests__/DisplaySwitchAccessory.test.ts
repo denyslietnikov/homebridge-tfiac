@@ -83,7 +83,9 @@ describe('DisplaySwitchAccessory', () => {
     const inst = new DisplaySwitchAccessory(platform, accessory);
     (inst as any).cachedStatus = null;
     (inst as any).handleGet((err: any, val: any) => {
-      expect(err).toBeInstanceOf(Error);
+      // Now expecting default value (false) instead of an error
+      expect(err).toBeNull();
+      expect(val).toBe(false);
       done();
     });
   });
