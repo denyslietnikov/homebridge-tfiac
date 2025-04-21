@@ -141,19 +141,24 @@ export class TfiacPlatformAccessory {
    * Starts periodic polling of the device state.
    */
   private startPolling(): void {
-    // Immediately update cache
+    // Initial cache update
     this.updateCachedStatus();
     
-    // Immediately warm up the cache and await the first API call
-    this.updateCachedStatus().catch(err => {
-      this.platform.log.error('Initial state fetch failed:', err);
-    });
+    // Generate a random delay between 0 and 10 seconds to distribute network requests
+    const warmupDelay = Math.floor(Math.random() * 10000);
+    
+    // Warm up the cache with a delay to prevent network overload
+    setTimeout(() => {
+      this.updateCachedStatus().catch(err => {
+        this.platform.log.error('Initial state fetch failed:', err);
+      });
+    }, warmupDelay);
     
     // Then schedule periodic updates
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
-    // Ensure timer does not keep node process alive
+    // Ensure timer doesn't keep node process alive
     this.pollingInterval.unref();
   }
 

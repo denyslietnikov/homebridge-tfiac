@@ -48,10 +48,15 @@ export class EcoSwitchAccessory {
   private startPolling(): void {
     this.updateCachedStatus();
     
-    // Immediately warm up the cache
-    this.updateCachedStatus().catch(err => {
-      this.platform.log.error('Initial eco state fetch failed:', err);
-    });
+    // Generate a random delay between 0 and 15 seconds to distribute network requests
+    const warmupDelay = Math.floor(Math.random() * 15000);
+    
+    // Warm up the cache with a delay to prevent network overload
+    setTimeout(() => {
+      this.updateCachedStatus().catch(err => {
+        this.platform.log.error('Initial eco state fetch failed:', err);
+      });
+    }, warmupDelay);
     
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
