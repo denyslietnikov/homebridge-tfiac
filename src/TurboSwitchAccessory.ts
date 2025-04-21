@@ -68,7 +68,7 @@ export class TurboSwitchAccessory {
     try {
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
-      if (this.service && status) {
+      if (this.service && status && typeof status.opt_super !== 'undefined') {
         this.service.updateCharacteristic(
           this.platform.Characteristic.On,
           status.opt_super === 'on',

@@ -17,6 +17,7 @@ interface AirConditionerStatusInternal {
   outdoor_temp?: number; // Outdoor temperature, optional
   opt_beep?: string; // Beep state (on/off), optional
   opt_eco?: string; // Eco state (on/off), optional
+  opt_turbo?: string; // Optional turbo state (on/off)
 }
 
 export type AirConditionerStatus = AirConditionerStatusInternal;
@@ -180,22 +181,30 @@ export class AirConditionerAPI extends EventEmitter {
   async updateState(): Promise<AirConditionerStatus> {
     const command = `<msg msgid="SyncStatusReq" type="Control" seq="${this.seq}">
                       <SyncStatusReq></SyncStatusReq></msg>`;
+    this.emit('debug', `Sending updateState command: ${command}`);
     const response = await this.sendCommand(command);
-    const xmlObject = await xml2js.parseStringPromise(response);
-    const statusUpdateMsg = xmlObject.msg.statusUpdateMsg[0] as StatusUpdateMsg;
-    const status: AirConditionerStatus = {
-      current_temp: parseFloat(statusUpdateMsg.IndoorTemp[0]),
-      target_temp: parseFloat(statusUpdateMsg.SetTemp[0]),
-      operation_mode: statusUpdateMsg.BaseMode[0],
-      fan_mode: statusUpdateMsg.WindSpeed[0],
-      is_on: statusUpdateMsg.TurnOn[0],
-      swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg),
-      opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] : undefined,
-      opt_super: statusUpdateMsg.Opt_super ? statusUpdateMsg.Opt_super[0] : undefined,
-      opt_sleepMode: statusUpdateMsg.Opt_sleepMode ? statusUpdateMsg.Opt_sleepMode[0] : undefined,
-      outdoor_temp: statusUpdateMsg.OutdoorTemp && statusUpdateMsg.OutdoorTemp[0] !== undefined ? parseFloat(statusUpdateMsg.OutdoorTemp[0]) : undefined,
-    };
-    return status;
+    this.emit('debug', `Received response: ${response}`);
+    try {
+      const xmlObject = await xml2js.parseStringPromise(response);
+      const statusUpdateMsg = xmlObject.msg.statusUpdateMsg[0] as StatusUpdateMsg;
+      const status: AirConditionerStatus = {
+        current_temp: parseFloat(statusUpdateMsg.IndoorTemp[0]),
+        target_temp: parseFloat(statusUpdateMsg.SetTemp[0]),
+        operation_mode: statusUpdateMsg.BaseMode[0],
+        fan_mode: statusUpdateMsg.WindSpeed[0],
+        is_on: statusUpdateMsg.TurnOn[0],
+        swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg),
+        opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] : undefined,
+        opt_super: statusUpdateMsg.Opt_super ? statusUpdateMsg.Opt_super[0] : undefined,
+        opt_sleepMode: statusUpdateMsg.Opt_sleepMode ? statusUpdateMsg.Opt_sleepMode[0] : undefined,
+        outdoor_temp: statusUpdateMsg.OutdoorTemp && statusUpdateMsg.OutdoorTemp[0] !== undefined ? parseFloat(statusUpdateMsg.OutdoorTemp[0]) : undefined,
+      };
+      this.emit('debug', `Parsed status: ${JSON.stringify(status)}`);
+      return status;
+    } catch (error) {
+      this.emit('error', `Error parsing response: ${error}`);
+      throw error;
+    }
   }
 
   async setAirConditionerState(mode: AirConditionerMode, value: string): Promise<void> {

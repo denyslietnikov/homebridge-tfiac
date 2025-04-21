@@ -8,10 +8,10 @@ import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js'
 import { TfiacDeviceConfig } from './settings.js';
 
 export class SleepSwitchAccessory {
-  private service: Service;
-  private deviceAPI: AirConditionerAPI;
+  private service!: Service; // Add definite assignment assertion
+  private deviceAPI!: AirConditionerAPI; // Add definite assignment assertion
   private cachedStatus: AirConditionerStatus | null = null;
-  private pollInterval: number;
+  private pollInterval!: number; // Add definite assignment assertion
   private pollingInterval: NodeJS.Timeout | null = null;
 
   constructor(
@@ -19,6 +19,13 @@ export class SleepSwitchAccessory {
     private readonly accessory: PlatformAccessory,
   ) {
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
+
+    // Check if enableSleep is explicitly set to false
+    if (deviceConfig.enableSleep === false) {
+      this.platform.log.info(`Sleep Mode accessory is disabled for ${deviceConfig.name}`);
+      return;
+    }
+
     const ip = deviceConfig.ip;
     const port = deviceConfig.port ?? 7777;
     this.deviceAPI = new AirConditionerAPI(ip, port);
