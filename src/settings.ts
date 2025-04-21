@@ -16,12 +16,19 @@ export const PLUGIN_NAME = 'homebridge-tfiac';
  * Describes a single device config entry (an air conditioner).
  */
 export interface TfiacDeviceConfig {
-    name: string;          // <== mandatory
-    ip: string;            // <== mandatory
-    port?: number;         // optional
-    updateInterval?: number;
-    enableSleep?: boolean; // optional
-    enableDisplay?: boolean; // optional
+    name: string;            // mandatory
+    ip: string;              // mandatory
+    port?: number;           // optional
+    updateInterval?: number; // optional
+    enableSleep?: boolean;            // show sleep mode switch
+    enableDisplay?: boolean;          // show display switch
+    enableDry?: boolean;              // show dry mode switch
+    enableFanOnly?: boolean;          // show fan-only mode switch
+    enableStandaloneFan?: boolean;    // show standalone fan switch
+    enableHorizontalSwing?: boolean;  // show horizontal swing switch
+    enableTurbo?: boolean;            // show turbo mode switch
+    enableEco?: boolean;              // show eco mode switch
+    enableBeep?: boolean;             // show beep switch
 }
 
 /**

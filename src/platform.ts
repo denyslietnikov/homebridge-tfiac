@@ -171,22 +171,51 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
               this.sleepAccessories.set(uuid, sleepSwitch);
             }
 
+            // Always include Fan Speed
             const fanSpeed = new FanSpeedAccessory(this, existingAccessory);
             this.fanSpeedAccessories.set(uuid, fanSpeed);
-            const drySwitch = new DrySwitchAccessory(this, existingAccessory);
-            this.dryAccessories.set(uuid, drySwitch);
-            const fanOnlySwitch = new FanOnlySwitchAccessory(this, existingAccessory);
-            this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
-            const standaloneFan = new StandaloneFanAccessory(this, existingAccessory);
-            this.standaloneFanAccessories.set(uuid, standaloneFan);
-            const horizontalSwing = new HorizontalSwingSwitchAccessory(this, existingAccessory);
-            this.horizontalSwingAccessories.set(uuid, horizontalSwing);
-            const turboSwitch = new TurboSwitchAccessory(this, existingAccessory);
-            this.turboAccessories.set(uuid, turboSwitch);
-            const ecoSwitch = new EcoSwitchAccessory(this, existingAccessory);
-            this.ecoAccessories.set(uuid, ecoSwitch);
-            const beepSwitch = new BeepSwitchAccessory(this, existingAccessory);
-            this.beepAccessories.set(uuid, beepSwitch);
+
+            // Conditional Dry Mode switch
+            if (deviceConfigForAccessory.enableDry) {
+              const drySwitch = new DrySwitchAccessory(this, existingAccessory);
+              this.dryAccessories.set(uuid, drySwitch);
+            }
+
+            // Conditional Fan Only Mode switch
+            if (deviceConfigForAccessory.enableFanOnly) {
+              const fanOnlySwitch = new FanOnlySwitchAccessory(this, existingAccessory);
+              this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
+            }
+
+            // Conditional Standalone Fan switch
+            if (deviceConfigForAccessory.enableStandaloneFan) {
+              const standaloneFan = new StandaloneFanAccessory(this, existingAccessory);
+              this.standaloneFanAccessories.set(uuid, standaloneFan);
+            }
+
+            // Conditional Horizontal Swing switch
+            if (deviceConfigForAccessory.enableHorizontalSwing) {
+              const horizontalSwing = new HorizontalSwingSwitchAccessory(this, existingAccessory);
+              this.horizontalSwingAccessories.set(uuid, horizontalSwing);
+            }
+
+            // Conditional Turbo Mode switch
+            if (deviceConfigForAccessory.enableTurbo) {
+              const turboSwitch = new TurboSwitchAccessory(this, existingAccessory);
+              this.turboAccessories.set(uuid, turboSwitch);
+            }
+
+            // Conditional ECO Mode switch
+            if (deviceConfigForAccessory.enableEco) {
+              const ecoSwitch = new EcoSwitchAccessory(this, existingAccessory);
+              this.ecoAccessories.set(uuid, ecoSwitch);
+            }
+
+            // Conditional Beep switch
+            if (deviceConfigForAccessory.enableBeep) {
+              const beepSwitch = new BeepSwitchAccessory(this, existingAccessory);
+              this.beepAccessories.set(uuid, beepSwitch);
+            }
           }
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -216,22 +245,51 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             this.sleepAccessories.set(uuid, sleepSwitch);
           }
 
+          // Always include Fan Speed
           const fanSpeed = new FanSpeedAccessory(this, accessory);
           this.fanSpeedAccessories.set(uuid, fanSpeed);
-          const drySwitch = new DrySwitchAccessory(this, accessory);
-          this.dryAccessories.set(uuid, drySwitch);
-          const fanOnlySwitch = new FanOnlySwitchAccessory(this, accessory);
-          this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
-          const standaloneFan = new StandaloneFanAccessory(this, accessory);
-          this.standaloneFanAccessories.set(uuid, standaloneFan);
-          const horizontalSwing = new HorizontalSwingSwitchAccessory(this, accessory);
-          this.horizontalSwingAccessories.set(uuid, horizontalSwing);
-          const turboSwitch = new TurboSwitchAccessory(this, accessory);
-          this.turboAccessories.set(uuid, turboSwitch);
-          const ecoSwitch = new EcoSwitchAccessory(this, accessory);
-          this.ecoAccessories.set(uuid, ecoSwitch);
-          const beepSwitch = new BeepSwitchAccessory(this, accessory);
-          this.beepAccessories.set(uuid, beepSwitch);
+
+          // Conditional Dry Mode switch
+          if (deviceConfigForAccessory.enableDry) {
+            const drySwitch = new DrySwitchAccessory(this, accessory);
+            this.dryAccessories.set(uuid, drySwitch);
+          }
+
+          // Conditional Fan Only Mode switch
+          if (deviceConfigForAccessory.enableFanOnly) {
+            const fanOnlySwitch = new FanOnlySwitchAccessory(this, accessory);
+            this.fanOnlyAccessories.set(uuid, fanOnlySwitch);
+          }
+
+          // Conditional Standalone Fan switch
+          if (deviceConfigForAccessory.enableStandaloneFan) {
+            const standaloneFan = new StandaloneFanAccessory(this, accessory);
+            this.standaloneFanAccessories.set(uuid, standaloneFan);
+          }
+
+          // Conditional Horizontal Swing switch
+          if (deviceConfigForAccessory.enableHorizontalSwing) {
+            const horizontalSwing = new HorizontalSwingSwitchAccessory(this, accessory);
+            this.horizontalSwingAccessories.set(uuid, horizontalSwing);
+          }
+
+          // Conditional Turbo Mode switch
+          if (deviceConfigForAccessory.enableTurbo) {
+            const turboSwitch = new TurboSwitchAccessory(this, accessory);
+            this.turboAccessories.set(uuid, turboSwitch);
+          }
+
+          // Conditional ECO Mode switch
+          if (deviceConfigForAccessory.enableEco) {
+            const ecoSwitch = new EcoSwitchAccessory(this, accessory);
+            this.ecoAccessories.set(uuid, ecoSwitch);
+          }
+
+          // Conditional Beep switch
+          if (deviceConfigForAccessory.enableBeep) {
+            const beepSwitch = new BeepSwitchAccessory(this, accessory);
+            this.beepAccessories.set(uuid, beepSwitch);
+          }
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
