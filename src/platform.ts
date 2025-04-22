@@ -73,6 +73,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     const configuredDevices = (this.config.devices || []) as TfiacDeviceConfig[];
     const discoveredDevicesMap = new Map<string, DiscoveredDevice>();
     const enableDiscovery = this.config.enableDiscovery !== false; // default true
+    
+    // Track IPs that have already been processed to detect duplicates
+    const processedIPs = new Set<string>();
 
     // 1. Process configured devices first
     for (const deviceConfig of configuredDevices) {
@@ -80,6 +83,16 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         this.log.error('Missing required IP address for configured device:', deviceConfig.name);
         continue;
       }
+      
+      // Check for duplicate IP addresses
+      if (processedIPs.has(deviceConfig.ip)) {
+        this.log.error('Failed to initialize device:', new Error(`Duplicate IP address detected: ${deviceConfig.ip}`));
+        continue;
+      }
+      
+      // Mark this IP as processed
+      processedIPs.add(deviceConfig.ip);
+      
       // Use IP as the key to handle potential duplicates between config and discovery
       // Preserve all properties including feature flags
       discoveredDevicesMap.set(deviceConfig.ip, { ...deviceConfig });
@@ -139,6 +152,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           prevConfig.ip !== deviceConfigForAccessory.ip ||
           prevConfig.port !== deviceConfigForAccessory.port;
 
+        // Remove services that have been disabled in the config
+        this.removeDisabledServices(existingAccessory, deviceConfigForAccessory);
+
         if (configChanged) {
           this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
           existingAccessory.context.deviceConfig = deviceConfigForAccessory;
@@ -166,9 +182,13 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
               this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
-            // Always include Fan Speed
-            const fanSpeed = new FanSpeedAccessory(this, existingAccessory);
-            this.fanSpeedAccessories.set(uuid, fanSpeed);
+            // Conditional Fan Speed accessory
+            if (deviceConfigForAccessory.enableFanSpeed === false) {
+              this.log.info(`Skipping Fan Speed for ${deviceConfigForAccessory.name} as it is disabled in config.`);
+            } else {
+              const fanSpeed = new FanSpeedAccessory(this, existingAccessory);
+              this.fanSpeedAccessories.set(uuid, fanSpeed);
+            }
 
             // Conditional Dry Mode switch
             if (deviceConfigForAccessory.enableDry) {
@@ -254,9 +274,13 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             this.log.info(`Skipping Sleep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
-          // Always include Fan Speed
-          const fanSpeed = new FanSpeedAccessory(this, accessory);
-          this.fanSpeedAccessories.set(uuid, fanSpeed);
+          // Conditional Fan Speed accessory
+          if (deviceConfigForAccessory.enableFanSpeed === false) {
+            this.log.info(`Skipping Fan Speed for ${deviceConfigForAccessory.name} as it is disabled in config.`);
+          } else {
+            const fanSpeed = new FanSpeedAccessory(this, accessory);
+            this.fanSpeedAccessories.set(uuid, fanSpeed);
+          }
 
           // Conditional Dry Mode switch
           if (deviceConfigForAccessory.enableDry) {
@@ -512,5 +536,105 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     // Ensure the category is set for cached accessories
     accessory.category = this.api.hap.Categories.AIR_CONDITIONER;
     this.accessories.push(accessory);
+  }
+
+  /**
+   * Removes services from an accessory that are disabled in the configuration.
+   * @param accessory - The accessory to update.
+   * @param deviceConfig - The configuration for the device.
+   */
+  private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
+    // Remove Display Switch service if disabled
+    if (deviceConfig.enableDisplay === false) {
+      const displayService = accessory.getService('Display');
+      if (displayService) {
+        accessory.removeService(displayService);
+        this.log.info(`Removed Display Switch service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Sleep Switch service if disabled
+    if (deviceConfig.enableSleep === false) {
+      const sleepService = accessory.getService('Sleep Mode');
+      if (sleepService) {
+        accessory.removeService(sleepService);
+        this.log.info(`Removed Sleep Switch service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Fan Speed service if disabled
+    if (deviceConfig.enableFanSpeed === false) {
+      const fanSpeedService = accessory.getService('Fan Speed');
+      if (fanSpeedService) {
+        accessory.removeService(fanSpeedService);
+        this.log.info(`Removed Fan Speed service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Dry Mode service if disabled
+    if (deviceConfig.enableDry === false) {
+      const dryService = accessory.getService('Dry Mode');
+      if (dryService) {
+        accessory.removeService(dryService);
+        this.log.info(`Removed Dry Mode service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Fan Only Mode service if disabled
+    if (deviceConfig.enableFanOnly === false) {
+      const fanOnlyService = accessory.getService('Fan Only Mode');
+      if (fanOnlyService) {
+        accessory.removeService(fanOnlyService);
+        this.log.info(`Removed Fan Only Mode service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Standalone Fan service if disabled
+    if (deviceConfig.enableStandaloneFan === false) {
+      const standaloneFanService = accessory.getService('Standalone Fan');
+      if (standaloneFanService) {
+        accessory.removeService(standaloneFanService);
+        this.log.info(`Removed Standalone Fan service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Horizontal Swing service if disabled
+    if (deviceConfig.enableHorizontalSwing === false) {
+      const horizontalSwingService = accessory.getService('Horizontal Swing');
+      if (horizontalSwingService) {
+        accessory.removeService(horizontalSwingService);
+        this.log.info(`Removed Horizontal Swing service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Turbo Mode service if disabled
+    if (deviceConfig.enableTurbo === false) {
+      const turboService = accessory.getService('Turbo Mode');
+      if (turboService) {
+        accessory.removeService(turboService);
+        this.log.info(`Removed Turbo Mode service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Eco Mode service if disabled
+    if (deviceConfig.enableEco === false) {
+      const ecoService = accessory.getService('Eco Mode');
+      if (ecoService) {
+        accessory.removeService(ecoService);
+        this.log.info(`Removed Eco Mode service from ${accessory.displayName}`);
+      }
+    }
+
+    // Remove Beep service if disabled
+    if (deviceConfig.enableBeep === false) {
+      const beepService = accessory.getService('Beep');
+      if (beepService) {
+        accessory.removeService(beepService);
+        this.log.info(`Removed Beep service from ${accessory.displayName}`);
+      }
+    }
+    
+    // Apply the updated accessory to HomeKit to ensure changes take effect
+    this.api.updatePlatformAccessories([accessory]);
   }
 }
