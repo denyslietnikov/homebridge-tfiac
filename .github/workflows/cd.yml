@@ -1,16 +1,15 @@
-name: Release Pipeline
+name: 📦 Release
 
 on:
-  push:
-    tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
-  prepare-release:
-    name: 📋 Prepare Release
+  release:
+    name: 🚀 Release to npm & GitHub
     runs-on: ubuntu-latest
 
     steps:
@@ -19,83 +18,17 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🔍 Verify version match
-        run: |
-          TAG_VERSION=${GITHUB_REF#refs/tags/v}
-          PKG_VERSION=$(node -p "require('./package.json').version")
-          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
-            echo "Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)"
-            exit 1
-          fi
-
-      - name: 📦 Install conventional-changelog
-        run: npm install --no-save conventional-changelog-cli
-
-      - name: 📝 Generate changelog
-        id: gen_changelog
-        run: |
-          # Try conventional‑changelog (last release only)
-          npx conventional-changelog -p angular -r 1 > CHANGELOG_RELEASE.md || true
-
-          # Fallback to git log (no merges)
-          if [ ! -s CHANGELOG_RELEASE.md ]; then
-            echo "Conventional changelog empty – fallback to git log"
-            LAST_TAG=$(git describe --tags --abbrev=0 HEAD~1 || echo "")
-            if [ -n "$LAST_TAG" ]; then
-              git log --no-merges --pretty=format:'* %s (%h)' ${LAST_TAG}..HEAD > CHANGELOG_RELEASE.md
-            else
-              git log --no-merges --pretty=format:'* %s (%h)' > CHANGELOG_RELEASE.md
-            fi
-          fi
-
-      - name: 📦 Create GitHub Release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref_name }}
-          release_name: Release ${{ github.ref_name }}
-          body_path: CHANGELOG_RELEASE.md
-          draft: false
-          prerelease: false
-
-  publish-production:
-    name: 🚀 Publish to npm
-    needs: prepare-release
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: ⬇️ Checkout repository
-        uses: actions/checkout@v4
-
       - name: 🔧 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: '20.x'
           registry-url: https://registry.npmjs.org
-          cache: 'npm'
 
       - name: 📦 Install dependencies
         run: npm ci
 
-      - name: ♻️ Restore cached build
-        uses: actions/cache@v4
-        with:
-          path: dist
-          key: ${{ runner.os }}-build-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-build-
-
-      - name: 🏗️ Build if needed
-        if: steps.cache-restore.outputs.cache-hit != 'true'
-        run: npm run build
-
-      - name: 🔑 Use .npmrc for npmjs.org
-        run: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+      - name: 🚀 Run semantic-release
+        run: npx semantic-release
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: 🚀 Publish package
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
