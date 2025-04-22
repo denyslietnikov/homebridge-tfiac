@@ -37,12 +37,24 @@ The plugin is registered as a dynamic platform. Add a new platform entry in your
         {
           "name": "Living Room AC",
           "ip": "192.168.1.100",
-          "updateInterval": 30
+          "updateInterval": 30,
+          "enableSleep": true,
+          "enableDisplay": true,
+          "enableDry": true,
+          "enableFanOnly": true,
+          "enableStandaloneFan": true,
+          "enableHorizontalSwing": true,
+          "enableTurbo": true,
+          "enableEco": true,
+          "enableBeep": true,
+          "enableFanSpeed": true
         },
         {
           "name": "Bedroom AC",
           "ip": "192.168.1.101",
-          "updateInterval": 60
+          "updateInterval": 60,
+          "enableSleep": false,
+          "enableDisplay": false
         }
       ]
     }
@@ -53,6 +65,27 @@ The plugin is registered as a dynamic platform. Add a new platform entry in your
 ## Config Schema  
 If you are using Homebridge Config UI X, the plugin provides a JSON schema (config.schema.json) that allows you to edit the configuration via the UI.  Ensure that the pluginAlias in the schema is set to "TfiacPlatform" and the pluginType is "platform".  
 
+## Advanced Configuration Options
+
+You can fine-tune which features are available for each device by adding the following boolean flags to each device entry:
+
+- `enableSleep`: Show Sleep Mode switch (default: true)
+- `enableDisplay`: Show Display switch (default: true)
+- `enableDry`: Show Dry Mode switch (default: true)
+- `enableFanOnly`: Show Fan Only Mode switch (default: true)
+- `enableStandaloneFan`: Show Standalone Fan accessory (default: true)
+- `enableHorizontalSwing`: Show Horizontal Swing switch (default: true)
+- `enableTurbo`: Show Turbo Mode switch (default: true)
+- `enableEco`: Show Eco Mode switch (default: true)
+- `enableBeep`: Show Beep switch (default: true)
+- `enableFanSpeed`: Show Fan Speed control (default: true)
+
+If any of these are set to `false`, the corresponding accessory or switch will not be created for that device.
+
+See the Configuration example above for a complete JSON snippet including flags.
+
+#### Device Discovery
+If you do not specify device addresses (the `devices` array) in your configuration, the plugin will automatically attempt to discover compatible air conditioners on your local network and use default settings for them. Manual control of this behavior is not required.
 
 ## Usage  
 After configuring, restart Homebridge. The plugin will:  
@@ -60,4 +93,4 @@ After configuring, restart Homebridge. The plugin will:
 * Poll each device at the specified interval to update its status.  
 * Allow you to control power, temperature, mode, fan speed, and swing through HomeKit-enabled apps.  
 
-You can control your ACs using Siri, HomeKit apps, or through automations set up in Homebridge Config UI X.  
+You can control your ACs using Siri, HomeKit apps, or through automations set up in Homebridge Config UI X.
