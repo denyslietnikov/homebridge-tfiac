@@ -73,6 +73,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     const configuredDevices = (this.config.devices || []) as TfiacDeviceConfig[];
     const discoveredDevicesMap = new Map<string, DiscoveredDevice>();
     const enableDiscovery = this.config.enableDiscovery !== false; // default true
+    
+    // Track IPs that have already been processed to detect duplicates
+    const processedIPs = new Set<string>();
 
     // 1. Process configured devices first
     for (const deviceConfig of configuredDevices) {
@@ -80,6 +83,16 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         this.log.error('Missing required IP address for configured device:', deviceConfig.name);
         continue;
       }
+      
+      // Check for duplicate IP addresses
+      if (processedIPs.has(deviceConfig.ip)) {
+        this.log.error('Failed to initialize device:', new Error(`Duplicate IP address detected: ${deviceConfig.ip}`));
+        continue;
+      }
+      
+      // Mark this IP as processed
+      processedIPs.add(deviceConfig.ip);
+      
       // Use IP as the key to handle potential duplicates between config and discovery
       // Preserve all properties including feature flags
       discoveredDevicesMap.set(deviceConfig.ip, { ...deviceConfig });

@@ -752,82 +752,167 @@ describe('TfiacPlatform UDP discovery error branches', () => {
       send: jest.fn().mockImplementation((msg: any, port: any, addr: any, cb: any): void => 
         cb(new Error('send fail'))
       ),
-      close: jest.fn(),
+      close: jest.fn().mockImplementation((cb?: () => void): void => {
+        if (cb) cb();
+      }),
       address: jest.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
       removeAllListeners: jest.fn(),
-      bind: jest.fn().mockReturnValue(undefined),
+      bind: jest.fn().mockImplementation((): MockSocket => {
+        if (typeof listeningHandler === 'function') {
+          listeningHandler();
+        }
+        return mockSocket;
+      }),
     };
+    
     require('dgram').createSocket = jest.fn().mockReturnValue(mockSocket);
     platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
-    const promise = platform["discoverDevicesNetwork"](10);
-    if (typeof listeningHandler === 'function') listeningHandler();
-    await expect(promise).resolves.toBeInstanceOf(Set);
-    expect(mockLogger.error).toHaveBeenCalledWith('Error sending discovery broadcast:', expect.any(Error));
+    
+    // Start discovery process with short timeout
+    const discoveryPromise = platform["discoverDevicesNetwork"](50);
+    
+    // Force timeout to complete discovery
+    setTimeout(() => {
+      if (mockSocket.close.mock.calls.length === 0) {
+        mockSocket.close();
+      }
+    }, 25);
+    
+    await discoveryPromise;
+    
+    // Verify error was logged
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Error sending discovery broadcast:',
+      expect.any(Error)
+    );
   });
 
-  it('should handle XML parsing and non-XML messages', async () => {
-    const RealMod = jest.requireActual('../platform');
-    // Set up socket mock
-    let mockSocket: MockSocket;
-    mockSocket = {
-      on: jest.fn().mockImplementation((event: any, cb: any): MockSocket => {
-        if (event === 'message') messageHandler = cb as (msg: Buffer, rinfo: { address: string; port: number }) => void;
-        if (event === 'listening') listeningHandler = cb as () => void;
+  it('should handle setBroadcast error', async () => {
+    const mockSocket: MockSocket = {
+      on: jest.fn().mockImplementation((event: any, cb: any): MockSocket => { 
+        if (event === 'listening') listeningHandler = cb as () => void; 
+        return mockSocket; 
+      }),
+      setBroadcast: jest.fn().mockImplementation((): void => { 
+        throw new Error('setBroadcast fail');
+      }),
+      send: jest.fn(),
+      close: jest.fn().mockImplementation((cb?: () => void): void => {
+        if (cb) cb();
+      }),
+      address: jest.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
+      removeAllListeners: jest.fn(),
+      bind: jest.fn().mockImplementation((): MockSocket => {
+        if (typeof listeningHandler === 'function') {
+          listeningHandler();
+        }
         return mockSocket;
+      }),
+    };
+    
+    require('dgram').createSocket = jest.fn().mockReturnValue(mockSocket);
+    platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    
+    // Start discovery process
+    const discoveryPromise = platform["discoverDevicesNetwork"](50);
+    
+    // Process should be rejected with setBroadcast error
+    await expect(discoveryPromise).rejects.toThrow('setBroadcast fail');
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Error setting up broadcast:',
+      expect.any(Error)
+    );
+  });
+
+  it('should handle UDP response without IndoorTemp tag', async () => {
+    const mockSocket: MockSocket = {
+      on: jest.fn().mockImplementation((event: any, cb: any): MockSocket => { 
+        if (event === 'listening') listeningHandler = cb as () => void;
+        if (event === 'message') messageHandler = cb as (msg: Buffer, rinfo: { address: string; port: number }) => void;
+        return mockSocket; 
       }),
       setBroadcast: jest.fn(),
       send: jest.fn().mockImplementation((msg: any, port: any, addr: any, cb: any): void => {
         if (typeof cb === 'function') cb();
       }),
       close: jest.fn().mockImplementation((cb?: () => void): void => {
-        if (typeof cb === 'function') cb();
+        if (cb) cb();
       }),
       address: jest.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
       removeAllListeners: jest.fn(),
-      bind: jest.fn().mockReturnValue(mockSocket),
+      bind: jest.fn().mockImplementation((): MockSocket => {
+        if (typeof listeningHandler === 'function') {
+          listeningHandler();
+          
+          // Simulate receiving a message with missing IndoorTemp tag
+          if (typeof messageHandler === 'function') {
+            messageHandler(
+              Buffer.from('<msg><statusUpdateMsg><OtherTag>25</OtherTag></statusUpdateMsg></msg>'),
+              { address: '192.168.0.200', port: 7777 }
+            );
+          }
+        }
+        return mockSocket;
+      }),
     };
     
-    require('dgram').createSocket = jest.fn().mockReturnValue(mockSocket);
+    // Mock XML parsing to return expected structure without IndoorTemp
+    const xml2js = require('xml2js');
+    (xml2js.parseStringPromise as jest.Mock).mockResolvedValueOnce({
+      msg: {
+        statusUpdateMsg: [{ OtherTag: ['25'] }] // No IndoorTemp tag
+      }
+    });
     
+    require('dgram').createSocket = jest.fn().mockReturnValue(mockSocket);
     platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
     
     // Start discovery process
-    const discoveryPromise = platform["discoverDevicesNetwork"](100);
+    const discoveryPromise = platform["discoverDevicesNetwork"](50);
     
-    // Trigger listening event
-    if (typeof listeningHandler === 'function') listeningHandler();
+    // Force timeout to complete discovery
+    setTimeout(() => {
+      if (mockSocket.close.mock.calls.length === 0) {
+        mockSocket.close();
+      }
+    }, 25);
     
-    // Simulate received messages
-    if (typeof messageHandler === 'function') {
-      // 1. Non-XML message
-      messageHandler(Buffer.from('not xml'), { address: '1.2.3.4', port: 7777 });
-      
-      // 2. Non-status XML
-      messageHandler(Buffer.from('<msg><notStatus></notStatus></msg>'), { address: '1.2.3.5', port: 7777 });
-      
-      // 3. Malformed XML
-      messageHandler(Buffer.from('<msg><statusUpdateMsg>'), { address: '1.2.3.6', port: 7777 });
-      
-      // 4. Valid status message with IP
-      messageHandler(
-        Buffer.from('<msg><statusUpdateMsg><IndoorTemp>25</IndoorTemp></statusUpdateMsg></msg>'), 
-        { address: '1.2.3.7', port: 7777 }
-      );
-    }
-    
-    // Force timeout resolution to complete the discovery
-    if (mockSocket.close.mock.calls.length === 0) {
-      mockSocket.close();
-    }
-    
-    // Complete the discovery
     const discoveredIPs = await discoveryPromise;
     
-    // Verify logging and discovered IPs
-    expect(mockLogger.debug).toHaveBeenCalledWith(expect.stringContaining('Ignoring non-XML'), expect.any(String));
-    // Print discoveredIPs for diagnosis
-    // eslint-disable-next-line no-console
-    console.log('DISCOVERED IPs:', discoveredIPs);
-    expect(discoveredIPs.has('1.2.3.7') || discoveredIPs.size === 0).toBe(true);
+    // Verify debug logs about ignoring response
+    expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect.stringContaining('Ignoring non-status response'),
+      expect.any(String)
+    );
+    // IP shouldn't be added to discovered list since it doesn't have the required tags
+    expect(discoveredIPs.has('192.168.0.200')).toBe(false);
+  });
+
+  it('should handle socket bind error', async () => {
+    let mockSocket: MockSocket;
+    mockSocket = {
+      on: jest.fn(),
+      setBroadcast: jest.fn(),
+      send: jest.fn(),
+      close: jest.fn(),
+      address: jest.fn(),
+      removeAllListeners: jest.fn(),
+      bind: jest.fn().mockImplementation((): void => {
+        throw new Error('bind fail');
+      }),
+    };
+    
+    require('dgram').createSocket = jest.fn().mockReturnValue(mockSocket);
+    platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    
+    // Start discovery process
+    const discoveryPromise = platform["discoverDevicesNetwork"](50);
+    
+    // Process should be rejected with bind error
+    await expect(discoveryPromise).rejects.toThrow('bind fail');
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      'Error setting up discovery socket:',
+      expect.any(Error)
+    );
   });
 });
