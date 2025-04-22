@@ -1,4 +1,4 @@
-// filepath: /Users/denisletnikov/Code/homebridge-tfiac/src/__tests__/platform.branch.test.ts
+// platform.branch.test.ts
 import { API, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import { TfiacPlatform } from '../platform';
 import { PLUGIN_NAME, PLATFORM_NAME, TfiacPlatformConfig } from '../settings';
