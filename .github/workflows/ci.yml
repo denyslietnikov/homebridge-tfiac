@@ -115,6 +115,10 @@ jobs:
           npm list --json > dependency-report.json
           npm audit --json > audit-report.json
 
+      - name: 📋 Generate outdated report
+        run: |
+          npm outdated --json > outdated-report.json || true
+
       - name: 📢 Report issues
         if: steps.deps-check.outputs.has_outdated == 'true' || steps.deps-check.outputs.has_vulnerabilities == 'true'
         uses: actions/github-script@v7
@@ -122,24 +126,43 @@ jobs:
           github-token: ${{ secrets.GH_PAT }}
           script: |
             const fs = require('fs');
-            const depReport = JSON.parse(fs.readFileSync('dependency-report.json', 'utf8'));
+            const outdatedReport = JSON.parse(fs.readFileSync('outdated-report.json', 'utf8') || '{}');
             const auditReport = JSON.parse(fs.readFileSync('audit-report.json', 'utf8'));
+            // Build Markdown table for outdated deps
+            const outdatedEntries = Object.entries(outdatedReport);
+            let outdatedTable = '| Package | Current | Wanted | Latest |\n|--|--|--|--|\n';
+            if (outdatedEntries.length) {
+              outdatedTable += outdatedEntries
+                .map(([name, info]) => `| ${name} | ${info.current || '-'} | ${info.wanted || '-'} | ${info.latest || '-'} |`)
+                .join('\n');
+            } else {
+              outdatedTable += '| _All dependencies up-to-date_ |  |  |  |';
+            }
+            // Build Markdown table for vulnerabilities
+            const vuln = auditReport.metadata.vulnerabilities;
+            const vulnTable = [
+              '| Severity | Count |',
+              '|--|--|',
+              `| info | ${vuln.info} |`,
+              `| low | ${vuln.low} |`,
+              `| moderate | ${vuln.moderate} |`,
+              `| high | ${vuln.high} |`,
+              `| critical | ${vuln.critical} |`,
+              `| **total** | **${vuln.total}** |`
+            ].join('\n');
+            // Create the issue
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: 'Dependencies need attention',
-              body: `
-                ## Dependency Analysis Report
-
-                **Outdated Dependencies:**
-                \`\`\`json
-                ${JSON.stringify(depReport.dependencies, null, 2)}
-                \`\`\`
-
-                **Security Vulnerabilities:**
-                \`\`\`json
-                ${JSON.stringify(auditReport.metadata.vulnerabilities, null, 2)}
-                \`\`\`
-              `,
-              labels: ['dependencies', 'security']
+              body: [
+                '## Dependency Analysis Report',
+                '',
+                '### Outdated Dependencies',
+                outdatedTable,
+                '',
+                '### Security Vulnerabilities',
+                vulnTable
+              ].join('\n\n'),
+              labels: ['dependencies','security']
             });
