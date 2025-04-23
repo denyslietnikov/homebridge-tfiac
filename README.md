@@ -47,7 +47,8 @@ The plugin is registered as a dynamic platform. Add a new platform entry in your
           "enableTurbo": true,
           "enableEco": true,
           "enableBeep": true,
-          "enableFanSpeed": true
+          "enableFanSpeed": true,
+          "enableTemperature": true
         },
         {
           "name": "Bedroom AC",
@@ -79,6 +80,7 @@ You can fine-tune which features are available for each device by adding the fol
 - `enableEco`: Show Eco Mode switch (default: true)
 - `enableBeep`: Show Beep switch (default: true)
 - `enableFanSpeed`: Show Fan Speed control (default: true)
+- `enableTemperature`: Show Temperature control (default: true)
 
 If any of these are set to `false`, the corresponding accessory or switch will not be created for that device.
 

@@ -609,7 +609,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     // Remove Turbo Mode service if disabled
     if (deviceConfig.enableTurbo === false) {
-      const turboService = accessory.getService('Turbo Mode');
+      const turboService = accessory.getService('Turbo');
       if (turboService) {
         accessory.removeService(turboService);
         this.log.info(`Removed Turbo Mode service from ${accessory.displayName}`);
@@ -618,7 +618,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     // Remove Eco Mode service if disabled
     if (deviceConfig.enableEco === false) {
-      const ecoService = accessory.getService('Eco Mode');
+      const ecoService = accessory.getService('Eco');
       if (ecoService) {
         accessory.removeService(ecoService);
         this.log.info(`Removed Eco Mode service from ${accessory.displayName}`);
