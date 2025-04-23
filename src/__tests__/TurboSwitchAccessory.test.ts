@@ -66,7 +66,7 @@ describe('TurboSwitchAccessory', () => {
   it('should initialize correctly', () => {
     turboAccessory = new TurboSwitchAccessory(mockPlatform, mockAccessory);
     expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, 'Turbo', 'turbo');
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Turbo Mode');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Turbo');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
     expect(mockService.on).toHaveBeenCalledTimes(2); // get and set handlers
   });
@@ -76,7 +76,7 @@ describe('TurboSwitchAccessory', () => {
     (mockAccessory.getService as jest.Mock).mockReturnValue(mockService);
     turboAccessory = new TurboSwitchAccessory(mockPlatform, mockAccessory);
     expect(mockAccessory.addService).not.toHaveBeenCalled();
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Turbo Mode');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Turbo');
   });
 
   it('should start polling on initialization', () => {

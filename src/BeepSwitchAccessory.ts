@@ -46,7 +46,8 @@ export class BeepSwitchAccessory {
   }
 
   private startPolling(): void {
-    this.updateCachedStatus();
+    // First call returns void, so wrap it in a Promise.resolve()
+    Promise.resolve(this.updateCachedStatus());
     
     // Generate a random delay between 0 and 15 seconds to distribute network requests
     const warmupDelay = Math.floor(Math.random() * 15000);
@@ -59,9 +60,15 @@ export class BeepSwitchAccessory {
     }, warmupDelay);
     
     this.pollingInterval = setInterval(() => {
-      this.updateCachedStatus();
+      Promise.resolve(this.updateCachedStatus()).catch(err => {
+        this.platform.log.error('Periodic beep state fetch failed:', err);
+      });
     }, this.pollInterval);
-    this.pollingInterval.unref();
+    
+    // Only call unref if available (NodeJS environment); in test environment it might not be
+    if (this.pollingInterval && typeof this.pollingInterval.unref === 'function') {
+      this.pollingInterval.unref();
+    }
   }
 
   private async updateCachedStatus(): Promise<void> {

@@ -1268,12 +1268,18 @@ describe('TfiacPlatformAccessory', () => {
       
       mockAccessoryInstance.context.deviceConfig = deviceConfigWithTempDisabled;
       const existingTempService = createMockService();
+      mockAccessoryInstance.services = [existingTempService];
+      
+      // Mock services filtering by UUID
+      mockAccessoryInstance.services.filter = jest.fn().mockReturnValue([existingTempService]);
+      
       mockAccessoryInstance.getService = jest.fn().mockImplementation((service) => {
         if (service === hapIdentifiers.Service.TemperatureSensor) {
           return existingTempService;
         }
         return mockServiceInstance;
-      }) as jest.MockedFunction<PlatformAccessory['getService']>;
+      });
+      
       mockAccessoryInstance.removeService = jest.fn();
       
       // Create accessory with temperature sensor disabled
@@ -1499,7 +1505,8 @@ describe('TfiacPlatformAccessory', () => {
     
     it('should handle API errors in handleTurboSet', (done) => {
       // Setup Turbo Switch Service with handlers
-      const turboCharacteristic = (accessory as any).turboService.getCharacteristic('On');
+      const turboCharacteristic = (accessory as any)
+        .turboService.getCharacteristic('On');
       const turboSetHandler = turboCharacteristic.setHandler;
       
       // Simulate API error
