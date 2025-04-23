@@ -61,26 +61,45 @@ export class TfiacPlatformAccessory {
 
     // --- Temperature Sensor Service ---
     if (deviceConfig.enableTemperature !== false) {
-      this.temperatureSensorService =
-        this.accessory.getService(this.platform.Service.TemperatureSensor) ||
-        this.accessory.addService(
+      // Look for existing temperature sensor service with any name but correct UUID
+      const existingTempSensorService = this.accessory.services.find(
+        service => service.UUID === this.platform.Service.TemperatureSensor.UUID,
+      );
+      
+      if (existingTempSensorService) {
+        // Use existing service
+        this.temperatureSensorService = existingTempSensorService;
+      } else {
+        // Create new service with consistent name for identification
+        this.temperatureSensorService = this.accessory.addService(
           this.platform.Service.TemperatureSensor,
-          (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temperature',
+          'Indoor Temperature',
+          'indoor_temperature',
         );
+      }
+      
+      // Update the display name regardless if it was existing or new
       this.temperatureSensorService.setCharacteristic(
-        this.platform.Characteristic.Name,
+        this.platform.Characteristic.Name, 
         (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temperature',
       );
+      
       this.temperatureSensorService
         .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
         .on('get', this.handleTemperatureSensorCurrentTemperatureGet.bind(this));
     } else {
       this.platform.log.info(`Temperature sensor is disabled for ${deviceConfig.name}`);
-      // Remove the service if it exists
-      const existingService = this.accessory.getService(this.platform.Service.TemperatureSensor);
-      if (existingService) {
-        this.accessory.removeService(existingService);
-      }
+      
+      // Remove all temperature sensor services
+      const tempSensorServices = this.accessory.services.filter(
+        service => service.UUID === this.platform.Service.TemperatureSensor.UUID,
+      );
+      
+      tempSensorServices.forEach(service => {
+        this.accessory.removeService(service);
+        this.platform.log.debug(`Removed temperature sensor service: ${service.displayName || 'unnamed'}`);
+      });
+      
       this.temperatureSensorService = undefined as unknown as Service;
     }
 
