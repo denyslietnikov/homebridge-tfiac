@@ -1532,31 +1532,65 @@ describe('TfiacPlatformAccessory', () => {
     });
   });
 
-  describe('Turbo Switch Handlers', () => {
-    // Skip these tests since handleTurboGet and handleTurboSet have been removed
-    // These functions are now handled by TurboSwitchAccessory instead
-    it.skip('should handle turbo get with cached status showing turbo on', (done) => {
-      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
-      done();
+  // The describe block for 'Turbo Switch Handlers' has been removed as these tests are skipped
+  // and the functionality is tested in TurboSwitchAccessory.test.ts
+
+  describe('Handler Error Handling', () => {
+    it('should handle API errors in handleTargetHeaterCoolerStateSet', (done) => {
+      // Simulate API error
+      const apiError = new Error('API Error');
+      mockApiActions.setAirConditionerState.mockRejectedValueOnce(apiError);
+      
+      const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.TargetHeaterCoolerState, 'set') as MockCharacteristicSetHandler;
+      
+      // Call the handler
+      handler(hapConstants.Characteristic.TargetHeaterCoolerState.COOL, (error) => {
+        expect(error).toBe(apiError);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Error setting TargetHeaterCoolerState:',
+          apiError
+        );
+        done();
+      });
     });
     
-    it.skip('should handle turbo get with cached status showing turbo off', (done) => {
-      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
-      done();
+    it('should handle API errors in handleRotationSpeedSet', (done) => {
+      // Simulate API error
+      const apiError = new Error('API Error');
+      mockApiActions.setFanSpeed.mockRejectedValueOnce(apiError);
+      
+      const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.RotationSpeed, 'set') as MockCharacteristicSetHandler;
+      
+      // Call the handler
+      handler(50, (error) => {
+        expect(error).toBe(apiError);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Error setting fan speed:',
+          apiError
+        );
+        done();
+      });
     });
     
-    it.skip('should handle turbo get with cached status not containing opt_super', (done) => {
-      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
-      done();
-    });
-    
-    it.skip('should handle turbo get with no cached status', (done) => {
-      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
-      done();
+    it('should handle API errors in handleSwingModeSet', (done) => {
+      // Simulate API error
+      const apiError = new Error('API Error');
+      mockApiActions.setSwingMode.mockRejectedValueOnce(apiError);
+      
+      const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.SwingMode, 'set') as MockCharacteristicSetHandler;
+      
+      // Call the handler
+      handler(hapConstants.Characteristic.SwingMode.SWING_ENABLED, (error) => {
+        expect(error).toBe(apiError);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Error setting swing mode:',
+          apiError
+        );
+        done();
+      });
     });
   });
 
-  // This section tests coverage for the stopPolling function
   describe('Polling Management', () => {
     it('should handle stopPolling when deviceAPI is undefined', () => {
       // Create a new accessory
