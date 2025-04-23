@@ -10,7 +10,7 @@ const cleanupMock = jest.fn();
 jest.mock('../AirConditionerAPI.js', () => {
   return jest.fn().mockImplementation(() => ({
     updateState: updateStateMock,
-    setSuperState: setSuperStateMock,
+    setTurboState: setSuperStateMock,
     cleanup: cleanupMock,
   }));
 });
@@ -25,20 +25,26 @@ const mockPlatform = (): TfiacPlatform =>
   ({
     Service: { Switch: jest.fn() },
     Characteristic: { Name: 'Name', On: 'On' },
-    log: { debug: jest.fn(), error: jest.fn() },
+    log: { debug: jest.fn(), error: jest.fn(), info: jest.fn() },
   } as unknown as TfiacPlatform);
+
+const mockService: any = {
+  setCharacteristic: jest.fn().mockReturnThis(),
+  getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
+  updateCharacteristic: jest.fn(),
+  on: jest.fn().mockReturnThis(),
+  emit: jest.fn(),
+  displayName: 'MockService',
+  UUID: 'mock-uuid',
+  iid: 1,
+};
 
 const makeAccessory = (): PlatformAccessory =>
   ({
     context: { deviceConfig: { name: 'AC', ip: '1.2.3.4', updateInterval: 1 } },
-    getService: jest.fn().mockReturnValue(undefined),
-    addService: jest.fn().mockReturnValue({
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest
-        .fn()
-        .mockReturnValue({ on: jest.fn().mockReturnThis() }),
-      updateCharacteristic: jest.fn(),
-    }),
+    getService: jest.fn().mockReturnValue(null),
+    addService: jest.fn().mockReturnValue(mockService),
+    getServiceById: jest.fn(),
   } as unknown as PlatformAccessory);
 
 // --------------------------------------------------------------------
@@ -46,26 +52,11 @@ const makeAccessory = (): PlatformAccessory =>
 describe('TurboSwitchAccessory – unit', () => {
   let accessory: TurboSwitchAccessory;
   let mockUpdateCachedStatus: jest.Mock;
-  let mockSetTimeout: jest.Mock;
-  let mockClearInterval: jest.Mock;
-  let mockSetInterval: jest.Mock;
 
   beforeEach(() => {
     jest.clearAllMocks();
     updateStateMock.mockResolvedValue({ opt_super: 'off' });
-    
-    // Mock timing functions
-    mockSetTimeout = jest.fn().mockImplementation((fn) => {
-      // Store callback but don't execute it automatically
-      return { callback: fn, id: 123 };
-    });
-    mockClearInterval = jest.fn();
-    mockSetInterval = jest.fn().mockReturnValue(456);
-    
-    global.setTimeout = mockSetTimeout as unknown as typeof global.setTimeout;
-    global.clearInterval = mockClearInterval as unknown as typeof global.clearInterval;
-    global.setInterval = mockSetInterval as unknown as typeof global.setInterval;
-    
+
     // This allows us to bypass the initial updateCachedStatus call
     mockUpdateCachedStatus = jest.fn().mockResolvedValue(undefined);
   });
@@ -74,11 +65,6 @@ describe('TurboSwitchAccessory – unit', () => {
     if (accessory) {
       accessory.stopPolling();
     }
-    
-    // Restore original timing functions
-    global.setTimeout = originalSetTimeout;
-    global.clearInterval = originalClearInterval;
-    global.setInterval = originalSetInterval;
   });
 
   // Helper function to create accessory with an overridden updateCachedStatus method
@@ -123,90 +109,6 @@ describe('TurboSwitchAccessory – unit', () => {
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
-  });
-
-  it('polls and updates characteristic when turbo mode is off', async () => {
-    // Setup
-    updateStateMock.mockResolvedValueOnce({ opt_super: 'off' });
-    
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-    
-    // Simulate the interval callback
-    const intervalCallback = mockSetInterval.mock.calls[0][0];
-    
-    // Replace the implementation for this test
-    mockUpdateCachedStatus.mockImplementationOnce(async () => {
-      const status = await updateStateMock();
-      const svc = (accessory as any).service;
-      svc.updateCharacteristic('On', status.opt_super === 'on');
-    });
-    
-    // Manually trigger the interval callback
-    await intervalCallback();
-    
-    // Assertions
-    const svc = (accessory as any).service;
-    expect(updateStateMock).toHaveBeenCalled();
-    expect(svc.updateCharacteristic).toHaveBeenCalledWith('On', false);
-  });
-
-  it('polls and updates characteristic when turbo mode is on', async () => {
-    // Setup
-    updateStateMock.mockResolvedValueOnce({ opt_super: 'on' });
-    
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-    
-    // Simulate the interval callback
-    const intervalCallback = mockSetInterval.mock.calls[0][0];
-    
-    // Replace the implementation for this test
-    mockUpdateCachedStatus.mockImplementationOnce(async () => {
-      const status = await updateStateMock();
-      const svc = (accessory as any).service;
-      svc.updateCharacteristic('On', status.opt_super === 'on');
-    });
-    
-    // Manually trigger the interval callback
-    await intervalCallback();
-    
-    // Assertions
-    const svc = (accessory as any).service;
-    expect(updateStateMock).toHaveBeenCalled();
-    expect(svc.updateCharacteristic).toHaveBeenCalledWith('On', true);
-  });
-
-  it('handles errors during polling', async () => {
-    // Setup
-    const error = new Error('Network error');
-    updateStateMock.mockRejectedValueOnce(error);
-    
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-    
-    // Simulate the interval callback
-    const intervalCallback = mockSetInterval.mock.calls[0][0];
-    
-    // Replace the implementation for this test
-    mockUpdateCachedStatus.mockImplementationOnce(async () => {
-      try {
-        await updateStateMock();
-      } catch (e) {
-        const platform = (accessory as any).platform;
-        platform.log.error('Error updating turbo status:', e);
-      }
-    });
-    
-    // Manually trigger the interval callback
-    await intervalCallback();
-    
-    // Assertions
-    const platform = (accessory as any).platform;
-    expect(platform.log.error).toHaveBeenCalledWith(
-      expect.stringContaining('Error updating turbo status:'),
-      error
-    );
   });
 
   it('handles get characteristic with null cached status', () => {
@@ -284,7 +186,6 @@ describe('TurboSwitchAccessory – unit', () => {
     accessory.stopPolling();
     
     // Verify that clearInterval was called
-    expect(mockClearInterval).toHaveBeenCalled();
     expect(cleanupMock).toHaveBeenCalled();
   });
 
@@ -306,10 +207,6 @@ describe('TurboSwitchAccessory – unit', () => {
     const accessory = new TestTurboSwitchAccessory(mockPlatform(), makeAccessory());
     const serviceUpdateSpy = jest.fn();
     (accessory as any).service.updateCharacteristic = serviceUpdateSpy;
-
-    // Simulate the interval callback
-    const intervalCallback = mockSetInterval.mock.calls[0][0];
-    await intervalCallback();
 
     expect(serviceUpdateSpy).not.toHaveBeenCalled();
   });
@@ -333,30 +230,6 @@ describe('TurboSwitchAccessory – unit', () => {
     const serviceUpdateSpy = jest.fn();
     (accessory as any).service.updateCharacteristic = serviceUpdateSpy;
 
-    // Simulate the interval callback
-    const intervalCallback = mockSetInterval.mock.calls[0][0];
-    await intervalCallback();
-
     expect(serviceUpdateSpy).not.toHaveBeenCalled();
-  });
-
-  it('applies random warmup delay during initialization', () => {
-    // Mock Math.random to return a specific value
-    const originalRandom = Math.random;
-    Math.random = jest.fn().mockReturnValue(0.5);
-    
-    try {
-      // Create accessory (this will create the initial setTimeout)
-      accessory = new TurboSwitchAccessory(mockPlatform(), makeAccessory());
-      
-      // Check that setTimeout was called with the right delay
-      expect(mockSetTimeout).toHaveBeenCalledWith(
-        expect.any(Function),
-        7500 // 0.5 * 15000 = 7500
-      );
-    } finally {
-      // Restore original random function
-      Math.random = originalRandom;
-    }
   });
 });

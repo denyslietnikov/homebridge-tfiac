@@ -915,4 +915,70 @@ describe('TfiacPlatform UDP discovery error branches', () => {
       expect.any(Error)
     );
   });
+
+  it('should log error if socket.bind throws', async () => {
+    let mockSocket: MockSocket;
+    mockSocket = {
+      on: jest.fn().mockImplementation((event: any, cb: any): MockSocket => {
+        if (event === 'error') errorHandler = cb as (err: Error) => void;
+        return mockSocket;
+      }),
+      bind: jest.fn().mockImplementation((): void => { throw new Error('bind fail'); }), // Simulate bind error
+      setBroadcast: jest.fn(),
+      send: jest.fn(),
+      close: jest.fn().mockImplementation((cb?: () => void): void => { if (cb) cb(); }),
+      address: jest.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
+      removeAllListeners: jest.fn(),
+    };
+    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocket);
+
+    platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    // Use discoverDevicesNetwork directly to isolate the error
+    const discoveryPromise = platform['discoverDevicesNetwork'](50);
+
+    // Process should be rejected with bind error
+    await expect(discoveryPromise).rejects.toThrow('bind fail');
+
+    // Check if the correct error was logged by discoverDevicesNetwork
+    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error setting up discovery socket:'), expect.any(Error));
+    // Ensure socket was closed despite bind error (cleanup is called)
+    expect(mockSocket.close).toHaveBeenCalled();
+  });
+
+  it('should log error if socket.send throws', async () => {
+    let mockSocket: MockSocket;
+    mockSocket = {
+      on: jest.fn().mockImplementation((event: any, cb: any): MockSocket => {
+        if (event === 'listening') listeningHandler = cb as () => void;
+        if (event === 'error') errorHandler = cb as (err: Error) => void;
+        return mockSocket;
+      }),
+      bind: jest.fn().mockImplementation((port?: number, cb?: () => void): void => { 
+        // Call listening handler immediately after bind is called successfully
+        if (listeningHandler) {
+          listeningHandler();
+        }
+        if (cb) cb(); 
+      }), // Successful bind
+      setBroadcast: jest.fn(),
+      // Simulate send error by throwing in the implementation
+      send: jest.fn().mockImplementation((): void => { throw new Error('send fail'); }), 
+      close: jest.fn().mockImplementation((cb?: () => void): void => { if (cb) cb(); }),
+      address: jest.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
+      removeAllListeners: jest.fn(),
+    };
+    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocket);
+
+    platform = new RealMod.TfiacPlatform(mockLogger, config, mockAPI);
+    const discoveryPromise = platform['discoverDevicesNetwork'](50); // Trigger discovery directly
+
+    // The error should now be caught by the try/catch around setBroadcast/send
+    await expect(discoveryPromise).rejects.toThrow('send fail');
+
+    // Check if the error was logged by the catch block around send
+    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('Error setting up broadcast:'), expect.any(Error));
+
+    // Ensure socket was closed (cleanup is called after error)
+    expect(mockSocket.close).toHaveBeenCalled();
+  });
 });
