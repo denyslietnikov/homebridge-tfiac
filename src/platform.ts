@@ -642,7 +642,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     
     // Remove Temperature service if disabled
     if (deviceConfig.enableTemperature === false) {
-      // Check for both indoor and outdoor temperature sensors
+      // First try to find temperature sensors by common names
       const temperatureServices = ['Indoor Temperature', 'Outdoor Temperature', 'Temperature Sensor'];
       temperatureServices.forEach(serviceName => {
         const tempService = accessory.getService(serviceName);
@@ -652,13 +652,14 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         }
       });
 
-      // Also check for any TemperatureSensor type services
+      // Then ensure we catch ALL temperature sensor services by UUID regardless of name
       const tempSensorServices = accessory.services.filter(
         service => service.UUID === this.api.hap.Service.TemperatureSensor.UUID,
       );
+      
       tempSensorServices.forEach(service => {
         accessory.removeService(service);
-        this.log.info(`Removed Temperature Sensor service from ${accessory.displayName}`);
+        this.log.info(`Removed temperature sensor service "${service.displayName || 'unnamed'}" from ${accessory.displayName}`);
       });
     }
     
