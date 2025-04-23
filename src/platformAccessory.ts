@@ -50,14 +50,27 @@ export class TfiacPlatformAccessory {
     );
 
     // --- Turbo Switch Service ---
-    this.turboService =
-      this.accessory.getService(this.platform.Service.Switch) ||
-      this.accessory.addService(this.platform.Service.Switch);
-    this.turboService.setCharacteristic(this.platform.Characteristic.Name, 'Turbo');
-    this.turboService
-      .getCharacteristic(this.platform.Characteristic.On)
-      .on('get', this.handleTurboGet.bind(this))
-      .on('set', this.handleTurboSet.bind(this));
+    // Create Turbo service only if enableTurbo is not set to false
+    // (by default we consider enableTurbo as true)
+    if (deviceConfig.enableTurbo !== false) {
+      this.turboService =
+        this.accessory.getService('Turbo') ||
+        this.accessory.addService(this.platform.Service.Switch, 'Turbo', 'turbo');
+      this.turboService.setCharacteristic(this.platform.Characteristic.Name, 'Turbo');
+      this.turboService
+        .getCharacteristic(this.platform.Characteristic.On)
+        .on('get', this.handleTurboGet.bind(this))
+        .on('set', this.handleTurboSet.bind(this));
+    } else {
+      // Don't create Turbo service if enableTurbo=false
+      // Remove existing Turbo service if it was created previously
+      const existingTurboService = this.accessory.getService('Turbo');
+      if (existingTurboService) {
+        this.platform.log.info(`Removing Turbo service for ${deviceConfig.name} as it is disabled in config`);
+        this.accessory.removeService(existingTurboService);
+      }
+      this.turboService = undefined as unknown as Service;
+    }
 
     // --- Temperature Sensor Service ---
     if (deviceConfig.enableTemperature !== false) {
@@ -199,6 +212,11 @@ export class TfiacPlatformAccessory {
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
       this.platform.log.debug('Cached status updated:', status);
+      
+      // Get device config to check enableTemperature setting
+      const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
+      const enableTemperature = deviceConfig.enableTemperature !== false;
+      
       // Update Indoor TemperatureSensor characteristic
       if (this.temperatureSensorService && status) {
         const temperatureCelsius = this.fahrenheitToCelsius(status.current_temp);
@@ -207,8 +225,9 @@ export class TfiacPlatformAccessory {
           temperatureCelsius,
         );
       }
+      
       // --- Outdoor TemperatureSensor ---
-      if (typeof status.outdoor_temp === 'number' && status.outdoor_temp !== 0 && !isNaN(status.outdoor_temp)) {
+      if (enableTemperature && typeof status.outdoor_temp === 'number' && status.outdoor_temp !== 0 && !isNaN(status.outdoor_temp)) {
         if (!this.outdoorTemperatureSensorService) {
           this.outdoorTemperatureSensorService =
             this.accessory.getService('Outdoor Temperature') ||
@@ -230,7 +249,7 @@ export class TfiacPlatformAccessory {
           outdoorCelsius,
         );
       } else if (this.outdoorTemperatureSensorService) {
-        // Remove the service if outdoor_temp is not available or zero
+        // Remove the service if outdoor_temp is not available, zero or temperature sensors are disabled
         this.accessory.removeService(this.outdoorTemperatureSensorService);
         this.outdoorTemperatureSensorService = null;
       }
