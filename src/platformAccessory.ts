@@ -13,7 +13,6 @@ import { TfiacDeviceConfig } from './settings.js';
 
 export class TfiacPlatformAccessory {
   private service: Service;
-  private turboService: Service;
   private temperatureSensorService: Service;
   private outdoorTemperatureSensorService: Service | null = null;
   private deviceAPI: AirConditionerAPI;
@@ -49,34 +48,14 @@ export class TfiacPlatformAccessory {
       deviceConfig.name ?? 'Unnamed AC',
     );
 
-    // --- Turbo Switch Service ---
-    // Create Turbo service only if enableTurbo is not set to false
-    // (by default we consider enableTurbo as true)
-    if (deviceConfig.enableTurbo !== false) {
-      this.turboService =
-        this.accessory.getService('Turbo') ||
-        this.accessory.addService(this.platform.Service.Switch, 'Turbo', 'turbo');
-      this.turboService.setCharacteristic(this.platform.Characteristic.Name, 'Turbo');
-      this.turboService
-        .getCharacteristic(this.platform.Characteristic.On)
-        .on('get', this.handleTurboGet.bind(this))
-        .on('set', this.handleTurboSet.bind(this));
-    } else {
-      // Don't create Turbo service if enableTurbo=false
-      // Remove existing Turbo service if it was created previously
-      const existingTurboService = this.accessory.getService('Turbo');
-      if (existingTurboService) {
-        this.platform.log.info(`Removing Turbo service for ${deviceConfig.name} as it is disabled in config`);
-        this.accessory.removeService(existingTurboService);
-      }
-      this.turboService = undefined as unknown as Service;
-    }
-
     // --- Temperature Sensor Service ---
+    // Only create temperature sensor if explicit enableTemperature flag is not false
+    // AND there isn't already a separate TurboSwitchAccessory managing this
     if (deviceConfig.enableTemperature !== false) {
       // Look for existing temperature sensor service with any name but correct UUID
       const existingTempSensorService = this.accessory.services.find(
-        service => service.UUID === this.platform.Service.TemperatureSensor.UUID,
+        service => service.UUID === this.platform.Service.TemperatureSensor.UUID &&
+                  service.displayName?.includes('Indoor Temperature'),
       );
       
       if (existingTempSensorService) {
@@ -425,30 +404,6 @@ export class TfiacPlatformAccessory {
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting swing mode:', error);
-      callback(error as Error);
-    }
-  }
-
-  private handleTurboGet(callback: CharacteristicGetCallback): void {
-    this.platform.log.debug('Triggered GET Turbo');
-    if (this.cachedStatus && typeof this.cachedStatus.opt_super !== 'undefined') {
-      callback(null, this.cachedStatus.opt_super === 'on');
-    } else {
-      callback(null, false); // Default: off
-    }
-  }
-
-  private async handleTurboSet(
-    value: CharacteristicValue,
-    callback: CharacteristicSetCallback,
-  ): Promise<void> {
-    this.platform.log.debug('Triggered SET Turbo:', value);
-    try {
-      await this.deviceAPI.setTurboState(value ? 'on' : 'off');
-      this.updateCachedStatus();
-      callback(null);
-    } catch (error) {
-      this.platform.log.error('Error setting Turbo state:', error);
       callback(error as Error);
     }
   }

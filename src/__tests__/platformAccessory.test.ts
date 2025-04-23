@@ -1502,27 +1502,6 @@ describe('TfiacPlatformAccessory', () => {
         done();
       });
     });
-    
-    it('should handle API errors in handleTurboSet', (done) => {
-      // Setup Turbo Switch Service with handlers
-      const turboCharacteristic = (accessory as any)
-        .turboService.getCharacteristic('On');
-      const turboSetHandler = turboCharacteristic.setHandler;
-      
-      // Simulate API error
-      const apiError = new Error('API Error');
-      mockApiActions.setTurboState = jest.fn().mockRejectedValueOnce(apiError);
-      
-      // Call the handler
-      turboSetHandler(true, (error) => {
-        expect(error).toBe(apiError);
-        expect(mockLogger.error).toHaveBeenCalledWith(
-          'Error setting Turbo state:',
-          apiError
-        );
-        done();
-      });
-    });
   });
 
   describe('Temperature Display Units Conversion', () => {
@@ -1554,103 +1533,26 @@ describe('TfiacPlatformAccessory', () => {
   });
 
   describe('Turbo Switch Handlers', () => {
-    it('should handle turbo get with cached status showing turbo on', (done) => {
-      // Set cached status with turbo on
-      (accessory as any).cachedStatus = {
-        ...initialStatusFahrenheit,
-        opt_super: 'on'
-      };
-      
-      // Get the handler by accessing it directly from the accessory
-      const handler = (accessory as any).handleTurboGet.bind(accessory);
-      
-      // Call the handler
-      handler((error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(true);
-        done();
-      });
+    // Skip these tests since handleTurboGet and handleTurboSet have been removed
+    // These functions are now handled by TurboSwitchAccessory instead
+    it.skip('should handle turbo get with cached status showing turbo on', (done) => {
+      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
+      done();
     });
     
-    it('should handle turbo get with cached status showing turbo off', (done) => {
-      // Set cached status with turbo off
-      (accessory as any).cachedStatus = {
-        ...initialStatusFahrenheit,
-        opt_super: 'off'
-      };
-      
-      // Get the handler by accessing it directly from the accessory
-      const handler = (accessory as any).handleTurboGet.bind(accessory);
-      
-      // Call the handler
-      handler((error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(false);
-        done();
-      });
+    it.skip('should handle turbo get with cached status showing turbo off', (done) => {
+      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
+      done();
     });
     
-    it('should handle turbo get with cached status not containing opt_super', (done) => {
-      // Set cached status without opt_super
-      (accessory as any).cachedStatus = {
-        ...initialStatusFahrenheit,
-        // No opt_super property
-      };
-      
-      // Get the handler by accessing it directly from the accessory
-      const handler = (accessory as any).handleTurboGet.bind(accessory);
-      
-      // Call the handler
-      handler((error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(false); // Default is false
-        done();
-      });
+    it.skip('should handle turbo get with cached status not containing opt_super', (done) => {
+      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
+      done();
     });
     
-    it('should handle turbo get with no cached status', (done) => {
-      // Set cached status to null
-      (accessory as any).cachedStatus = null;
-      
-      // Get the handler by accessing it directly from the accessory
-      const handler = (accessory as any).handleTurboGet.bind(accessory);
-      
-      // Call the handler
-      handler((error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(false); // Default is false
-        done();
-      });
-    });
-    
-    it('should handle turbo set to on', (done) => {
-      // Mock setTurboState to resolve
-      mockApiActions.setTurboState = jest.fn().mockResolvedValue(undefined);
-      
-      // Get the handler by accessing it directly from the accessory
-      const handler = (accessory as any).handleTurboSet.bind(accessory);
-      
-      // Call the handler
-      handler(true, (error) => {
-        expect(error).toBeNull();
-        expect(mockApiActions.setTurboState).toHaveBeenCalledWith('on');
-        done();
-      });
-    });
-    
-    it('should handle turbo set to off', (done) => {
-      // Mock setTurboState to resolve
-      mockApiActions.setTurboState = jest.fn().mockResolvedValue(undefined);
-      
-      // Get the handler by accessing it directly from the accessory
-      const handler = (accessory as any).handleTurboSet.bind(accessory);
-      
-      // Call the handler
-      handler(false, (error) => {
-        expect(error).toBeNull();
-        expect(mockApiActions.setTurboState).toHaveBeenCalledWith('off');
-        done();
-      });
+    it.skip('should handle turbo get with no cached status', (done) => {
+      // This test is skipped because Turbo functionality has been moved to TurboSwitchAccessory
+      done();
     });
   });
 
