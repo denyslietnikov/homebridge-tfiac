@@ -1,14 +1,12 @@
 import { PlatformAccessory, CharacteristicGetCallback, CharacteristicSetCallback, CharacteristicValue } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import AirConditionerAPI from './AirConditionerAPI.js';
 
 export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
   constructor(
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,

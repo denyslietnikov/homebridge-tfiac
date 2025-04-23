@@ -65,7 +65,8 @@ export abstract class BaseSwitchAccessory {
     const randomDelay = Math.random() * intervalMillis;
 
     this.platform.log.debug(
-      `Starting polling for ${this.logPrefix} on ${this.accessory.displayName} with interval ${intervalSeconds}s after ${Math.round(randomDelay / 1000)}s delay.`,
+      `Starting polling for ${this.logPrefix} on ${this.accessory.displayName} with interval ${intervalSeconds}s after ` +
+      `${Math.round(randomDelay / 1000)}s delay.`,
     );
 
     // Initial update after random delay
@@ -164,7 +165,8 @@ export abstract class BaseSwitchAccessory {
       this.platform.log.info(`${this.logPrefix} successfully set to ${requestedState} for ${this.accessory.displayName}`);
       // Optimistically update cache and characteristic
       if (this.cachedStatus) {
-        (this.cachedStatus as any)[this.statusKey] = requestedState;
+        // Assert that the property corresponding to statusKey accepts 'on' | 'off'
+        (this.cachedStatus as { [k in typeof this.statusKey]?: 'on' | 'off' })[this.statusKey] = requestedState;
       }
       this.service.updateCharacteristic(this.platform.Characteristic.On, value as boolean);
       callback(null);
