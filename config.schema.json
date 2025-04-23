@@ -107,6 +107,11 @@
               "type": "boolean",
               "required": false
             },
+            "enableTemperature": {
+              "title": "Enable Temperature Sensor",
+              "type": "boolean",
+              "required": false
+            },
             "enableFanSpeed": {
               "title": "Enable Fan Speed Control",
               "type": "boolean",

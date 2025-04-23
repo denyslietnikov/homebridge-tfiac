@@ -30,6 +30,7 @@ export interface TfiacDeviceConfig {
     enableEco?: boolean;              // show eco mode switch
     enableBeep?: boolean;             // show beep switch
     enableFanSpeed?: boolean;         // show fan speed control
+    enableTemperature?: boolean;      // show temperature sensor
     [key: string]: string | number | boolean | undefined;  // Add index signature
 }
 
