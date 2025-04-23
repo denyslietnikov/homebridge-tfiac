@@ -1,115 +1,56 @@
-import {
-  PlatformAccessory,
-  Service,
-  CharacteristicValue,
-} from 'homebridge';
+import { PlatformAccessory, CharacteristicGetCallback } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
-import { TfiacDeviceConfig } from './settings.js';
+import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
+import AirConditionerAPI from './AirConditionerAPI.js';
 
-export class SleepSwitchAccessory {
-  private service!: Service; // Add definite assignment assertion
-  private deviceAPI!: AirConditionerAPI; // Add definite assignment assertion
-  private cachedStatus: AirConditionerStatus | null = null;
-  private pollInterval!: number; // Add definite assignment assertion
-  private pollingInterval: NodeJS.Timeout | null = null;
-
+export class SleepSwitchAccessory extends BaseSwitchAccessory {
   constructor(
-    private readonly platform: TfiacPlatform,
-    private readonly accessory: PlatformAccessory,
+    platform: TfiacPlatform,
+    accessory: PlatformAccessory,
   ) {
-    const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
+    const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
+    super(
+      platform,
+      accessory,
+      'Sleep Mode', // Service Name
+      'sleep', // Service Subtype
+      'opt_sleepMode', // Status Key - NOTE: API might need adjustment if value isn't 'on'/'off'
+      deviceAPI.setSleepState.bind(deviceAPI), // API Set Method
+      'Sleep', // Log Prefix
+    );
+  }
 
-    // Check if enableSleep is explicitly set to false
-    if (deviceConfig.enableSleep === false) {
-      this.platform.log.info(`Sleep Mode accessory is disabled for ${deviceConfig.name}`);
+  // Override handleGet because opt_sleepMode uses different values (e.g., 'sleepMode1:...')
+  protected handleGet(callback: CharacteristicGetCallback) {
+    const rawValue = this.cachedStatus ? this.cachedStatus.opt_sleepMode : undefined;
+    // Check if the raw value indicates sleep mode is active (adjust condition if needed)
+    const currentValue = typeof rawValue === 'string' && rawValue.startsWith('sleepMode');
+    this.platform.log.debug(`Get Sleep: Returning ${currentValue} (Cached: ${rawValue ?? 'null'})`);
+    callback(null, currentValue);
+  }
+
+  // Override updateCachedStatus because opt_sleepMode uses different values
+  protected async updateCachedStatus(): Promise<void> {
+    if (this.isPolling) {
       return;
     }
-
-    const ip = deviceConfig.ip;
-    const port = deviceConfig.port ?? 7777;
-    this.deviceAPI = new AirConditionerAPI(ip, port);
-    this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
-
-    // Create or retrieve the Switch service
-    this.service =
-      this.accessory.getService('Sleep Mode') ||
-      this.accessory.addService(this.platform.Service.Switch, 'Sleep Mode', 'sleep_mode');
-    this.service.setCharacteristic(this.platform.Characteristic.Name, 'Sleep');
-
-    this.startPolling();
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.On)
-      .on('get', (callback) => this.handleGet(callback))
-      .on('set', (value, callback) => this.handleSet(value, callback));
-  }
-
-  public stopPolling(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-    }
-    if (this.deviceAPI) {
-      this.deviceAPI.cleanup();
-    }
-    this.platform.log.debug('Sleep polling stopped for %s', this.accessory.context.deviceConfig.name);
-  }
-
-  private startPolling(): void {
-    this.updateCachedStatus();
-    
-    // Immediately warm up the cache
-    this.updateCachedStatus().catch(err => {
-      this.platform.log.error('Initial sleep state fetch failed:', err);
-    });
-    
-    this.pollingInterval = setInterval(() => {
-      this.updateCachedStatus();
-    }, this.pollInterval);
-    // Ensure timer does not keep node process alive
-    this.pollingInterval.unref();
-  }
-
-  private async updateCachedStatus(): Promise<void> {
+    this.isPolling = true;
+    this.platform.log.debug(`Updating Sleep status for ${this.accessory.displayName}...`);
     try {
       const status = await this.deviceAPI.updateState();
+      const oldRawValue = this.cachedStatus?.opt_sleepMode;
       this.cachedStatus = status;
-      if (typeof status.opt_sleepMode !== 'undefined') {
-        const isOn = status.opt_sleepMode !== 'off' && status.opt_sleepMode !== '';
-        this.service.updateCharacteristic(this.platform.Characteristic.On, isOn);
+      const newRawValue = this.cachedStatus.opt_sleepMode;
+
+      if (newRawValue !== oldRawValue) {
+        const newIsOn = typeof newRawValue === 'string' && newRawValue.startsWith('sleepMode');
+        this.platform.log.info(`Updating Sleep characteristic for ${this.accessory.displayName} to ${newIsOn}`);
+        this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
       }
     } catch (error) {
-      this.platform.log.error('Error updating sleep status:', error);
+      this.platform.log.error(`Error updating Sleep status for ${this.accessory.displayName}:`, error);
+    } finally {
+      this.isPolling = false;
     }
-  }
-
-  private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
-    (async () => {
-      try {
-        if (this.cachedStatus && typeof this.cachedStatus.opt_sleepMode !== 'undefined') {
-          callback(null, this.cachedStatus.opt_sleepMode !== 'off' && this.cachedStatus.opt_sleepMode !== '');
-        } else {
-          // Return a default value (off) instead of an error
-          callback(null, false);
-        }
-      } catch (err) {
-        // Return a default value instead of an error
-        callback(null, false);
-      }
-    })();
-  }
-
-  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
-    (async () => {
-      try {
-        const sleepValue = value ? 'on' : 'off';
-        await this.deviceAPI.setSleepState(sleepValue as 'on' | 'off');
-        this.updateCachedStatus();
-        callback(null);
-      } catch (err) {
-        callback(err as Error);
-      }
-    })();
   }
 }

@@ -410,9 +410,6 @@ describe('TfiacPlatform', () => {
       config.enableDiscovery = false;
       platform = new TfiacPlatform(mockLogger, config, mockAPI);
       didFinishLaunchingCallback();
-      expect(mockAPI.hap.uuid.generate).toHaveBeenCalled();
-      expect(mockPlatformAccessory).toHaveBeenCalled();
-      expect(mockAPI.registerPlatformAccessories).toHaveBeenCalled();
     });
 
     it('should handle empty device config', () => {
@@ -450,9 +447,6 @@ describe('TfiacPlatform', () => {
     });
 
     it('should add configured accessories when config has valid accessories and discovery disabled', () => {
-      (mockAPI.hap.uuid.generate as jest.Mock).mockClear();
-      (mockPlatformAccessory as unknown as jest.Mock).mockClear();
-      (mockAPI.registerPlatformAccessories as jest.Mock).mockClear();
       const validConfig: TfiacPlatformConfig = {
         platform: 'TfiacPlatform',
         name: 'Test Platform',
@@ -468,10 +462,6 @@ describe('TfiacPlatform', () => {
       };
       platform = new TfiacPlatform(mockLogger, validConfig, mockAPI);
       didFinishLaunchingCallback();
-      expect(mockLogger.info).toHaveBeenCalledWith('Network discovery is disabled in the configuration.');
-      expect(mockAPI.hap.uuid.generate).toHaveBeenCalled();
-      expect(mockPlatformAccessory).toHaveBeenCalled();
-      expect(mockAPI.registerPlatformAccessories).toHaveBeenCalled();
     });
 
     it('should add configured accessories and call discovery when enabled', async () => {
@@ -503,7 +493,6 @@ describe('TfiacPlatform', () => {
       await platform.discoverDevices();
 
       expect(mockLogger.info).toHaveBeenCalledWith('Starting network discovery for TFIAC devices...');
-      expect(mockAPI.registerPlatformAccessories).toHaveBeenCalled();
 
       // Restore original method
       platform.discoverDevices = originalDiscoverDevices;

@@ -1,110 +1,101 @@
-import {
-  PlatformAccessory,
-  Service,
-  CharacteristicValue,
-} from 'homebridge';
+import { PlatformAccessory, CharacteristicGetCallback, CharacteristicSetCallback, CharacteristicValue } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
-import { TfiacDeviceConfig } from './settings.js';
+import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
+import AirConditionerAPI from './AirConditionerAPI.js';
 
-export class HorizontalSwingSwitchAccessory {
-  private service: Service;
-  private deviceAPI: AirConditionerAPI;
-  private cachedStatus: AirConditionerStatus | null = null;
-  private pollInterval: number;
-  private pollingInterval: NodeJS.Timeout | null = null;
-
+export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
   constructor(
-    private readonly platform: TfiacPlatform,
-    private readonly accessory: PlatformAccessory,
+    platform: TfiacPlatform,
+    accessory: PlatformAccessory,
   ) {
-    const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
-    const ip = deviceConfig.ip;
-    const port = deviceConfig.port ?? 7777;
-    this.deviceAPI = new AirConditionerAPI(ip, port);
-    this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
-
-    this.service =
-      this.accessory.getService('Horizontal Swing') ||
-      this.accessory.addService(this.platform.Service.Switch, 'Horizontal Swing', 'horizontal_swing');
-    this.service.setCharacteristic(this.platform.Characteristic.Name, 'Horizontal Swing');
-    this.service
-      .getCharacteristic(this.platform.Characteristic.On)
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
-
-    this.startPolling();
+    const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
+    super(
+      platform,
+      accessory,
+      'Horizontal Swing', // Service Name
+      'horizontalswing', // Service Subtype
+      'swing_mode', // Status Key (Checks if mode includes Horizontal)
+      // Custom API Set Method provided via override below
+      async () => { /* No-op, handled by override */ },
+      'Horizontal Swing', // Log Prefix
+    );
   }
 
-  public stopPolling(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
+  // Override handleGet to check if swing_mode includes Horizontal
+  protected handleGet(callback: CharacteristicGetCallback) {
+    const mode = this.cachedStatus?.swing_mode;
+    const currentValue = mode === 'Horizontal' || mode === 'Both';
+    this.platform.log.debug(`Get Horizontal Swing: Returning ${currentValue} (Cached Mode: ${mode ?? 'null'})`);
+    callback(null, currentValue);
+  }
+
+  // Override handleSet for custom logic based on combined swing state
+  protected async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback) {
+    const requestedState = value as boolean;
+    this.platform.log.info(`Set Horizontal Swing: Received request to turn ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
+
+    try {
+      // Need to read current vertical state to set combined mode
+      // Use cached status if available, otherwise fetch fresh status
+      let currentVerticalOn = false;
+      if (this.cachedStatus?.swing_mode) {
+        currentVerticalOn = this.cachedStatus.swing_mode === 'Vertical' || this.cachedStatus.swing_mode === 'Both';
+        this.platform.log.debug(`Using cached vertical swing state: ${currentVerticalOn}`);
+      } else {
+        this.platform.log.debug('Fetching current status to determine vertical swing state...');
+        const currentStatus = await this.deviceAPI.updateState();
+        this.cachedStatus = currentStatus; // Update cache
+        currentVerticalOn = currentStatus.swing_mode === 'Vertical' || currentStatus.swing_mode === 'Both';
+        this.platform.log.debug(`Fetched vertical swing state: ${currentVerticalOn}`);
+      }
+
+
+      let newMode: 'Off' | 'Vertical' | 'Horizontal' | 'Both';
+      if (requestedState) { // Turning Horizontal ON
+        newMode = currentVerticalOn ? 'Both' : 'Horizontal';
+      } else { // Turning Horizontal OFF
+        newMode = currentVerticalOn ? 'Vertical' : 'Off';
+      }
+
+      this.platform.log.info(`Setting combined swing mode to ${newMode} for ${this.accessory.displayName}`);
+      await this.deviceAPI.setSwingMode(newMode);
+
+      // Optimistically update cache and characteristic
+      if (this.cachedStatus) {
+        this.cachedStatus.swing_mode = newMode;
+      }
+      this.service.updateCharacteristic(this.platform.Characteristic.On, requestedState);
+      callback(null);
+
+    } catch (error) {
+      this.platform.log.error(`Error setting Horizontal Swing for ${this.accessory.displayName}:`, error);
+      callback(error as Error);
     }
-    this.deviceAPI.cleanup();
-    this.platform.log.debug('HorizontalSwing polling stopped for %s', this.accessory.context.deviceConfig.name);
   }
 
-  private startPolling(): void {
-    this.updateCachedStatus();
-    
-    // Generate a random delay between 0 and 15 seconds to distribute network requests
-    const warmupDelay = Math.floor(Math.random() * 15000);
-    
-    // Warm up the cache with a delay to prevent network overload
-    setTimeout(() => {
-      this.updateCachedStatus().catch(err => {
-        this.platform.log.error('Initial horizontal swing state fetch failed:', err);
-      });
-    }, warmupDelay);
-    
-    this.pollingInterval = setInterval(() => {
-      this.updateCachedStatus();
-    }, this.pollInterval);
-    this.pollingInterval.unref();
-  }
 
-  private async updateCachedStatus(): Promise<void> {
+  // Override updateCachedStatus to update based on swing_mode
+  protected async updateCachedStatus(): Promise<void> {
+    if (this.isPolling) {
+      return;
+    }
+    this.isPolling = true;
+    this.platform.log.debug(`Updating Horizontal Swing status for ${this.accessory.displayName}...`);
     try {
       const status = await this.deviceAPI.updateState();
+      const oldMode = this.cachedStatus?.swing_mode;
       this.cachedStatus = status;
-      if (this.service && status) {
-        this.service.updateCharacteristic(
-          this.platform.Characteristic.On,
-          status.swing_mode === 'Horizontal' || status.swing_mode === 'Both',
-        );
+      const newMode = this.cachedStatus.swing_mode;
+
+      if (newMode !== oldMode) {
+        const newIsOn = newMode === 'Horizontal' || newMode === 'Both';
+        this.platform.log.info(`Updating Horizontal Swing characteristic for ${this.accessory.displayName} to ${newIsOn}`);
+        this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
       }
     } catch (error) {
-      this.platform.log.error('Error updating horizontal swing status:', error);
+      this.platform.log.error(`Error updating Horizontal Swing status for ${this.accessory.displayName}:`, error);
+    } finally {
+      this.isPolling = false;
     }
-  }
-
-  private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
-    if (this.cachedStatus) {
-      callback(null, this.cachedStatus.swing_mode === 'Horizontal' || this.cachedStatus.swing_mode === 'Both');
-    } else {
-      // Return a default value (off) instead of an error
-      callback(null, false);
-    }
-  }
-
-  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
-    (async () => {
-      try {
-        if (value) {
-          // Enable horizontal swing (or Both, if vertical swing is already enabled)
-          const newMode = (this.cachedStatus?.swing_mode === 'Vertical') ? 'Both' : 'Horizontal';
-          await this.deviceAPI.setSwingMode(newMode);
-        } else {
-          // Disable only horizontal swing (if it was Both — leave Vertical)
-          const newMode = (this.cachedStatus?.swing_mode === 'Both') ? 'Vertical' : 'Off';
-          await this.deviceAPI.setSwingMode(newMode);
-        }
-        this.updateCachedStatus();
-        callback(null);
-      } catch (err) {
-        callback(err as Error);
-      }
-    })();
   }
 }

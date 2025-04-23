@@ -30,6 +30,13 @@ interface DiscoveredDevice {
   port?: number; // Port might be discovered or assumed
 }
 
+// Define a type for the service removal configuration
+type ServiceRemovalConfig = {
+  configFlag: keyof TfiacDeviceConfig;
+  serviceName: string;
+  logMessage: string;
+};
+
 export class TfiacPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
@@ -545,97 +552,48 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
    * @param deviceConfig - The configuration for the device.
    */
   private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
-    // Remove Display Switch service if disabled
-    if (deviceConfig.enableDisplay === false) {
-      const displayService = accessory.getService('Display');
-      if (displayService) {
-        accessory.removeService(displayService);
-        this.log.info(`Removed Display Switch service from ${accessory.displayName}`);
-      }
-    }
+    const servicesToRemove: ServiceRemovalConfig[] = [
+      { configFlag: 'enableDisplay', serviceName: 'Display', logMessage: 'Display Switch' },
+      { configFlag: 'enableSleep', serviceName: 'Sleep Mode', logMessage: 'Sleep Switch' },
+      { configFlag: 'enableFanSpeed', serviceName: 'Fan Speed', logMessage: 'Fan Speed' },
+      { configFlag: 'enableDry', serviceName: 'Dry Mode', logMessage: 'Dry Mode' },
+      { configFlag: 'enableFanOnly', serviceName: 'Fan Only Mode', logMessage: 'Fan Only Mode' },
+      { configFlag: 'enableStandaloneFan', serviceName: 'Standalone Fan', logMessage: 'Standalone Fan' },
+      { configFlag: 'enableHorizontalSwing', serviceName: 'Horizontal Swing', logMessage: 'Horizontal Swing' },
+      { configFlag: 'enableTurbo', serviceName: 'Turbo', logMessage: 'Turbo' },
+      { configFlag: 'enableEco', serviceName: 'ECO Mode', logMessage: 'Eco' },
+      { configFlag: 'enableBeep', serviceName: 'Beep', logMessage: 'Beep' },
+    ];
 
-    // Remove Sleep Switch service if disabled
-    if (deviceConfig.enableSleep === false) {
-      const sleepService = accessory.getService('Sleep Mode');
-      if (sleepService) {
-        accessory.removeService(sleepService);
-        this.log.info(`Removed Sleep Switch service from ${accessory.displayName}`);
-      }
-    }
+    let serviceRemoved = false;
 
-    // Remove Fan Speed service if disabled
-    if (deviceConfig.enableFanSpeed === false) {
-      const fanSpeedService = accessory.getService('Fan Speed');
-      if (fanSpeedService) {
-        accessory.removeService(fanSpeedService);
-        this.log.info(`Removed Fan Speed service from ${accessory.displayName}`);
-      }
-    }
+    servicesToRemove.forEach(({ configFlag, serviceName, logMessage }) => {
+      if (deviceConfig[configFlag] === false) {
+        // Try finding by name first (for accessories created with specific names)
+        let service = accessory.getService(serviceName);
+        // If not found by name, try finding by subtype (for accessories created with subtypes)
+        if (!service) {
+          // Generate potential subtype from serviceName (lowercase, no spaces)
+          const subtype = serviceName.toLowerCase().replace(/ /g, '');
+          // Assume Switch service for these optional accessories
+          service = accessory.getServiceById(this.Service.Switch.UUID, subtype);
+          // Add specific checks if other service types are used (e.g., Fanv2 for FanSpeed)
+          if (!service && serviceName === 'Fan Speed') {
+            service = accessory.getServiceById(this.Service.Fanv2.UUID, 'fanspeed');
+          }
+        }
 
-    // Remove Dry Mode service if disabled
-    if (deviceConfig.enableDry === false) {
-      const dryService = accessory.getService('Dry Mode');
-      if (dryService) {
-        accessory.removeService(dryService);
-        this.log.info(`Removed Dry Mode service from ${accessory.displayName}`);
+        if (service) {
+          accessory.removeService(service);
+          this.log.info(`Removed ${logMessage} service from ${accessory.displayName}`);
+          serviceRemoved = true;
+        } else {
+          this.log.debug(`${logMessage} service already disabled or not found for ${accessory.displayName}.`);
+        }
       }
-    }
+    });
 
-    // Remove Fan Only Mode service if disabled
-    if (deviceConfig.enableFanOnly === false) {
-      const fanOnlyService = accessory.getService('Fan Only Mode');
-      if (fanOnlyService) {
-        accessory.removeService(fanOnlyService);
-        this.log.info(`Removed Fan Only Mode service from ${accessory.displayName}`);
-      }
-    }
-
-    // Remove Standalone Fan service if disabled
-    if (deviceConfig.enableStandaloneFan === false) {
-      const standaloneFanService = accessory.getService('Standalone Fan');
-      if (standaloneFanService) {
-        accessory.removeService(standaloneFanService);
-        this.log.info(`Removed Standalone Fan service from ${accessory.displayName}`);
-      }
-    }
-
-    // Remove Horizontal Swing service if disabled
-    if (deviceConfig.enableHorizontalSwing === false) {
-      const horizontalSwingService = accessory.getService('Horizontal Swing');
-      if (horizontalSwingService) {
-        accessory.removeService(horizontalSwingService);
-        this.log.info(`Removed Horizontal Swing service from ${accessory.displayName}`);
-      }
-    }
-
-    // Remove Turbo Mode service if disabled
-    if (deviceConfig.enableTurbo === false) {
-      const turboService = accessory.getService('Turbo');
-      if (turboService) {
-        accessory.removeService(turboService);
-        this.log.info(`Removed Turbo service from ${accessory.displayName}`);
-      }
-    }
-
-    // Remove Eco Mode service if disabled
-    if (deviceConfig.enableEco === false) {
-      const ecoService = accessory.getService('Eco');
-      if (ecoService) {
-        accessory.removeService(ecoService);
-        this.log.info(`Removed Eco service from ${accessory.displayName}`);
-      }
-    }
-
-    // Remove Beep service if disabled
-    if (deviceConfig.enableBeep === false) {
-      const beepService = accessory.getService('Beep');
-      if (beepService) {
-        accessory.removeService(beepService);
-        this.log.info(`Removed Beep service from ${accessory.displayName}`);
-      }
-    }
-    
-    // Remove Temperature service if disabled
+    // Special handling for Temperature Sensor(s) - potentially multiple
     if (deviceConfig.enableTemperature === false) {
       // Find ALL temperature sensor services by UUID, regardless of name or subtype
       const tempSensorServices = accessory.services.filter(
@@ -647,13 +605,19 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         tempSensorServices.forEach(service => {
           accessory.removeService(service);
           this.log.debug(`Removed temperature sensor service "${service.displayName || 'unnamed'}" (UUID: ${service.UUID}, Subtype: ${service.subtype})`);
+          serviceRemoved = true;
         });
       } else {
         this.log.debug(`Temperature sensor already disabled or not found for ${accessory.displayName}.`);
       }
     }
-    
-    // Apply the updated accessory to HomeKit to ensure changes take effect
-    this.api.updatePlatformAccessories([accessory]);
+
+    // Apply the updated accessory to HomeKit only if changes were made
+    if (serviceRemoved) {
+      this.log.info(`Updating accessory ${accessory.displayName} after removing disabled services.`);
+      this.api.updatePlatformAccessories([accessory]);
+    } else {
+      this.log.debug(`No services needed removal for ${accessory.displayName}.`);
+    }
   }
 }

@@ -1,102 +1,61 @@
-import {
-  PlatformAccessory,
-  Service,
-  CharacteristicValue,
-} from 'homebridge';
+import { PlatformAccessory, CharacteristicGetCallback } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
-import { TfiacDeviceConfig } from './settings.js';
+import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
+import AirConditionerAPI from './AirConditionerAPI.js';
 
-export class DrySwitchAccessory {
-  private service: Service;
-  private deviceAPI: AirConditionerAPI;
-  private cachedStatus: AirConditionerStatus | null = null;
-  private pollInterval: number;
-  private pollingInterval: NodeJS.Timeout | null = null;
-
+export class DrySwitchAccessory extends BaseSwitchAccessory {
   constructor(
-    private readonly platform: TfiacPlatform,
-    private readonly accessory: PlatformAccessory,
+    platform: TfiacPlatform,
+    accessory: PlatformAccessory,
   ) {
-    const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
-    const ip = deviceConfig.ip;
-    const port = deviceConfig.port ?? 7777;
-    this.deviceAPI = new AirConditionerAPI(ip, port);
-    this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
-
-    this.service =
-      this.accessory.getService('Dry Mode') ||
-      this.accessory.addService(this.platform.Service.Switch, 'Dry Mode', 'dry_mode');
-    this.service.setCharacteristic(this.platform.Characteristic.Name, 'Dry Mode');
-    this.service
-      .getCharacteristic(this.platform.Characteristic.On)
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
-
-    this.startPolling();
+    const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
+    super(
+      platform,
+      accessory,
+      'Dry Mode', // Service Name
+      'dry', // Service Subtype
+      'operation_mode', // Status Key (Checks if current mode is 'dehumi')
+      async (value: 'on' | 'off') => { // Custom API Set Method
+        if (value === 'on') {
+          await deviceAPI.setAirConditionerState('operation_mode', 'dehumi');
+        } else {
+          // Revert to Auto or Cool when turned off? Or rely on main accessory?
+          // Assuming we revert to Auto for now. Adjust if needed.
+          await deviceAPI.setAirConditionerState('operation_mode', 'auto');
+        }
+      },
+      'Dry Mode', // Log Prefix
+    );
   }
 
-  public stopPolling(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
+  // Override handleGet to check if operation_mode is 'dehumi'
+  protected handleGet(callback: CharacteristicGetCallback) {
+    const currentValue = this.cachedStatus ? this.cachedStatus.operation_mode === 'dehumi' : false;
+    this.platform.log.debug(`Get Dry Mode: Returning ${currentValue} (Cached Mode: ${this.cachedStatus?.operation_mode ?? 'null'})`);
+    callback(null, currentValue);
+  }
+
+  // Override updateCachedStatus to update based on operation_mode
+  protected async updateCachedStatus(): Promise<void> {
+    if (this.isPolling) {
+      return;
     }
-    this.deviceAPI.cleanup();
-    this.platform.log.debug('DrySwitch polling stopped for %s', this.accessory.context.deviceConfig.name);
-  }
-
-  private startPolling(): void {
-    this.updateCachedStatus();
-    
-    // Immediately warm up the cache
-    this.updateCachedStatus().catch(err => {
-      this.platform.log.error('Initial dry mode state fetch failed:', err);
-    });
-    
-    this.pollingInterval = setInterval(() => {
-      this.updateCachedStatus();
-    }, this.pollInterval);
-    this.pollingInterval.unref();
-  }
-
-  private async updateCachedStatus(): Promise<void> {
+    this.isPolling = true;
+    this.platform.log.debug(`Updating Dry Mode status for ${this.accessory.displayName}...`);
     try {
       const status = await this.deviceAPI.updateState();
+      const oldIsOn = this.cachedStatus ? this.cachedStatus.operation_mode === 'dehumi' : false;
       this.cachedStatus = status;
-      if (this.service && status) {
-        this.service.updateCharacteristic(
-          this.platform.Characteristic.On,
-          status.operation_mode === 'dry',
-        );
+      const newIsOn = this.cachedStatus.operation_mode === 'dehumi';
+
+      if (newIsOn !== oldIsOn) {
+        this.platform.log.info(`Updating Dry Mode characteristic for ${this.accessory.displayName} to ${newIsOn}`);
+        this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
       }
     } catch (error) {
-      this.platform.log.error('Error updating dry mode status:', error);
+      this.platform.log.error(`Error updating Dry Mode status for ${this.accessory.displayName}:`, error);
+    } finally {
+      this.isPolling = false;
     }
-  }
-
-  private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
-    if (this.cachedStatus) {
-      callback(null, this.cachedStatus.operation_mode === 'dry');
-    } else {
-      // Return a default value (off) instead of an error
-      callback(null, false);
-    }
-  }
-
-  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
-    (async () => {
-      try {
-        if (value) {
-          await this.deviceAPI.setAirConditionerState('operation_mode', 'dry');
-        } else {
-          // Default to 'auto' when turning off dry mode
-          await this.deviceAPI.setAirConditionerState('operation_mode', 'auto');
-        }
-        this.updateCachedStatus();
-        callback(null);
-      } catch (err) {
-        callback(err as Error);
-      }
-    })();
   }
 }
