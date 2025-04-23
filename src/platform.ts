@@ -610,15 +610,11 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     // Remove Turbo Mode service if disabled
     if (deviceConfig.enableTurbo === false) {
-      // Check for all possible variations of the Turbo service name
-      const turboServices = ['Turbo', 'Turbo Mode', 'Turbo Switch'];
-      turboServices.forEach(serviceName => {
-        const turboService = accessory.getService(serviceName);
-        if (turboService) {
-          accessory.removeService(turboService);
-          this.log.info(`Removed ${serviceName} service from ${accessory.displayName}`);
-        }
-      });
+      const turboService = accessory.getService('Turbo');
+      if (turboService) {
+        accessory.removeService(turboService);
+        this.log.info(`Removed Turbo service from ${accessory.displayName}`);
+      }
     }
 
     // Remove Eco Mode service if disabled
@@ -626,7 +622,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       const ecoService = accessory.getService('Eco');
       if (ecoService) {
         accessory.removeService(ecoService);
-        this.log.info(`Removed Eco Mode service from ${accessory.displayName}`);
+        this.log.info(`Removed Eco service from ${accessory.displayName}`);
       }
     }
 
@@ -641,25 +637,20 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     
     // Remove Temperature service if disabled
     if (deviceConfig.enableTemperature === false) {
-      // First try to find temperature sensors by common names
-      const temperatureServices = ['Indoor Temperature', 'Outdoor Temperature', 'Temperature Sensor'];
-      temperatureServices.forEach(serviceName => {
-        const tempService = accessory.getService(serviceName);
-        if (tempService) {
-          accessory.removeService(tempService);
-          this.log.info(`Removed ${serviceName} service from ${accessory.displayName}`);
-        }
-      });
-
-      // Then ensure we catch ALL temperature sensor services by UUID regardless of name
+      // Find ALL temperature sensor services by UUID, regardless of name or subtype
       const tempSensorServices = accessory.services.filter(
         service => service.UUID === this.api.hap.Service.TemperatureSensor.UUID,
       );
-      
-      tempSensorServices.forEach(service => {
-        accessory.removeService(service);
-        this.log.info(`Removed temperature sensor service "${service.displayName || 'unnamed'}" from ${accessory.displayName}`);
-      });
+
+      if (tempSensorServices.length > 0) {
+        this.log.info(`Temperature sensor is disabled for ${accessory.displayName}. Removing ${tempSensorServices.length} sensor(s).`);
+        tempSensorServices.forEach(service => {
+          accessory.removeService(service);
+          this.log.debug(`Removed temperature sensor service "${service.displayName || 'unnamed'}" (UUID: ${service.UUID}, Subtype: ${service.subtype})`);
+        });
+      } else {
+        this.log.debug(`Temperature sensor already disabled or not found for ${accessory.displayName}.`);
+      }
     }
     
     // Apply the updated accessory to HomeKit to ensure changes take effect
