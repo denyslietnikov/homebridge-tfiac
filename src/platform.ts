@@ -337,6 +337,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           } else if (deviceConfigForAccessory.enableBeep === false) {
             this.log.info(`Skipping Beep Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
+          // Remove any services for disabled features before registering the accessory
+          this.removeDisabledServices(accessory, deviceConfigForAccessory);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -609,11 +611,15 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     // Remove Turbo Mode service if disabled
     if (deviceConfig.enableTurbo === false) {
-      const turboService = accessory.getService('Turbo');
-      if (turboService) {
-        accessory.removeService(turboService);
-        this.log.info(`Removed Turbo Mode service from ${accessory.displayName}`);
-      }
+      // Check for all possible variations of the Turbo service name
+      const turboServices = ['Turbo', 'Turbo Mode', 'Turbo Switch'];
+      turboServices.forEach(serviceName => {
+        const turboService = accessory.getService(serviceName);
+        if (turboService) {
+          accessory.removeService(turboService);
+          this.log.info(`Removed ${serviceName} service from ${accessory.displayName}`);
+        }
+      });
     }
 
     // Remove Eco Mode service if disabled
@@ -632,6 +638,28 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         accessory.removeService(beepService);
         this.log.info(`Removed Beep service from ${accessory.displayName}`);
       }
+    }
+    
+    // Remove Temperature service if disabled
+    if (deviceConfig.enableTemperature === false) {
+      // Check for both indoor and outdoor temperature sensors
+      const temperatureServices = ['Indoor Temperature', 'Outdoor Temperature', 'Temperature Sensor'];
+      temperatureServices.forEach(serviceName => {
+        const tempService = accessory.getService(serviceName);
+        if (tempService) {
+          accessory.removeService(tempService);
+          this.log.info(`Removed ${serviceName} service from ${accessory.displayName}`);
+        }
+      });
+
+      // Also check for any TemperatureSensor type services
+      const tempSensorServices = accessory.services.filter(
+        service => service.UUID === this.api.hap.Service.TemperatureSensor.UUID,
+      );
+      tempSensorServices.forEach(service => {
+        accessory.removeService(service);
+        this.log.info(`Removed Temperature Sensor service from ${accessory.displayName}`);
+      });
     }
     
     // Apply the updated accessory to HomeKit to ensure changes take effect

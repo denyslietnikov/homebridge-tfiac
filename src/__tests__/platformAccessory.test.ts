@@ -1,3 +1,4 @@
+// @ts-nocheck
 // platformAccessory.test.ts
 
 import {
@@ -9,6 +10,7 @@ import {
   Categories,
   Logger,
   API,
+  Service,
 } from 'homebridge';
 import { TfiacPlatform } from '../platform';
 import { TfiacPlatformAccessory } from '../platformAccessory';
@@ -19,13 +21,14 @@ import { jest, describe, beforeEach, afterEach, it, expect, beforeAll } from '@j
 // --- Mock AirConditionerAPI ---
 
 const mockApiActions = {
-  updateState: jest.fn<() => Promise<AirConditionerStatus>>(),
-  turnOn: jest.fn<() => Promise<void>>(),
-  turnOff: jest.fn<() => Promise<void>>(),
-  setAirConditionerState: jest.fn<(key: string, value: string | number) => Promise<void>>(),
-  setFanSpeed: jest.fn<(value: string) => Promise<void>>(),
-  setSwingMode: jest.fn<(value: string) => Promise<void>>(),
-  cleanup: jest.fn<() => Promise<void>>(),
+  updateState: jest.fn<Promise<AirConditionerStatus>, []>(),
+  turnOn: jest.fn<Promise<void>, []>(),
+  turnOff: jest.fn<Promise<void>, []>(),
+  setAirConditionerState: jest.fn<Promise<void>, []>(),
+  setFanSpeed: jest.fn<Promise<void>, []>(),
+  setSwingMode: jest.fn<Promise<void>, []>(),
+  setTurboState: jest.fn<Promise<void>, []>(),
+  cleanup: jest.fn<Promise<void>, []>(),
 };
 
 jest.mock('../AirConditionerAPI', () => {
@@ -80,9 +83,9 @@ const createMockCharacteristic = (): MockCharacteristic => {
 };
 
 // --- Factory for Mock Service ---
-const createMockService = (): MockService => {
+const createMockService = (): any => {
   const characteristics = new Map<string, MockCharacteristic>();
-  const mockSvc: MockService = {
+  const mockSvc: any = {
     characteristics,
     getCharacteristic: jest.fn(
       (charIdentifier: string | typeof Characteristic) => {
@@ -97,15 +100,22 @@ const createMockService = (): MockService => {
     setCharacteristic: jest.fn(function(this: MockService, charIdentifier: string | typeof Characteristic, value: CharacteristicValue) {
       const mockChar = this.getCharacteristic(charIdentifier); mockChar.updateValue(value); return this;
     }),
+    updateCharacteristic: jest.fn(function(this: MockService, charIdentifier: string | typeof Characteristic, value: any) {
+      return this.setCharacteristic(charIdentifier, value);
+    }),
   };
   return mockSvc;
 };
 
 // --- Mock Homebridge HAP Definitions ---
 const hapIdentifiers = {
-  Service: { HeaterCooler: 'HeaterCooler' },
+  Service: { 
+    HeaterCooler: 'HeaterCooler',
+    TemperatureSensor: 'TemperatureSensor'
+  },
   Characteristic: {
     Name: 'Name',
+    On: 'On',
     Active: 'Active',
     CurrentHeaterCoolerState: 'CurrentHeaterCoolerState',
     TargetHeaterCoolerState: 'TargetHeaterCoolerState',
@@ -130,6 +140,7 @@ const hapConstants = {
     CoolingThresholdTemperature: { UUID: hapIdentifiers.Characteristic.CoolingThresholdTemperature },
     HeatingThresholdTemperature: { UUID: hapIdentifiers.Characteristic.HeatingThresholdTemperature },
     RotationSpeed: { UUID: hapIdentifiers.Characteristic.RotationSpeed },
+    On: { UUID: hapIdentifiers.Characteristic.On },
   },
 };
 
@@ -211,8 +222,8 @@ describe('TfiacPlatformAccessory', () => {
       displayName: deviceConfig.name,
       UUID: 'test-accessory-uuid',
       category: Categories.AIR_CONDITIONER,
-      getService: jest.fn().mockReturnValue(mockServiceInstance),
-      addService: jest.fn().mockReturnValue(mockServiceInstance),
+      getService: jest.fn().mockReturnValue(mockServiceInstance) as any,
+      addService: jest.fn().mockReturnValue(mockServiceInstance) as any,
       services: [mockServiceInstance as unknown],
       on: jest.fn(),
       emit: jest.fn(),
@@ -1247,4 +1258,418 @@ describe('TfiacPlatformAccessory', () => {
     });
   });
 
-}); // End TfiacPlatformAccessory Suite
+  describe('Constructor and Initialization', () => {
+    it('should initialize with temperature sensor disabled', () => {
+      // Create a new accessory with enableTemperature set to false
+      const deviceConfigWithTempDisabled = {
+        ...deviceConfig,
+        enableTemperature: false
+      };
+      
+      mockAccessoryInstance.context.deviceConfig = deviceConfigWithTempDisabled;
+      const existingTempService = createMockService();
+      mockAccessoryInstance.getService = jest.fn().mockImplementation((service) => {
+        if (service === hapIdentifiers.Service.TemperatureSensor) {
+          return existingTempService;
+        }
+        return mockServiceInstance;
+      }) as jest.MockedFunction<PlatformAccessory['getService']>;
+      mockAccessoryInstance.removeService = jest.fn();
+      
+      // Create accessory with temperature sensor disabled
+      const newAccessory = new TfiacPlatformAccessory(mockPlatform, mockAccessoryInstance);
+      
+      // Verify the temperature sensor was removed
+      expect(mockAccessoryInstance.removeService).toHaveBeenCalledWith(existingTempService);
+      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Temperature sensor is disabled'));
+    });
+    
+    it('should handle outdoor temperature in cached status updates', async () => {
+      // Set up mock for updateState to return a status with outdoor_temp
+      const statusWithOutdoorTemp = {
+        ...initialStatusFahrenheit,
+        outdoor_temp: 59 // about 15°C
+      };
+      mockApiActions.updateState.mockResolvedValueOnce(statusWithOutdoorTemp);
+      
+      // Create a new accessory
+      const newAccessory = new TfiacPlatformAccessory(mockPlatform, mockAccessoryInstance);
+      
+      // Mock the accessory.getService and addService for outdoor temperature
+      const outdoorTempService = createMockService();
+      mockAccessoryInstance.getService = (jest.fn().mockImplementation((serviceName: any) => {
+        if (serviceName === 'Outdoor Temperature') {
+          return null; // First call will return null to trigger addService
+        }
+        return mockServiceInstance;
+      })) as unknown as PlatformAccessory['getService'];
+      
+      mockAccessoryInstance.addService = (jest.fn().mockImplementation((service, name) => {
+        if (name === 'Outdoor Temperature') {
+          return outdoorTempService;
+        }
+        return mockServiceInstance;
+      })) as unknown as PlatformAccessory['addService'];
+      
+      // Call updateCachedStatus directly
+      await (newAccessory as any).updateCachedStatus();
+      
+      // Verify the outdoor temperature service was added
+      expect(mockAccessoryInstance.addService).toHaveBeenCalledWith(
+        hapIdentifiers.Service.TemperatureSensor,
+        'Outdoor Temperature'
+      );
+    });
+    
+    it('should remove outdoor temperature service when outdoor_temp is 0', async () => {
+      // First setup a cached status with outdoor_temp
+      (accessory as any).cachedStatus = {
+        ...initialStatusFahrenheit,
+        outdoor_temp: 59 // about 15°C
+      };
+      (accessory as any).outdoorTemperatureSensorService = mockServiceInstance;
+      
+      // Then mock updateState to return a status with outdoor_temp = 0
+      const statusWithZeroOutdoorTemp = {
+        ...initialStatusFahrenheit,
+        outdoor_temp: 0
+      };
+      mockApiActions.updateState.mockResolvedValueOnce(statusWithZeroOutdoorTemp);
+      
+      // Call updateCachedStatus directly
+      await (accessory as any).updateCachedStatus();
+      
+      // Verify the outdoor temperature service was removed
+      expect(mockAccessoryInstance.removeService).toHaveBeenCalledWith(mockServiceInstance);
+      expect((accessory as any).outdoorTemperatureSensorService).toBeNull();
+    });
+    
+    it('should remove outdoor temperature service when outdoor_temp is NaN', async () => {
+      // First setup a cached status with outdoor_temp
+      (accessory as any).cachedStatus = {
+        ...initialStatusFahrenheit,
+        outdoor_temp: 59 // about 15°C
+      };
+      (accessory as any).outdoorTemperatureSensorService = mockServiceInstance;
+      
+      // Then mock updateState to return a status with outdoor_temp = NaN
+      const statusWithNaNOutdoorTemp = {
+        ...initialStatusFahrenheit,
+        outdoor_temp: NaN
+      };
+      mockApiActions.updateState.mockResolvedValueOnce(statusWithNaNOutdoorTemp);
+      
+      // Call updateCachedStatus directly
+      await (accessory as any).updateCachedStatus();
+      
+      // Verify the outdoor temperature service was removed
+      expect(mockAccessoryInstance.removeService).toHaveBeenCalledWith(mockServiceInstance);
+      expect((accessory as any).outdoorTemperatureSensorService).toBeNull();
+    });
+
+    it('should not add outdoor temperature service when outdoor_temp is undefined', async () => {
+      // Setup a status with undefined outdoor_temp
+      const statusWithoutOutdoorTemp = {
+        ...initialStatusFahrenheit,
+        outdoor_temp: undefined
+      };
+      mockApiActions.updateState.mockResolvedValueOnce(statusWithoutOutdoorTemp);
+      
+      // Create a new accessory
+      const newAccessory = new TfiacPlatformAccessory(mockPlatform, mockAccessoryInstance);
+      
+      // Mock the accessory methods
+      mockAccessoryInstance.getService = (jest.fn().mockReturnValue(null)) as unknown as PlatformAccessory['getService'];
+      mockAccessoryInstance.addService = (jest.fn().mockReturnValue(mockServiceInstance)) as unknown as PlatformAccessory['addService'];
+      
+      // Reset the mock for cleanup
+      (newAccessory as any).outdoorTemperatureSensorService = null;
+      
+      // Call updateCachedStatus directly
+      await (newAccessory as any).updateCachedStatus();
+      
+      // Verify the outdoor temperature service was not added
+      expect(mockAccessoryInstance.addService).not.toHaveBeenCalledWith(
+        hapIdentifiers.Service.TemperatureSensor,
+        'Outdoor Temperature'
+      );
+      expect((newAccessory as any).outdoorTemperatureSensorService).toBeNull();
+    });
+
+    it('should handle existing outdoor temperature service when updating cached status', async () => {
+      // Setup with existing outdoor temperature service
+      const outdoorTempService = createMockService();
+      (accessory as any).outdoorTemperatureSensorService = outdoorTempService;
+      
+      // Mock updateState to return status with outdoor_temp
+      const statusWithOutdoorTemp = {
+        ...initialStatusFahrenheit,
+        outdoor_temp: 59 // about 15°C
+      };
+      mockApiActions.updateState.mockResolvedValueOnce(statusWithOutdoorTemp);
+      
+      // Call updateCachedStatus directly
+      await (accessory as any).updateCachedStatus();
+      
+      // Verify the outdoor temperature service was updated with the new value
+      const updateCharacteristicCalls = outdoorTempService.updateCharacteristic.mock.calls;
+      const lastUpdateCall = updateCharacteristicCalls[updateCharacteristicCalls.length - 1];
+      
+      expect(lastUpdateCall[0]).toBe(hapConstants.Characteristic.CurrentTemperature);
+      expect(lastUpdateCall[1]).toBeCloseTo(15); // 59F ≈ 15C
+    });
+    
+    it('should update indoor temperature sensor from cached status', async () => {
+      // Create a mock for the temperature sensor service
+      const tempSensorService = createMockService();
+      (accessory as any).temperatureSensorService = tempSensorService;
+      
+      // Mock updateState to return status with current_temp
+      const statusWithCurrentTemp = {
+        ...initialStatusFahrenheit,
+        current_temp: 77 // 25°C
+      };
+      mockApiActions.updateState.mockResolvedValueOnce(statusWithCurrentTemp);
+      
+      // Call updateCachedStatus directly
+      await (accessory as any).updateCachedStatus();
+      
+      // Verify the temperature sensor service was updated with the new value
+      expect(tempSensorService.updateCharacteristic).toHaveBeenCalledWith(
+        hapConstants.Characteristic.CurrentTemperature,
+        25 // 77F -> 25C
+      );
+    });
+  });
+
+  describe('Handler Error Handling', () => {
+    it('should handle API errors in handleTargetHeaterCoolerStateSet', (done) => {
+      // Simulate API error
+      const apiError = new Error('API Error');
+      mockApiActions.setAirConditionerState.mockRejectedValueOnce(apiError);
+      
+      const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.TargetHeaterCoolerState, 'set') as MockCharacteristicSetHandler;
+      
+      // Call the handler
+      handler(hapConstants.Characteristic.TargetHeaterCoolerState.COOL, (error) => {
+        expect(error).toBe(apiError);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Error setting TargetHeaterCoolerState:',
+          apiError
+        );
+        done();
+      });
+    });
+    
+    it('should handle API errors in handleRotationSpeedSet', (done) => {
+      // Simulate API error
+      const apiError = new Error('API Error');
+      mockApiActions.setFanSpeed.mockRejectedValueOnce(apiError);
+      
+      const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.RotationSpeed, 'set') as MockCharacteristicSetHandler;
+      
+      // Call the handler
+      handler(50, (error) => {
+        expect(error).toBe(apiError);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Error setting fan speed:',
+          apiError
+        );
+        done();
+      });
+    });
+    
+    it('should handle API errors in handleSwingModeSet', (done) => {
+      // Simulate API error
+      const apiError = new Error('API Error');
+      mockApiActions.setSwingMode.mockRejectedValueOnce(apiError);
+      
+      const handler = getHandlerByIdentifier(hapIdentifiers.Characteristic.SwingMode, 'set') as MockCharacteristicSetHandler;
+      
+      // Call the handler
+      handler(hapConstants.Characteristic.SwingMode.SWING_ENABLED, (error) => {
+        expect(error).toBe(apiError);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Error setting swing mode:',
+          apiError
+        );
+        done();
+      });
+    });
+    
+    it('should handle API errors in handleTurboSet', (done) => {
+      // Setup Turbo Switch Service with handlers
+      const turboCharacteristic = (accessory as any).turboService.getCharacteristic('On');
+      const turboSetHandler = turboCharacteristic.setHandler;
+      
+      // Simulate API error
+      const apiError = new Error('API Error');
+      mockApiActions.setTurboState = jest.fn().mockRejectedValueOnce(apiError);
+      
+      // Call the handler
+      turboSetHandler(true, (error) => {
+        expect(error).toBe(apiError);
+        expect(mockLogger.error).toHaveBeenCalledWith(
+          'Error setting Turbo state:',
+          apiError
+        );
+        done();
+      });
+    });
+  });
+
+  describe('Temperature Display Units Conversion', () => {
+    it('should convert temperatures from Celsius to Fahrenheit for display', () => {
+      const tempDisplayUnits = (accessory as any).platform.api.hap.Characteristic.TemperatureDisplayUnits;
+      
+      // Test with FAHRENHEIT display units
+      const celsius = 25;
+      const fahrenheit = (accessory as any).convertTemperatureToDisplay(celsius, tempDisplayUnits.FAHRENHEIT);
+      expect(fahrenheit).toBeCloseTo(77);
+      
+      // Test with CELSIUS display units (no conversion)
+      const noConversion = (accessory as any).convertTemperatureToDisplay(celsius, tempDisplayUnits.CELSIUS);
+      expect(noConversion).toBe(celsius);
+    });
+    
+    it('should convert temperatures from display units to Celsius', () => {
+      const tempDisplayUnits = (accessory as any).platform.api.hap.Characteristic.TemperatureDisplayUnits;
+      
+      // Test with FAHRENHEIT display units
+      const fahrenheit = 77;
+      const celsius = (accessory as any).convertTemperatureFromDisplay(fahrenheit, tempDisplayUnits.FAHRENHEIT);
+      expect(celsius).toBeCloseTo(25);
+      
+      // Test with CELSIUS display units (no conversion)
+      const noConversion = (accessory as any).convertTemperatureFromDisplay(25, tempDisplayUnits.CELSIUS);
+      expect(noConversion).toBe(25);
+    });
+  });
+
+  describe('Turbo Switch Handlers', () => {
+    it('should handle turbo get with cached status showing turbo on', (done) => {
+      // Set cached status with turbo on
+      (accessory as any).cachedStatus = {
+        ...initialStatusFahrenheit,
+        opt_super: 'on'
+      };
+      
+      // Get the handler by accessing it directly from the accessory
+      const handler = (accessory as any).handleTurboGet.bind(accessory);
+      
+      // Call the handler
+      handler((error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBe(true);
+        done();
+      });
+    });
+    
+    it('should handle turbo get with cached status showing turbo off', (done) => {
+      // Set cached status with turbo off
+      (accessory as any).cachedStatus = {
+        ...initialStatusFahrenheit,
+        opt_super: 'off'
+      };
+      
+      // Get the handler by accessing it directly from the accessory
+      const handler = (accessory as any).handleTurboGet.bind(accessory);
+      
+      // Call the handler
+      handler((error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBe(false);
+        done();
+      });
+    });
+    
+    it('should handle turbo get with cached status not containing opt_super', (done) => {
+      // Set cached status without opt_super
+      (accessory as any).cachedStatus = {
+        ...initialStatusFahrenheit,
+        // No opt_super property
+      };
+      
+      // Get the handler by accessing it directly from the accessory
+      const handler = (accessory as any).handleTurboGet.bind(accessory);
+      
+      // Call the handler
+      handler((error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBe(false); // Default is false
+        done();
+      });
+    });
+    
+    it('should handle turbo get with no cached status', (done) => {
+      // Set cached status to null
+      (accessory as any).cachedStatus = null;
+      
+      // Get the handler by accessing it directly from the accessory
+      const handler = (accessory as any).handleTurboGet.bind(accessory);
+      
+      // Call the handler
+      handler((error, value) => {
+        expect(error).toBeNull();
+        expect(value).toBe(false); // Default is false
+        done();
+      });
+    });
+    
+    it('should handle turbo set to on', (done) => {
+      // Mock setTurboState to resolve
+      mockApiActions.setTurboState = jest.fn().mockResolvedValue(undefined);
+      
+      // Get the handler by accessing it directly from the accessory
+      const handler = (accessory as any).handleTurboSet.bind(accessory);
+      
+      // Call the handler
+      handler(true, (error) => {
+        expect(error).toBeNull();
+        expect(mockApiActions.setTurboState).toHaveBeenCalledWith('on');
+        done();
+      });
+    });
+    
+    it('should handle turbo set to off', (done) => {
+      // Mock setTurboState to resolve
+      mockApiActions.setTurboState = jest.fn().mockResolvedValue(undefined);
+      
+      // Get the handler by accessing it directly from the accessory
+      const handler = (accessory as any).handleTurboSet.bind(accessory);
+      
+      // Call the handler
+      handler(false, (error) => {
+        expect(error).toBeNull();
+        expect(mockApiActions.setTurboState).toHaveBeenCalledWith('off');
+        done();
+      });
+    });
+  });
+
+  // This section tests coverage for the stopPolling function
+  describe('Polling Management', () => {
+    it('should handle stopPolling when deviceAPI is undefined', () => {
+      // Create a new accessory
+      const newAccessory = new TfiacPlatformAccessory(mockPlatform, mockAccessoryInstance);
+      
+      // Set deviceAPI to undefined
+      (newAccessory as any).deviceAPI = undefined;
+      
+      // This should not throw an error
+      expect(() => newAccessory.stopPolling()).not.toThrow();
+    });
+    
+    it('should handle stopPolling when pollingInterval is not set', () => {
+      // Create a new accessory
+      const newAccessory = new TfiacPlatformAccessory(mockPlatform, mockAccessoryInstance);
+      
+      // Set pollingInterval to null
+      (newAccessory as any).pollingInterval = null;
+      
+      // This should not throw an error and should still call cleanup
+      newAccessory.stopPolling();
+      expect(mockApiActions.cleanup).toHaveBeenCalled();
+    });
+  });
+});
