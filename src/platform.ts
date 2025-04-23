@@ -106,7 +106,6 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       try {
         const networkDiscoveredIPs = await this.discoverDevicesNetwork(5000); // Discover for 5 seconds
         this.log.info(`Network discovery finished. Found ${networkDiscoveredIPs.size} potential devices.`);
-
         for (const ip of networkDiscoveredIPs) {
           if (!discoveredDevicesMap.has(ip)) {
             // Add newly discovered device if not already configured
@@ -223,10 +222,10 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
             }
 
             // Conditional Turbo Mode switch
-            if (deviceConfigForAccessory.enableTurbo) {
+            if (deviceConfigForAccessory.enableTurbo !== false) {
               const turboSwitch = new TurboSwitchAccessory(this, existingAccessory);
               this.turboAccessories.set(uuid, turboSwitch);
-            } else if (deviceConfigForAccessory.enableTurbo === false) {
+            } else {
               this.log.info(`Skipping Turbo Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
             }
 
@@ -315,10 +314,10 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           }
 
           // Conditional Turbo Mode switch
-          if (deviceConfigForAccessory.enableTurbo) {
+          if (deviceConfigForAccessory.enableTurbo !== false) {
             const turboSwitch = new TurboSwitchAccessory(this, accessory);
             this.turboAccessories.set(uuid, turboSwitch);
-          } else if (deviceConfigForAccessory.enableTurbo === false) {
+          } else {
             this.log.info(`Skipping Turbo Switch for ${deviceConfigForAccessory.name} as it is disabled in config.`);
           }
 
