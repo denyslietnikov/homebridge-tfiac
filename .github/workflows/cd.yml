@@ -5,6 +5,12 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      force_version_bump:
+        description: 'Force version bump regardless of commit types'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -34,7 +40,15 @@ jobs:
       - name: 🔒 Authenticate npm registry
         run: npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
 
-      - name: 🚀 Run semantic-release
+      - name: 🚀 Run semantic-release (forced)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.force_version_bump == 'true'
+        run: npx semantic-release --no-ci --force-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: 🚀 Run semantic-release (normal)
+        if: github.event_name != 'workflow_dispatch' || github.event.inputs.force_version_bump != 'true'
         run: npx semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
