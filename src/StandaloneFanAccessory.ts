@@ -18,6 +18,8 @@ export class StandaloneFanAccessory {
     private readonly platform: TfiacPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
+    accessory.displayName = 'Standalone Fan';
+
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
     const ip = deviceConfig.ip;
     const port = deviceConfig.port ?? 7777;

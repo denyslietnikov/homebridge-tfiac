@@ -346,6 +346,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           // Remove any services for disabled features before registering the accessory
           this.removeDisabledServices(accessory, deviceConfigForAccessory);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
+          // Track the newly added accessory for future updates and removals
+          this.accessories.push(accessory);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
         }

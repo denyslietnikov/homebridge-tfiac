@@ -8,6 +8,7 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
+    accessory.displayName = 'Display';
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
