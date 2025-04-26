@@ -8,8 +8,7 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
-    const serviceName = `${deviceName} Eco`;
+    const serviceName = 'Eco';
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
@@ -20,6 +19,7 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
       deviceAPI.setEcoState.bind(deviceAPI), // API Set Method
       'Eco', // Log Prefix
     );
-    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 }

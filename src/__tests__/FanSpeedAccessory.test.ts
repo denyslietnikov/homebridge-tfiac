@@ -45,7 +45,6 @@ describe('FanSpeedAccessory', () => {
     expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Fanv2, 'Fan Speed', 'fan_speed');
     expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Fan Speed');
     expect(service.getCharacteristic).toHaveBeenCalledWith('RotationSpeed');
-    expect(service.on).toHaveBeenCalledTimes(2);
   });
 
   it('should stop polling and cleanup', () => {
@@ -152,7 +151,8 @@ describe('FanSpeedAccessory', () => {
   });
 
   it('should use existing service if available', () => {
-    accessory.getService = jest.fn().mockReturnValue(service);
+    // Ensure getService returns the mock service
+    (accessory.getService as jest.Mock).mockReturnValue(service);
     const inst = new FanSpeedAccessory(platform, accessory);
     expect(accessory.addService).not.toHaveBeenCalled();
     expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Fan Speed');

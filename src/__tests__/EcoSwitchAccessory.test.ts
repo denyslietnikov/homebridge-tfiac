@@ -85,9 +85,8 @@ describe('EcoSwitchAccessory – unit', () => {
     accessory = createAccessoryWithMockedUpdate();
     const platformAcc = (accessory as any).accessory as PlatformAccessory;
     const svc = (accessory as any).service;
-    const deviceName = platformAcc.context.deviceConfig.name;
-    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), deviceName + ' Eco', 'eco');
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Eco');
+    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), 'Eco', 'eco');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', 'Eco');
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
@@ -102,13 +101,22 @@ describe('EcoSwitchAccessory – unit', () => {
     accessory = createAccessoryWithMockedUpdate(existingMockService);
     const platformAcc = (accessory as any).accessory as PlatformAccessory;
     const svc = (accessory as any).service;
-    const deviceName = platformAcc.context.deviceConfig.name;
-    expect(platformAcc.getService).toHaveBeenCalledWith(deviceName + ' Eco');
+    expect(platformAcc.getService).toHaveBeenCalledWith('Eco');
     expect(platformAcc.addService).not.toHaveBeenCalled();
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Eco');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', 'Eco');
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
+  });
+
+  it('should construct and set up polling and handlers', () => {
+    const mockPlat = mockPlatform();
+    const mockAcc = makeAccessory();
+    accessory = new EcoSwitchAccessory(mockPlat, mockAcc);
+    expect(mockAcc.addService).toHaveBeenCalledWith(mockPlat.Service.Switch, 'Eco', 'eco');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith('Name', 'Eco');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith('On');
+    expect(mockService.getCharacteristic().on).toHaveBeenCalledTimes(2);
   });
 
   it('polls and updates characteristic when eco mode is off', async () => {

@@ -8,8 +8,7 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
-    const serviceName = `${deviceName} Fan Only`;
+    const serviceName = 'Fan Only';
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
@@ -26,7 +25,8 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
       },
       'Fan Only', // Log Prefix
     );
-    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 
   // Override handleGet to check if operation_mode is 'fan'

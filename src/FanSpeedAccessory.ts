@@ -18,8 +18,8 @@ export class FanSpeedAccessory {
     private readonly platform: TfiacPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    accessory.displayName = 'Fan Speed';
-
+    const serviceName = 'Fan Speed';
+    
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
     const ip = deviceConfig.ip;
     const port = deviceConfig.port ?? 7777;
@@ -29,12 +29,11 @@ export class FanSpeedAccessory {
 
     // Create or retrieve the Fan service
     this.service =
-      this.accessory.getService('Fan Speed') ||
-      this.accessory.addService(this.platform.Service.Fanv2, 'Fan Speed', 'fan_speed');
-    this.service.setCharacteristic(
-      this.platform.Characteristic.Name,
-      'Fan Speed',
-    );
+      this.accessory.getService(serviceName) ||
+      this.accessory.addService(this.platform.Service.Fanv2, serviceName, 'fan_speed');
+    
+    this.service.setCharacteristic(this.platform.Characteristic.Name, serviceName);
+    this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
 
     this.startPolling();
 
