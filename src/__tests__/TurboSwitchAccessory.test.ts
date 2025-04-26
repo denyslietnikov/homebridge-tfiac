@@ -85,9 +85,9 @@ describe('TurboSwitchAccessory – unit', () => {
     accessory = createAccessoryWithMockedUpdate();
     const platformAcc = (accessory as any).accessory as PlatformAccessory;
     const svc = (accessory as any).service;
-
-    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), 'Turbo', 'turbo');
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', 'Turbo');
+    const deviceName = platformAcc.context.deviceConfig.name;
+    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), deviceName + ' Turbo', 'turbo');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Turbo');
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
@@ -102,10 +102,10 @@ describe('TurboSwitchAccessory – unit', () => {
     accessory = createAccessoryWithMockedUpdate(existingMockService);
     const platformAcc = (accessory as any).accessory as PlatformAccessory;
     const svc = (accessory as any).service;
-
-    expect(platformAcc.getService).toHaveBeenCalledWith('Turbo');
+    const deviceName = platformAcc.context.deviceConfig.name;
+    expect(platformAcc.getService).toHaveBeenCalledWith(deviceName + ' Turbo');
     expect(platformAcc.addService).not.toHaveBeenCalled();
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', 'Turbo');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Turbo');
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));

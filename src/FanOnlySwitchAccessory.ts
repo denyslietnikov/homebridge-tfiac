@@ -8,24 +8,25 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    accessory.displayName = 'Fan Only Mode';
+    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
+    const serviceName = `${deviceName} Fan Only`;
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,
-      'Fan Only Mode', // Service Name
+      serviceName, // Service Name
       'fanonly', // Service Subtype
-      'operation_mode', // Status Key (Checks if current mode is 'fan')
-      async (value: 'on' | 'off') => { // Custom API Set Method
+      'operation_mode', // Status Key
+      async (value: 'on' | 'off') => {
         if (value === 'on') {
           await deviceAPI.setAirConditionerState('operation_mode', 'fan');
         } else {
-          // Revert to Auto or Cool when turned off?
           await deviceAPI.setAirConditionerState('operation_mode', 'auto');
         }
       },
-      'Fan Only Mode', // Log Prefix
+      'Fan Only', // Log Prefix
     );
+    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
   }
 
   // Override handleGet to check if operation_mode is 'fan'

@@ -18,18 +18,16 @@ export class StandaloneFanAccessory {
     private readonly platform: TfiacPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    accessory.displayName = 'Standalone Fan';
-
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
-    const ip = deviceConfig.ip;
-    const port = deviceConfig.port ?? 7777;
-    this.deviceAPI = new AirConditionerAPI(ip, port);
+    const deviceName = deviceConfig.name || this.accessory.displayName || 'AC';
+    const serviceName = `${deviceName} Standalone Fan`;
+    this.deviceAPI = new AirConditionerAPI(deviceConfig.ip, deviceConfig.port ?? 7777);
     this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
 
     this.service =
-      this.accessory.getService('Standalone Fan') ||
-      this.accessory.addService(this.platform.Service.Fan, 'Standalone Fan', 'standalone_fan');
-    this.service.setCharacteristic(this.platform.Characteristic.Name, 'Fan');
+      this.accessory.getService(serviceName) ||
+      this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalone_fan');
+    this.service.setCharacteristic(this.platform.Characteristic.Name, serviceName);
     this.service
       .getCharacteristic(this.platform.Characteristic.On)
       .on('get', this.handleGet.bind(this))
