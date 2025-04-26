@@ -242,21 +242,26 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   /**
+   * Generic method to set option state for the air conditioner
+   */
+  private async setOptionState(option: string, value: string): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                      <SetMessage><${option}>${value}</${option}></SetMessage></msg>`;
+    await this.sendCommand(command);
+  }
+
+  /**
    * Set the display state (on/off) for the air conditioner.
    */
   async setDisplayState(value: 'on' | 'off'): Promise<void> {
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage><Opt_display>${value}</Opt_display></SetMessage></msg>`;
-    await this.sendCommand(command);
+    return this.setOptionState('Opt_display', value);
   }
 
   /**
    * Set the Turbo (Opt_super) state (on/off) for the air conditioner.
    */
   async setTurboState(value: 'on' | 'off'): Promise<void> {
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage><Opt_super>${value}</Opt_super></SetMessage></msg>`;
-    await this.sendCommand(command);
+    return this.setOptionState('Opt_super', value);
   }
 
   /**
@@ -267,27 +272,21 @@ export class AirConditionerAPI extends EventEmitter {
     const sleepValue = value === 'on'
       ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
       : 'off';
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage><Opt_sleepMode>${sleepValue}</Opt_sleepMode></SetMessage></msg>`;
-    await this.sendCommand(command);
+    return this.setOptionState('Opt_sleepMode', sleepValue);
   }
 
   /**
    * Set the Eco (opt_eco) state (on/off) for the air conditioner.
    */
   async setEcoState(value: 'on' | 'off'): Promise<void> {
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-      <SetMessage><opt_eco>${value}</opt_eco></SetMessage></msg>`;
-    await this.sendCommand(command);
+    return this.setOptionState('opt_eco', value);
   }
 
   /**
    * Set the Beep (Opt_beep) state (on/off) for the air conditioner.
    */
   async setBeepState(value: 'on' | 'off'): Promise<void> {
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage><Opt_beep>${value}</Opt_beep></SetMessage></msg>`;
-    await this.sendCommand(command);
+    return this.setOptionState('Opt_beep', value);
   }
 }
 
