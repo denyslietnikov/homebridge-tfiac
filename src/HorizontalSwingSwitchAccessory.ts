@@ -7,6 +7,7 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
+    accessory.displayName = 'Swing';
     super(
       platform,
       accessory,

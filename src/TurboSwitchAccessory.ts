@@ -8,6 +8,7 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
+    accessory.displayName = 'Turbo';
     // Instantiate API locally for binding; BaseSwitchAccessory will create its own instance
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(

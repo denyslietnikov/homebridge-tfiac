@@ -72,7 +72,7 @@ jobs:
           license-checker --production --onlyAllow "MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause"
 
       - name: 🧪 Test with coverage
-        run: npm test -- --coverage --coverageThreshold='{"global":{"branches":"70","functions":"80","lines":"80","statements":"80"}}'
+        run: npm test -- --coverage --coverageThreshold='{"global":{"branches":"75","functions":"80","lines":"80","statements":"80"}}'
 
       - name: 🏗️ Build
         run: npm run build
