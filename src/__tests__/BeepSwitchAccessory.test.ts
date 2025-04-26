@@ -64,20 +64,32 @@ describe('BeepSwitchAccessory', () => {
     jest.useRealTimers();
   });
 
-  it('should initialize correctly', () => {
+  it('should initialize correctly and add a new service', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
-    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, 'Beep', 'beep');
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Beep');
+    const deviceName = mockAccessory.context.deviceConfig.name;
+    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, deviceName + ' Beep', 'beep');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, deviceName + ' Beep');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
-    expect(mockService.on).toHaveBeenCalledTimes(2); // get and set handlers
+    expect(mockService.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(mockService.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   it('should use existing service if available', () => {
+    const existingMockService = {
+      setCharacteristic: jest.fn().mockReturnThis(),
+      getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
+      updateCharacteristic: jest.fn(),
+    };
     jest.clearAllMocks();
-    (mockAccessory.getService as jest.Mock).mockReturnValue(mockService);
+    (mockAccessory.getService as jest.Mock).mockReturnValue(existingMockService);
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
+    const deviceName = mockAccessory.context.deviceConfig.name;
+    expect(mockAccessory.getService).toHaveBeenCalledWith(deviceName + ' Beep');
     expect(mockAccessory.addService).not.toHaveBeenCalled();
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Beep');
+    expect(existingMockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, deviceName + ' Beep');
+    expect(existingMockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
+    expect(existingMockService.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(existingMockService.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   it('should start polling on initialization', () => {

@@ -8,16 +8,19 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    accessory.displayName = 'Display';
+    // Don't change accessory.displayName!
+    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
+    const serviceName = `${deviceName} Display`;
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,
-      'Display', // Service Name
+      serviceName, // Service Name
       'display', // Service Subtype
       'opt_display', // Status Key
       deviceAPI.setDisplayState.bind(deviceAPI), // API Set Method
       'Display', // Log Prefix
     );
+    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

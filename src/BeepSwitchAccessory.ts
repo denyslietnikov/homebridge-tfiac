@@ -8,16 +8,18 @@ export class BeepSwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    accessory.displayName = 'Beep';
+    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
+    const serviceName = `${deviceName} Beep`;
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,
-      'Beep', // Service Name
+      serviceName, // Service Name
       'beep', // Service Subtype
       'opt_beep', // Status Key
       deviceAPI.setBeepState.bind(deviceAPI), // API Set Method
       'Beep', // Log Prefix
     );
+    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

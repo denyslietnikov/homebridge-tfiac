@@ -319,7 +319,7 @@ describe('TfiacPlatform (ext)', () => {
 
     expect(mockAPI.updatePlatformAccessories).toHaveBeenCalled();
     expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
-    expect(existingAccessory.displayName).toBe('Display');
+    expect(existingAccessory.displayName).toBe('Existing');
     expect(existingAccessory.context.deviceConfig).toEqual(deviceConfig);
 
     jest.mock('../platform');

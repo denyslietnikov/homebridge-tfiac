@@ -31,6 +31,24 @@ describe('SleepSwitchAccessory', () => {
       log: { debug: jest.fn(), error: jest.fn(), info: jest.fn() },
     } as unknown as TfiacPlatform);
 
+  // Helper function to create accessory with an overridden updateCachedStatus method
+  let mockUpdateCachedStatus: jest.Mock;
+  const createAccessoryWithMockedUpdate = (existingService?: any) => {
+    const accInstance = makeAccessory();
+    if (existingService) {
+      (accInstance.getService as jest.Mock).mockReturnValue(existingService);
+    }
+    const acc = new SleepSwitchAccessory(mockPlatform(), accInstance);
+    // Replace the method after construction
+    if (!mockUpdateCachedStatus) {
+      mockUpdateCachedStatus = jest.fn().mockResolvedValue(undefined);
+    }
+    Object.defineProperty(acc, 'updateCachedStatus', {
+      value: mockUpdateCachedStatus
+    });
+    return acc;
+  };
+
   beforeEach(() => {
     log = { debug: jest.fn(), error: jest.fn(), info: jest.fn() };
     platform = {
@@ -66,15 +84,38 @@ describe('SleepSwitchAccessory', () => {
   it('should construct and set up polling and handlers', () => {
     const inst = new SleepSwitchAccessory(platform, accessory);
     expect(accessory.addService).toHaveBeenCalled();
-    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Sleep Mode');
+    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Test Sleep');
     expect(service.on).toHaveBeenCalled();
   });
 
+  it('should initialize correctly and add a new service', () => {
+    const inst = createAccessoryWithMockedUpdate();
+    const platformAcc = (inst as any).accessory as PlatformAccessory;
+    const svc = (inst as any).service;
+    const deviceName = platformAcc.context.deviceConfig.name;
+    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), deviceName + ' Sleep', 'sleep');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Sleep');
+    expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
+    expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
+  });
+
   it('should use existing service if available', () => {
-    accessory.getService = jest.fn().mockReturnValue(service);
-    const inst = new SleepSwitchAccessory(platform, accessory);
-    expect(accessory.addService).not.toHaveBeenCalled();
-    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Sleep Mode');
+    const existingMockService = {
+      setCharacteristic: jest.fn().mockReturnThis(),
+      getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
+      updateCharacteristic: jest.fn(),
+    };
+    const inst = createAccessoryWithMockedUpdate(existingMockService);
+    const platformAcc = (inst as any).accessory as PlatformAccessory;
+    const svc = (inst as any).service;
+    const deviceName = platformAcc.context.deviceConfig.name;
+    expect(platformAcc.getService).toHaveBeenCalledWith(deviceName + ' Sleep');
+    expect(platformAcc.addService).not.toHaveBeenCalled();
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Sleep');
+    expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
+    expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   it('should stop polling and cleanup', () => {

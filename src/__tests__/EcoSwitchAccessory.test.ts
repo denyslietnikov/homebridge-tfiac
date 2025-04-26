@@ -85,9 +85,9 @@ describe('EcoSwitchAccessory – unit', () => {
     accessory = createAccessoryWithMockedUpdate();
     const platformAcc = (accessory as any).accessory as PlatformAccessory;
     const svc = (accessory as any).service;
-
-    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), 'ECO Mode', 'eco');
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', 'ECO Mode');
+    const deviceName = platformAcc.context.deviceConfig.name;
+    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), deviceName + ' Eco', 'eco');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Eco');
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
@@ -102,10 +102,10 @@ describe('EcoSwitchAccessory – unit', () => {
     accessory = createAccessoryWithMockedUpdate(existingMockService);
     const platformAcc = (accessory as any).accessory as PlatformAccessory;
     const svc = (accessory as any).service;
-
-    expect(platformAcc.getService).toHaveBeenCalledWith('ECO Mode');
+    const deviceName = platformAcc.context.deviceConfig.name;
+    expect(platformAcc.getService).toHaveBeenCalledWith(deviceName + ' Eco');
     expect(platformAcc.addService).not.toHaveBeenCalled();
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', 'ECO Mode');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Eco');
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));

@@ -8,25 +8,26 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    accessory.displayName = 'Dry Mode';
+    // Don't change accessory.displayName!
+    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
+    const serviceName = `${deviceName} Dry`;
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,
-      'Dry Mode', // Service Name
+      serviceName, // Service Name
       'dry', // Service Subtype
-      'operation_mode', // Status Key (Checks if current mode is 'dehumi')
-      async (value: 'on' | 'off') => { // Custom API Set Method
+      'operation_mode', // Status Key
+      async (value: 'on' | 'off') => {
         if (value === 'on') {
           await deviceAPI.setAirConditionerState('operation_mode', 'dehumi');
         } else {
-          // Revert to Auto or Cool when turned off? Or rely on main accessory?
-          // Assuming we revert to Auto for now. Adjust if needed.
           await deviceAPI.setAirConditionerState('operation_mode', 'auto');
         }
       },
-      'Dry Mode', // Log Prefix
+      'Dry', // Log Prefix
     );
+    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
   }
 
   // Override handleGet to check if operation_mode is 'dehumi'
