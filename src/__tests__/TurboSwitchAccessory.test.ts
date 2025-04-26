@@ -1,6 +1,6 @@
-import { PlatformAccessory } from 'homebridge';
-import { TurboSwitchAccessory } from '../TurboSwitchAccessory.js';
+import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
+import { TurboSwitchAccessory } from '../TurboSwitchAccessory.js';
 
 // ---------- mocks ---------------------------------------------------
 const updateStateMock = jest.fn();
@@ -42,194 +42,168 @@ const mockService: any = {
 const makeAccessory = (): PlatformAccessory =>
   ({
     context: { deviceConfig: { name: 'AC', ip: '1.2.3.4', updateInterval: 1 } },
-    getService: jest.fn().mockReturnValue(null),
-    addService: jest.fn().mockReturnValue(mockService),
+    getService: jest.fn(),
+    addService: jest.fn(),
     getServiceById: jest.fn(),
   } as unknown as PlatformAccessory);
 
 // --------------------------------------------------------------------
 
 describe('TurboSwitchAccessory – unit', () => {
-  let accessory: TurboSwitchAccessory;
-  let mockUpdateCachedStatus: jest.Mock;
+  let platform: TfiacPlatform;
+  let accessory: PlatformAccessory;
+  let inst: TurboSwitchAccessory;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    platform = mockPlatform();
+    accessory = makeAccessory();
     updateStateMock.mockResolvedValue({ opt_super: 'off' });
 
-    // This allows us to bypass the initial updateCachedStatus call
-    mockUpdateCachedStatus = jest.fn().mockResolvedValue(undefined);
+    (accessory.getService as jest.Mock).mockReturnValue(undefined);
+    (accessory.addService as jest.Mock).mockReturnValue(mockService);
   });
 
   afterEach(() => {
-    if (accessory) {
-      accessory.stopPolling();
+    if (inst) {
+      inst.stopPolling();
     }
   });
 
-  // Helper function to create accessory with an overridden updateCachedStatus method
-  const createAccessoryWithMockedUpdate = (existingService?: any) => {
-    const accInstance = makeAccessory();
+  const createAccessory = (existingService?: any) => {
+    jest.clearAllMocks();
+    updateStateMock.mockResolvedValue({ opt_super: 'off' });
+
     if (existingService) {
-      (accInstance.getService as jest.Mock).mockReturnValue(existingService);
+      (accessory.getService as jest.Mock).mockReturnValue(existingService);
+      (accessory.addService as jest.Mock).mockClear();
+    } else {
+      (accessory.getService as jest.Mock).mockReturnValue(undefined);
+      (accessory.addService as jest.Mock).mockReturnValue(mockService);
     }
-    const acc = new TurboSwitchAccessory(mockPlatform(), accInstance);
-    // Replace the method after construction
-    Object.defineProperty(acc, 'updateCachedStatus', {
-      value: mockUpdateCachedStatus
-    });
-    return acc;
+    inst = new TurboSwitchAccessory(platform, accessory);
+    
+    // Manually trigger a mock response for updateState since it's called during construction
+    // This simulates the effect of the constructor calling startPolling() -> updateCachedStatus()
+    const updateStateCall = updateStateMock.mock.calls[0];
+    if (updateStateCall) {
+      const mockResponse = { opt_super: 'off' };
+      updateStateMock.mock.results[0] = { type: 'return', value: Promise.resolve(mockResponse) };
+    }
+    
+    return inst;
   };
 
   it('should initialize correctly and add a new service', () => {
-    accessory = createAccessoryWithMockedUpdate();
-    const platformAcc = (accessory as any).accessory as PlatformAccessory;
-    const svc = (accessory as any).service;
-    const deviceName = platformAcc.context.deviceConfig.name;
-    expect(platformAcc.addService).toHaveBeenCalledWith(expect.any(Function), deviceName + ' Turbo', 'turbo');
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Turbo');
+    // Force updateStateMock to return successfully
+    updateStateMock.mockResolvedValue({ opt_super: 'off' });
+    
+    createAccessory(undefined);
+    const svc = mockService;
+    const deviceName = accessory.context.deviceConfig.name;
+    const expectedServiceName = `${deviceName} Turbo`;
+
+    // Skip checking updateStateMock since the BaseSwitchAccessory calls it asynchronously
+    // and we're testing the constructor synchronously
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, expectedServiceName, 'turbo');
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', expectedServiceName);
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   it('should use existing service if available', () => {
-    const existingMockService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
-      updateCharacteristic: jest.fn(),
-    };
-    accessory = createAccessoryWithMockedUpdate(existingMockService);
-    const platformAcc = (accessory as any).accessory as PlatformAccessory;
-    const svc = (accessory as any).service;
-    const deviceName = platformAcc.context.deviceConfig.name;
-    expect(platformAcc.getService).toHaveBeenCalledWith(deviceName + ' Turbo');
-    expect(platformAcc.addService).not.toHaveBeenCalled();
-    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Turbo');
+    // Force updateStateMock to return successfully
+    updateStateMock.mockResolvedValue({ opt_super: 'off' });
+    
+    createAccessory(mockService);
+    const svc = mockService;
+    const deviceName = accessory.context.deviceConfig.name;
+    const expectedServiceName = `${deviceName} Turbo`;
+
+    // Skip checking updateStateMock since the BaseSwitchAccessory calls it asynchronously
+    // and we're testing the constructor synchronously
+    expect(accessory.getService).toHaveBeenCalledWith(expectedServiceName);
+    expect(accessory.addService).not.toHaveBeenCalled();
+    expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', expectedServiceName);
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(svc.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   it('handles get characteristic with null cached status', () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
-    (accessory as any).cachedStatus = null;
-    (accessory as any).handleGet(callback);
+    (inst as any).cachedStatus = null;
+    (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('handles get characteristic with turbo on', () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
-    (accessory as any).cachedStatus = { opt_super: 'on' };
-    (accessory as any).handleGet(callback);
+    (inst as any).cachedStatus = { opt_super: 'on' };
+    (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, true);
   });
 
   it('handles get characteristic with turbo off', () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
-    (accessory as any).cachedStatus = { opt_super: 'off' };
-    (accessory as any).handleGet(callback);
+    (inst as any).cachedStatus = { opt_super: 'off' };
+    (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('handles get characteristic with undefined turbo status', () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
-    (accessory as any).cachedStatus = { someOtherProp: 'value' };
-    (accessory as any).handleGet(callback);
+    (inst as any).cachedStatus = { someOtherProp: 'value' };
+    (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('handles set characteristic to turn turbo on', async () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
     setSuperStateMock.mockResolvedValueOnce({});
     updateStateMock.mockResolvedValueOnce({ opt_super: 'on' });
 
-    await (accessory as any).handleSet(true, callback);
-    
+    await (inst as any).handleSet(true, callback);
+
     expect(setSuperStateMock).toHaveBeenCalledWith('on');
     expect(callback).toHaveBeenCalledWith(null);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('handles set characteristic to turn turbo off', async () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
     setSuperStateMock.mockResolvedValueOnce({});
     updateStateMock.mockResolvedValueOnce({ opt_super: 'off' });
 
-    await (accessory as any).handleSet(false, callback);
-    
+    await (inst as any).handleSet(false, callback);
+
     expect(setSuperStateMock).toHaveBeenCalledWith('off');
     expect(callback).toHaveBeenCalledWith(null);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
   });
 
   it('handles errors during set characteristic', async () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
     const error = new Error('API error');
     setSuperStateMock.mockRejectedValueOnce(error);
 
-    await (accessory as any).handleSet(true, callback);
-    
+    await (inst as any).handleSet(true, callback);
+
     expect(callback).toHaveBeenCalledWith(error);
   });
 
   it('properly cleans up when stopping polling', () => {
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-    
-    // Stop polling
-    accessory.stopPolling();
-    
-    // Verify that clearInterval was called
+    inst = createAccessory();
+    inst.stopPolling();
     expect(cleanupMock).toHaveBeenCalled();
   });
 
-  it('handles missing opt_super property in status update', async () => {
-    class TestTurboSwitchAccessory extends TurboSwitchAccessory {
-      protected async updateCachedStatus(): Promise<void> {
-        this.cachedStatus = { 
-          current_temp: 25, 
-          operation_mode: 'auto',
-          target_temp: 22,
-          fan_mode: 'low',
-          is_on: 'on',
-          swing_mode: 'fixed'
-        }; // Using correct property names with all required fields
-        // Do NOT call updateCharacteristic
-      }
-    }
-
-    const accessory = new TestTurboSwitchAccessory(mockPlatform(), makeAccessory());
-    const serviceUpdateSpy = jest.fn();
-    (accessory as any).service.updateCharacteristic = serviceUpdateSpy;
-
-    expect(serviceUpdateSpy).not.toHaveBeenCalled();
-  });
-
-  it('handles missing opt_turbo property in status update', async () => {
-    class TestTurboSwitchAccessory extends TurboSwitchAccessory {
-      protected async updateCachedStatus(): Promise<void> {
-        this.cachedStatus = { 
-          current_temp: 25, 
-          operation_mode: 'auto',
-          target_temp: 22,
-          fan_mode: 'low',
-          is_on: 'on', // Using string instead of boolean
-          swing_mode: 'fixed'
-        }; // Using correct property names
-        // Do NOT call updateCharacteristic
-      }
-    }
-
-    const accessory = new TestTurboSwitchAccessory(mockPlatform(), makeAccessory());
-    const serviceUpdateSpy = jest.fn();
-    (accessory as any).service.updateCharacteristic = serviceUpdateSpy;
-
-    expect(serviceUpdateSpy).not.toHaveBeenCalled();
-  });
 });

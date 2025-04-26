@@ -67,8 +67,8 @@ describe('BeepSwitchAccessory', () => {
   it('should initialize correctly and add a new service', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
     const deviceName = mockAccessory.context.deviceConfig.name;
-    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, deviceName + ' Beep', 'beep');
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, deviceName + ' Beep');
+    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, 'Beep', 'beep');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Beep');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
     expect(mockService.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(mockService.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
@@ -83,10 +83,9 @@ describe('BeepSwitchAccessory', () => {
     jest.clearAllMocks();
     (mockAccessory.getService as jest.Mock).mockReturnValue(existingMockService);
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
-    const deviceName = mockAccessory.context.deviceConfig.name;
-    expect(mockAccessory.getService).toHaveBeenCalledWith(deviceName + ' Beep');
+    expect(mockAccessory.getService).toHaveBeenCalledWith('Beep');
     expect(mockAccessory.addService).not.toHaveBeenCalled();
-    expect(existingMockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, deviceName + ' Beep');
+    expect(existingMockService.setCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.Name, 'Beep');
     expect(existingMockService.getCharacteristic).toHaveBeenCalledWith(mockPlatform.Characteristic.On);
     expect(existingMockService.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(existingMockService.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
@@ -178,5 +177,13 @@ describe('BeepSwitchAccessory', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
     const callback = jest.fn();
     await (beepAccessory as any).handleSet(true, callback);
+  });
+
+  it('should construct and set up polling and handlers', () => {
+    const inst = new BeepSwitchAccessory(mockPlatform, mockAccessory);
+    expect(mockAccessory.addService).toHaveBeenCalledWith(mockPlatform.Service.Switch, 'Beep', 'beep');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith('Name', 'Beep');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith('On');
+    expect(mockService.on).toHaveBeenCalledTimes(2);
   });
 });

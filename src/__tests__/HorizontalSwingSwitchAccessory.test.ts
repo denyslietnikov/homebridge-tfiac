@@ -55,9 +55,9 @@ describe('HorizontalSwingSwitchAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
-    const deviceName = accessory.context.deviceConfig.name;
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, deviceName + ' Horizontal Swing', 'horizontalswing');
-    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Horizontal Swing');
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Horizontal Swing', 'horizontalswing');
+    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Horizontal Swing');
+    expect(service.getCharacteristic).toHaveBeenCalledWith('On');
   });
 
   it('should stop polling and cleanup', () => {

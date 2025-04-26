@@ -8,9 +8,7 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    // Don't change accessory.displayName!
-    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
-    const serviceName = `${deviceName} Sleep`;
+    const serviceName = 'Sleep';
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
@@ -21,7 +19,8 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
       deviceAPI.setSleepState.bind(deviceAPI), // API Set Method
       'Sleep', // Log Prefix
     );
-    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 
   // Override handleGet because opt_sleepMode uses different values (e.g., 'sleepMode1:...')

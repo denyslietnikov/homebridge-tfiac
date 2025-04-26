@@ -55,9 +55,9 @@ describe('DisplaySwitchAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     const inst = new DisplaySwitchAccessory(platform, accessory);
-    const deviceName = accessory.context.deviceConfig.name;
-    expect(accessory.addService).toHaveBeenCalled();
-    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', deviceName + ' Display');
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Display', 'display');
+    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Display');
+    expect(service.getCharacteristic).toHaveBeenCalledWith('On');
   });
 
   it('should stop polling and cleanup', () => {

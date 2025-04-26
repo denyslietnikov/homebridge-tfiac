@@ -12,15 +12,15 @@ describe('StandaloneFanAccessory', () => {
   beforeEach(() => {
     log = { debug: jest.fn(), error: jest.fn() };
     platform = {
-      Service: { Fan: jest.fn() },
-      Characteristic: { Name: 'Name', On: 'On', RotationSpeed: 'RotationSpeed' },
+      Service: { Fan: jest.fn(), Fanv2: jest.fn() },
+      Characteristic: { Name: 'Name', On: 'On', RotationSpeed: 'RotationSpeed', Active: 'Active', ConfiguredName: 'ConfiguredName' },
       log,
     } as any;
     service = {
-      setCharacteristic: jest.fn(),
+      setCharacteristic: jest.fn().mockReturnThis(),
+      updateCharacteristic: jest.fn().mockReturnThis(),
       getCharacteristic: jest.fn().mockReturnThis(),
       on: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn(),
     } as any;
     accessory = {
       context: { deviceConfig: { ip: '1.2.3.4', port: 1234, updateInterval: 1, name: 'Test' } },
@@ -38,6 +38,10 @@ describe('StandaloneFanAccessory', () => {
       cleanup: jest.fn(),
     };
     jest.spyOn(require('../AirConditionerAPI'), 'default').mockImplementation(() => deviceAPI);
+
+    jest.clearAllMocks();
+    (accessory.addService as jest.Mock).mockReturnValue(service);
+    (accessory.getService as jest.Mock).mockReturnValue(undefined);
   });
 
   afterEach(() => {
@@ -46,11 +50,20 @@ describe('StandaloneFanAccessory', () => {
   });
 
   it('should construct and set up polling and handlers', () => {
+    (accessory.getService as jest.Mock).mockReturnValue(undefined);
     const inst = new StandaloneFanAccessory(platform, accessory);
-    const deviceName = accessory.context.deviceConfig.name;
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Fan, 'Test Standalone Fan', 'standalone_fan');
-    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Test Standalone Fan');
-    expect(service.on).toHaveBeenCalledTimes(4); // Two characteristics with get and set
+    const addedService = service;
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Fan, 'Standalone Fan', 'standalone_fan');
+    expect(addedService.updateCharacteristic).toHaveBeenCalledWith('Name', 'Standalone Fan');
+    expect(addedService.getCharacteristic).toHaveBeenCalledWith('On');
+    expect(addedService.getCharacteristic).toHaveBeenCalledWith('RotationSpeed');
+  });
+
+  it('should use existing service if available', () => {
+    (accessory.getService as jest.Mock).mockReturnValue(service);
+    const inst = new StandaloneFanAccessory(platform, accessory);
+    expect(accessory.addService).not.toHaveBeenCalled();
+    expect(service.updateCharacteristic).toHaveBeenCalledWith('Name', 'Standalone Fan');
   });
 
   it('should stop polling and cleanup', () => {
@@ -109,7 +122,6 @@ describe('StandaloneFanAccessory', () => {
     const inst = new StandaloneFanAccessory(platform, accessory);
     (inst as any).cachedStatus = null;
     (inst as any).handleGet((err: any, val: any) => {
-      // Now expecting default value (false) instead of error
       expect(err).toBeNull();
       expect(val).toBe(false);
       done();
@@ -154,7 +166,6 @@ describe('StandaloneFanAccessory', () => {
     const inst = new StandaloneFanAccessory(platform, accessory);
     (inst as any).cachedStatus = null;
     (inst as any).handleRotationSpeedGet((err: any, val: any) => {
-      // Now expecting default value (50) instead of error
       expect(err).toBeNull();
       expect(val).toBe(50);
       done();

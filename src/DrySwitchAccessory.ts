@@ -8,9 +8,7 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    // Don't change accessory.displayName!
-    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
-    const serviceName = `${deviceName} Dry`;
+    const serviceName = 'Dry';
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
@@ -27,7 +25,8 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
       },
       'Dry', // Log Prefix
     );
-    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 
   // Override handleGet to check if operation_mode is 'dehumi'

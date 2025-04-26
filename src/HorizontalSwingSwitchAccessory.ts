@@ -7,9 +7,7 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    // Don't change accessory.displayName!
-    const deviceName = accessory.context.deviceConfig?.name || accessory.displayName || 'AC';
-    const serviceName = `${deviceName} Horizontal Swing`;
+    const serviceName = 'Horizontal Swing';
     super(
       platform,
       accessory,
@@ -19,7 +17,8 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       async () => {}, // No-op
       'Horizontal Swing', // Log Prefix
     );
-    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 
   // Override handleGet to check if swing_mode includes Horizontal
