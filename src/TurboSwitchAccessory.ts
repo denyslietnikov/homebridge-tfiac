@@ -8,26 +8,18 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    const deviceName = accessory.context.deviceConfig.name;
-    const serviceName = `${deviceName} Turbo`; // Use device name
-    const serviceSubtype = 'turbo'; // Keep subtype simple
-
+    const serviceName = 'Turbo';
     const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,
       serviceName, // Service Name
-      serviceSubtype, // Service Subtype
+      'turbo', // Service Subtype
       'opt_super', // Status Key
       deviceAPI.setTurboState.bind(deviceAPI), // API Set Method
       'Turbo', // Log Prefix
     );
-
-    // The BaseSwitchAccessory constructor already handles getting/adding the service.
-    // No need to re-assign this.service here.
-
-    // Base class already sets the name, but we can ensure it here if needed
-    // this.service.setCharacteristic(this.platform.Characteristic.Name, serviceName);
-    // this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 }

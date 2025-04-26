@@ -100,8 +100,7 @@ describe('TurboSwitchAccessory – unit', () => {
     
     createAccessory(undefined);
     const svc = mockService;
-    const deviceName = accessory.context.deviceConfig.name;
-    const expectedServiceName = `${deviceName} Turbo`;
+    const expectedServiceName = 'Turbo';
 
     // Skip checking updateStateMock since the BaseSwitchAccessory calls it asynchronously
     // and we're testing the constructor synchronously
@@ -118,8 +117,7 @@ describe('TurboSwitchAccessory – unit', () => {
     
     createAccessory(mockService);
     const svc = mockService;
-    const deviceName = accessory.context.deviceConfig.name;
-    const expectedServiceName = `${deviceName} Turbo`;
+    const expectedServiceName = 'Turbo';
 
     // Skip checking updateStateMock since the BaseSwitchAccessory calls it asynchronously
     // and we're testing the constructor synchronously

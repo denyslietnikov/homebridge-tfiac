@@ -73,7 +73,7 @@ export class TfiacPlatformAccessory {
       // Update the display name regardless if it was existing or new
       this.temperatureSensorService.setCharacteristic(
         this.platform.Characteristic.Name, 
-        (deviceConfig.name ?? 'Unnamed AC') + ' Indoor Temperature',
+        'Indoor Temperature',
       );
       
       this.temperatureSensorService
@@ -216,7 +216,7 @@ export class TfiacPlatformAccessory {
             );
           this.outdoorTemperatureSensorService.setCharacteristic(
             this.platform.Characteristic.Name,
-            (this.accessory.context.deviceConfig.name ?? 'Unnamed AC') + ' Outdoor Temperature',
+            'Outdoor Temperature',
           );
           this.outdoorTemperatureSensorService
             .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
