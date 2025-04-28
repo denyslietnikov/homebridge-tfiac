@@ -1,11 +1,11 @@
 // platform.test.ts
 
 import { API, Categories, Characteristic, Logger, PlatformAccessory, Service, User } from 'homebridge';
-import { TfiacPlatform } from '../platform';
+import { TfiacPlatform } from '../platform.js';
 import { jest, describe, beforeEach, it, expect, afterEach } from '@jest/globals';
 import { Accessory, LegacyTypes } from 'hap-nodejs';
-import { TfiacPlatformAccessory } from '../platformAccessory';
-import { TfiacPlatformConfig, TfiacDeviceConfig } from '../settings';
+import { TfiacPlatformAccessory } from '../platformAccessory.js';
+import { TfiacPlatformConfig, TfiacDeviceConfig } from '../settings.js';
 
 // Collection to store TfiacPlatformAccessory instances for cleanup
 const tfiacAccessoryInstances: TfiacPlatformAccessory[] = [];

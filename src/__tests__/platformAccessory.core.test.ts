@@ -12,10 +12,10 @@ import {
   API,
   Service,
 } from 'homebridge';
-import { TfiacPlatform } from '../platform';
-import { TfiacPlatformAccessory } from '../platformAccessory';
-import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI';
-import { TfiacDeviceConfig } from '../settings';
+import { TfiacPlatform } from '../platform.js';
+import { TfiacPlatformAccessory } from '../platformAccessory.js';
+import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI.js';
+import { TfiacDeviceConfig } from '../settings.js';
 import { jest, describe, beforeEach, afterEach, it, expect, beforeAll } from '@jest/globals';
 
 // --- Mock AirConditionerAPI ---

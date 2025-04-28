@@ -1,4 +1,4 @@
-import { FanSpeedAccessory } from '../FanSpeedAccessory';
+import { FanSpeedAccessory } from '../FanSpeedAccessory.js';
 import { TfiacPlatform } from '../platform';
 import { PlatformAccessory, Service } from 'homebridge';
 

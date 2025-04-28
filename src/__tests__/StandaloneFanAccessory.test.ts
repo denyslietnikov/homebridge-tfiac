@@ -1,5 +1,5 @@
-import { StandaloneFanAccessory } from '../StandaloneFanAccessory';
-import { TfiacPlatform } from '../platform';
+import { StandaloneFanAccessory } from '../StandaloneFanAccessory.js';
+import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
 
 describe('StandaloneFanAccessory', () => {

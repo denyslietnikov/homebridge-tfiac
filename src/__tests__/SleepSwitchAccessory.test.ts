@@ -1,5 +1,5 @@
-import { SleepSwitchAccessory } from '../SleepSwitchAccessory';
-import { TfiacPlatform } from '../platform';
+import { SleepSwitchAccessory } from '../SleepSwitchAccessory.js';
+import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
 
 describe('SleepSwitchAccessory', () => {

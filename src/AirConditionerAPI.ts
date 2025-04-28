@@ -290,4 +290,5 @@ export class AirConditionerAPI extends EventEmitter {
   }
 }
 
-export default AirConditionerAPI;
+// Export the class directly instead of a default export
+export { AirConditionerAPI as default };

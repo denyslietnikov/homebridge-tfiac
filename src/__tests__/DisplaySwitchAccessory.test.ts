@@ -1,5 +1,5 @@
-import { DisplaySwitchAccessory } from '../DisplaySwitchAccessory';
-import { TfiacPlatform } from '../platform';
+import { DisplaySwitchAccessory } from '../DisplaySwitchAccessory.js';
+import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
 
 describe('DisplaySwitchAccessory', () => {

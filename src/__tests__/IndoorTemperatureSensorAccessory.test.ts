@@ -1,7 +1,7 @@
 import { PlatformAccessory, Service } from 'homebridge';
-import { TfiacPlatform } from '../platform';
-import { IndoorTemperatureSensorAccessory } from '../IndoorTemperatureSensorAccessory';
-import { TfiacDeviceConfig } from '../settings';
+import { TfiacPlatform } from '../platform.js';
+import { IndoorTemperatureSensorAccessory } from '../IndoorTemperatureSensorAccessory.js';
+import { TfiacDeviceConfig } from '../settings.js';
 
 describe('IndoorTemperatureSensorAccessory', () => {
   let platform: TfiacPlatform;

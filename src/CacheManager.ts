@@ -37,4 +37,5 @@ export class CacheManager {
   }
 }
 
-export default CacheManager;
+// Export the class directly instead of a default export
+export { CacheManager as default };

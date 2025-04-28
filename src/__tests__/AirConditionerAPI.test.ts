@@ -1,6 +1,6 @@
 // AirConditionerAPI.test.ts
 
-import AirConditionerAPI from '../AirConditionerAPI';
+import AirConditionerAPI from '../AirConditionerAPI.js';
 import dgram from 'dgram';
 import { jest, describe, beforeEach, it, expect, afterEach } from '@jest/globals';
 

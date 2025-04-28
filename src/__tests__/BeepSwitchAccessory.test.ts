@@ -1,7 +1,7 @@
 import { CharacteristicSetCallback, PlatformAccessory } from 'homebridge';
 import { BeepSwitchAccessory } from '../BeepSwitchAccessory';
-import AirConditionerAPI from '../AirConditionerAPI';
-import { TfiacPlatform } from '../platform';
+import AirConditionerAPI from '../AirConditionerAPI.js';
+import { TfiacPlatform } from '../platform.js';
 
 // Mock dependencies
 jest.mock('../AirConditionerAPI');

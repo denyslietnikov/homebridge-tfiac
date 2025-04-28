@@ -1,5 +1,5 @@
 // platform.network.discovery.test.ts - Tests specifically for network discovery functionality
-import { TfiacPlatform } from '../platform';
+import { TfiacPlatform } from '../platform.js';
 import { API } from 'homebridge';
 import * as dgram from 'dgram';
 
