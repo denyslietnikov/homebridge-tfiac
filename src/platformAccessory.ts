@@ -238,6 +238,13 @@ export class TfiacPlatformAccessory {
   }
 
   private startPolling(): void {
+    // Skip polling in test environment to avoid leaking timers
+    if (process.env.JEST_WORKER_ID) {
+      this.platform.log.debug(
+        `Skipping polling in test environment for ${this.accessory.context.deviceConfig.name}`,
+      );
+      return;
+    }
     this.updateCachedStatus();
 
     const warmupDelay = Math.floor(Math.random() * 10000);
@@ -449,6 +456,10 @@ export class TfiacPlatformAccessory {
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting threshold temperature:', error);
+      // Refresh status even on error to keep cache in sync
+      this.updateCachedStatus().catch(err => {
+        this.platform.log.error('Error refreshing status after set failure:', err);
+      });
       callback(error as Error);
     }
   }

@@ -17,6 +17,7 @@ export class IndoorTemperatureSensorAccessory {
     private readonly accessory: PlatformAccessory,
     private readonly deviceConfig: TfiacDeviceConfig,
   ) {
+    const serviceName = 'Indoor Temperature';
     // Look for existing temperature sensor service with the specific subtype
     const existingService = this.accessory.getServiceById(
       this.platform.Service.TemperatureSensor,
@@ -29,7 +30,7 @@ export class IndoorTemperatureSensorAccessory {
       // Create new service with consistent name and subtype for identification
       this.service = this.accessory.addService(
         this.platform.Service.TemperatureSensor,
-        'Indoor Temperature',
+        serviceName,
         'indoor_temperature', // Subtype for uniqueness
       );
     }
@@ -38,7 +39,7 @@ export class IndoorTemperatureSensorAccessory {
     if (typeof this.service.setCharacteristic === 'function') {
       this.service.setCharacteristic(
         this.platform.Characteristic.Name,
-        'Indoor Temperature',
+        serviceName,
       );
     }
 
