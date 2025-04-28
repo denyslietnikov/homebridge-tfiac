@@ -8,6 +8,7 @@ import {
 import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
+import CacheManager from './CacheManager.js';
 
 /**
  * Base class for simple switch accessories (On/Off).
@@ -20,6 +21,7 @@ export abstract class BaseSwitchAccessory {
   protected cachedStatus: Partial<AirConditionerStatus> | null = null;
   protected pollingInterval: NodeJS.Timeout | null = null;
   protected isPolling = false; // Flag to prevent concurrent polling updates
+  private cacheManager: CacheManager;
 
   constructor(
     protected readonly platform: TfiacPlatform,
@@ -31,6 +33,7 @@ export abstract class BaseSwitchAccessory {
     private readonly logPrefix: string, // e.g., 'Turbo', 'Eco'
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
+    this.cacheManager = CacheManager.getInstance(this.deviceConfig);
     // Ensure deviceAPI is instantiated here if not passed in
     this.deviceAPI = new AirConditionerAPI(this.deviceConfig.ip, this.deviceConfig.port);
 
@@ -107,9 +110,10 @@ export abstract class BaseSwitchAccessory {
     }
     this.isPolling = true;
     this.platform.log.debug(`Updating ${this.logPrefix} status for ${this.accessory.displayName}...`);
-
+    // Clear cache to ensure fresh status fetch
+    this.cacheManager.clear();
     try {
-      const status = await this.deviceAPI.updateState();
+      const status = await this.cacheManager.getStatus();
       this.platform.log.debug(`Received ${this.logPrefix} status for ${this.accessory.displayName}:`, status[this.statusKey]);
       const oldStatus = this.cachedStatus ? this.cachedStatus[this.statusKey] : undefined;
       this.cachedStatus = status;
@@ -128,7 +132,8 @@ export abstract class BaseSwitchAccessory {
         }
       }
     } catch (error) {
-      this.platform.log.error(`Error updating ${this.logPrefix} status for ${this.accessory.displayName}:`, error);
+      const displayName = this.accessory.displayName;
+      this.platform.log.error(`Error updating ${this.logPrefix} status for ${displayName}:`, error);
       // Optionally reset cached status or handle error state
       // this.cachedStatus = null;
       // this.service.updateCharacteristic(this.platform.Characteristic.On, new Error('Polling failed'));
@@ -162,6 +167,7 @@ export abstract class BaseSwitchAccessory {
 
     try {
       await this.apiSetMethod(requestedState);
+      this.cacheManager.clear();
       this.platform.log.info(`${this.logPrefix} successfully set to ${requestedState} for ${this.accessory.displayName}`);
       // Optimistically update cache and characteristic
       if (this.cachedStatus) {
