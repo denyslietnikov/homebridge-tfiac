@@ -73,13 +73,21 @@ export abstract class BaseSwitchAccessory {
     );
 
     // Initial update after random delay
-    setTimeout(() => {
+    const initialDelayTimer = setTimeout(() => {
       this.updateCachedStatus();
       // Then set up regular interval
       this.pollingInterval = setInterval(() => {
         this.updateCachedStatus();
       }, intervalMillis);
+      // Ensure timer does not keep node process alive
+      if (this.pollingInterval.unref) {
+        this.pollingInterval.unref();
+      }
     }, randomDelay);
+    // Ensure initial delay timer does not keep node process alive
+    if (initialDelayTimer.unref) {
+      initialDelayTimer.unref();
+    }
   }
 
   /**
