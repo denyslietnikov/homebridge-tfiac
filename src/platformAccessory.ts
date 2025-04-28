@@ -3,252 +3,328 @@
 import {
   PlatformAccessory,
   Service,
+  Characteristic,
+  WithUUID,
   CharacteristicValue,
   CharacteristicSetCallback,
   CharacteristicGetCallback,
 } from 'homebridge';
 import type { TfiacPlatform } from './platform.js';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
-import { TfiacDeviceConfig } from './settings.js';
+import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI';
+import { TfiacDeviceConfig } from './settings';
+import { IndoorTemperatureSensorAccessory } from './IndoorTemperatureSensorAccessory'; // Import new class
+import { OutdoorTemperatureSensorAccessory } from './OutdoorTemperatureSensorAccessory'; // Import new class
+import { fahrenheitToCelsius, celsiusToFahrenheit } from './utils'; // Import helpers
+import CacheManager from './CacheManager';
+
+export interface CharacteristicHandlers {
+  get?: (callback: CharacteristicGetCallback) => void;
+  set?: (value: CharacteristicValue, callback: CharacteristicSetCallback) => void;
+}
 
 export class TfiacPlatformAccessory {
   private service: Service;
-  private temperatureSensorService: Service;
-  private outdoorTemperatureSensorService: Service | null = null;
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null; // Explicitly typed
   private pollInterval: number;
   private pollingInterval: NodeJS.Timeout | null = null; // Store interval reference
+  private warmupTimeout: NodeJS.Timeout | null = null; // Store warmup timeout reference
+  private cacheManager: CacheManager;
+
+  private indoorTemperatureSensorAccessory: IndoorTemperatureSensorAccessory | null = null;
+  private outdoorTemperatureSensorAccessory: OutdoorTemperatureSensorAccessory | null = null;
+
+  private characteristicHandlers: Map<string, CharacteristicHandlers> = new Map();
 
   constructor(
     private readonly platform: TfiacPlatform,
     private readonly accessory: PlatformAccessory,
   ) {
-    // Retrieve the device config from the accessory context
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
 
-    // Create the AirConditionerAPI instance
     const ip = deviceConfig.ip;
     const port = deviceConfig.port ?? 7777;
     this.deviceAPI = new AirConditionerAPI(ip, port);
+    this.cacheManager = CacheManager.getInstance(deviceConfig);
 
-    // Determine polling interval (in milliseconds)
     this.pollInterval = deviceConfig.updateInterval
       ? deviceConfig.updateInterval * 1000
       : 30000;
 
-    // Create or retrieve the HeaterCooler service
     this.service =
       this.accessory.getService(this.platform.Service.HeaterCooler) ||
       this.accessory.addService(this.platform.Service.HeaterCooler, deviceConfig.name);
 
-    // Set the displayed name characteristic
-    this.service.setCharacteristic(
-      this.platform.Characteristic.Name,
-      deviceConfig.name ?? 'Unnamed AC',
-    );
-
-    // --- Temperature Sensor Service ---
-    // Only create temperature sensor if explicit enableTemperature flag is not false
-    // AND there isn't already a separate TurboSwitchAccessory managing this
-    if (deviceConfig.enableTemperature !== false) {
-      // Look for existing temperature sensor service with any name but correct UUID
-      const existingTempSensorService = this.accessory.services.find(
-        service => service.UUID === this.platform.Service.TemperatureSensor.UUID &&
-                  service.displayName?.includes('Indoor Temperature'),
+    if (typeof this.service.setCharacteristic === 'function') {
+      this.service.setCharacteristic(
+        this.platform.Characteristic.Name,
+        deviceConfig.name ?? 'Unnamed AC',
       );
-      
-      if (existingTempSensorService) {
-        // Use existing service
-        this.temperatureSensorService = existingTempSensorService;
-      } else {
-        // Create new service with consistent name for identification
-        this.temperatureSensorService = this.accessory.addService(
-          this.platform.Service.TemperatureSensor,
-          'Indoor Temperature',
-          'indoor_temperature',
-        );
-      }
-      
-      // Update the display name regardless if it was existing or new
-      this.temperatureSensorService.setCharacteristic(
-        this.platform.Characteristic.Name, 
-        'Indoor Temperature',
+    } else if (typeof this.service.updateCharacteristic === 'function') {
+      this.service.updateCharacteristic(
+        this.platform.Characteristic.Name,
+        deviceConfig.name ?? 'Unnamed AC',
       );
-      
-      this.temperatureSensorService
-        .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-        .on('get', this.handleTemperatureSensorCurrentTemperatureGet.bind(this));
-    } else {
-      this.platform.log.info(`Temperature sensor is disabled for ${deviceConfig.name}`);
-      
-      // Remove all temperature sensor services
-      const tempSensorServices = this.accessory.services.filter(
-        service => service.UUID === this.platform.Service.TemperatureSensor.UUID,
-      );
-      
-      tempSensorServices.forEach(service => {
-        this.accessory.removeService(service);
-        this.platform.log.debug(`Removed temperature sensor service: ${service.displayName || 'unnamed'}`);
-      });
-      
-      this.temperatureSensorService = undefined as unknown as Service;
     }
 
-    // --- Outdoor Temperature Sensor Service (optional) ---
-    this.outdoorTemperatureSensorService = null;
+    const enableTemperature = deviceConfig.enableTemperature !== false;
 
-    // Start background polling to update cached status
+    if (enableTemperature) {
+      this.indoorTemperatureSensorAccessory = new IndoorTemperatureSensorAccessory(
+        this.platform,
+        this.accessory,
+        deviceConfig,
+      );
+      this.outdoorTemperatureSensorAccessory = new OutdoorTemperatureSensorAccessory(
+        this.platform,
+        this.accessory,
+        deviceConfig,
+      );
+    } else {
+      this.platform.log.info(`Temperature sensors are disabled for ${deviceConfig.name}`);
+      const indoorService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, 'indoor_temperature');
+      if (indoorService) {
+        this.accessory.removeService(indoorService);
+        this.platform.log.debug('Removed existing indoor temperature sensor service.');
+      }
+      const outdoorService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, 'outdoor_temperature');
+      if (outdoorService) {
+        this.accessory.removeService(outdoorService);
+        this.platform.log.debug('Removed existing outdoor temperature sensor service.');
+      }
+    }
+
     this.startPolling();
 
-    // Link handlers for required characteristics
-    this.service
-      .getCharacteristic(this.platform.Characteristic.Active)
-      .on('get', this.handleActiveGet.bind(this))
-      .on('set', this.handleActiveSet.bind(this));
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)
-      .on('get', this.handleCurrentHeaterCoolerStateGet.bind(this));
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)
-      .on('get', this.handleTargetHeaterCoolerStateGet.bind(this))
-      .on('set', this.handleTargetHeaterCoolerStateSet.bind(this));
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .on('get', this.handleCurrentTemperatureGet.bind(this));
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature)
-      .on('get', this.handleThresholdTemperatureGet.bind(this))
-      .on('set', this.handleThresholdTemperatureSet.bind(this));
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature)
-      .on('get', this.handleThresholdTemperatureGet.bind(this))
-      .on('set', this.handleThresholdTemperatureSet.bind(this));
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      .on('get', this.handleRotationSpeedGet.bind(this))
-      .on('set', this.handleRotationSpeedSet.bind(this));
-
-    this.service
-      .getCharacteristic(this.platform.Characteristic.SwingMode)
-      .on('get', this.handleSwingModeGet.bind(this))
-      .on('set', this.handleSwingModeSet.bind(this));
+    this.setupCharacteristicHandlers();
   }
 
-  /**
-   * Stop polling and clean up resources
-   */
+  private setupCharacteristicHandlers(): void {
+    this.setupCharacteristic(
+      this.platform.Characteristic.Active, 
+      this.handleActiveGet.bind(this),
+      this.handleActiveSet.bind(this),
+    );
+
+    this.setupCharacteristic(
+      this.platform.Characteristic.CurrentHeaterCoolerState,
+      this.handleCurrentHeaterCoolerStateGet.bind(this),
+    );
+
+    this.setupCharacteristic(
+      this.platform.Characteristic.TargetHeaterCoolerState,
+      this.handleTargetHeaterCoolerStateGet.bind(this),
+      this.handleTargetHeaterCoolerStateSet.bind(this),
+    );
+
+    this.setupCharacteristic(
+      this.platform.Characteristic.CurrentTemperature,
+      this.handleCurrentTemperatureGet.bind(this),
+    );
+
+    this.setupCharacteristic(
+      this.platform.Characteristic.CoolingThresholdTemperature,
+      this.handleThresholdTemperatureGet.bind(this),
+      this.handleThresholdTemperatureSet.bind(this),
+    );
+
+    this.setupCharacteristic(
+      this.platform.Characteristic.HeatingThresholdTemperature,
+      this.handleThresholdTemperatureGet.bind(this),
+      this.handleThresholdTemperatureSet.bind(this),
+    );
+
+    this.setupCharacteristic(
+      this.platform.Characteristic.RotationSpeed,
+      this.handleRotationSpeedGet.bind(this),
+      this.handleRotationSpeedSet.bind(this),
+    );
+
+    this.setupCharacteristic(
+      this.platform.Characteristic.SwingMode,
+      this.handleSwingModeGet.bind(this),
+      this.handleSwingModeSet.bind(this),
+    );
+  }
+
+  private setupCharacteristic(
+    characteristic: string | WithUUID<new () => Characteristic>,
+    getHandler: (callback: CharacteristicGetCallback) => void,
+    setHandler?: (value: CharacteristicValue, callback: CharacteristicSetCallback) => void,
+  ): void {
+    const handlers: CharacteristicHandlers = { get: getHandler };
+    if (setHandler) {
+      handlers.set = setHandler;
+    }
+    const charId = typeof characteristic === 'string' ? characteristic : characteristic.UUID;
+    this.characteristicHandlers.set(charId, handlers);
+
+    try {
+      const char = this.service.getCharacteristic(characteristic);
+      
+      if (char) {
+        if (getHandler && typeof char.on === 'function') {
+          char.on('get', getHandler);
+        }
+        
+        if (setHandler && typeof char.on === 'function') {
+          char.on('set', setHandler);
+        }
+      }
+    } catch (error) {
+      this.platform.log.debug(`Could not set up characteristic ${charId}: ${error}`);
+    }
+  }
+
+  getCharacteristicHandler(characteristicName: string, eventType: 'get' | 'set'): 
+    ((callback: CharacteristicGetCallback) => void) | 
+    ((value: CharacteristicValue, callback: CharacteristicSetCallback) => void) | 
+    undefined {
+    const handlers = this.characteristicHandlers.get(characteristicName);
+    if (handlers) {
+      return handlers[eventType];
+    }
+    
+    if (characteristicName === 'CurrentTemperature' && eventType === 'get') {
+      return this.handleCurrentTemperatureGet.bind(this);
+    } else if (
+      (characteristicName === 'CoolingThresholdTemperature' || characteristicName === 'HeatingThresholdTemperature') && 
+      eventType === 'get'
+    ) {
+      return this.handleThresholdTemperatureGet.bind(this);
+    } else if (
+      (characteristicName === 'CoolingThresholdTemperature' || characteristicName === 'HeatingThresholdTemperature') && 
+      eventType === 'set'
+    ) {
+      return this.handleThresholdTemperatureSet.bind(this);
+    } else if (characteristicName === 'RotationSpeed' && eventType === 'get') {
+      return this.handleRotationSpeedGet.bind(this);
+    } else if (characteristicName === 'RotationSpeed' && eventType === 'set') {
+      return this.handleRotationSpeedSet.bind(this);
+    } else if (characteristicName === 'SwingMode' && eventType === 'get') {
+      return this.handleSwingModeGet.bind(this);
+    } else if (characteristicName === 'SwingMode' && eventType === 'set') {
+      return this.handleSwingModeSet.bind(this);
+    } else if (characteristicName === 'Active' && eventType === 'get') {
+      return this.handleActiveGet.bind(this);
+    } else if (characteristicName === 'Active' && eventType === 'set') {
+      return this.handleActiveSet.bind(this);
+    } else if (characteristicName === 'CurrentHeaterCoolerState' && eventType === 'get') {
+      return this.handleCurrentHeaterCoolerStateGet.bind(this);
+    } else if (characteristicName === 'TargetHeaterCoolerState' && eventType === 'get') {
+      return this.handleTargetHeaterCoolerStateGet.bind(this);
+    } else if (characteristicName === 'TargetHeaterCoolerState' && eventType === 'set') {
+      return this.handleTargetHeaterCoolerStateSet.bind(this);
+    }
+    
+    return undefined;
+  }
+
   public stopPolling(): void {
+    if (this.warmupTimeout) {
+      clearTimeout(this.warmupTimeout);
+      this.warmupTimeout = null;
+    }
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     }
-    
-    // Clean up the API as well
+
     if (this.deviceAPI) {
       this.deviceAPI.cleanup();
     }
-    
+
     this.platform.log.debug('Polling stopped for %s', this.accessory.context.deviceConfig.name);
   }
 
-  /**
-   * Starts periodic polling of the device state.
-   */
   private startPolling(): void {
-    // Initial cache update
     this.updateCachedStatus();
-    
-    // Generate a random delay between 0 and 10 seconds to distribute network requests
+
     const warmupDelay = Math.floor(Math.random() * 10000);
-    
-    // Warm up the cache with a delay to prevent network overload
-    setTimeout(() => {
+
+    this.warmupTimeout = setTimeout(() => {
       this.updateCachedStatus().catch(err => {
         this.platform.log.error('Initial state fetch failed:', err);
       });
     }, warmupDelay);
-    
-    // Then schedule periodic updates
+    this.warmupTimeout.unref();
+
     this.pollingInterval = setInterval(() => {
       this.updateCachedStatus();
     }, this.pollInterval);
-    // Ensure timer doesn't keep node process alive
     this.pollingInterval.unref();
   }
 
-  /**
-   * Updates the cached status by calling the device API.
-   */
   private async updateCachedStatus(): Promise<void> {
     try {
+      // Fetch fresh status directly from device API
       const status = await this.deviceAPI.updateState();
       this.cachedStatus = status;
-      this.platform.log.debug('Cached status updated:', status);
-      
-      // Get device config to check enableTemperature setting
-      const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
-      const enableTemperature = deviceConfig.enableTemperature !== false;
-      
-      // Update Indoor TemperatureSensor characteristic
-      if (this.temperatureSensorService && status) {
-        const temperatureCelsius = this.fahrenheitToCelsius(status.current_temp);
-        this.temperatureSensorService.updateCharacteristic(
-          this.platform.Characteristic.CurrentTemperature,
-          temperatureCelsius,
-        );
-      }
-      
-      // --- Outdoor TemperatureSensor ---
-      if (enableTemperature && typeof status.outdoor_temp === 'number' && status.outdoor_temp !== 0 && !isNaN(status.outdoor_temp)) {
-        if (!this.outdoorTemperatureSensorService) {
-          this.outdoorTemperatureSensorService =
-            this.accessory.getService('Outdoor Temperature') ||
-            this.accessory.addService(
-              this.platform.Service.TemperatureSensor,
-              'Outdoor Temperature',
-            );
-          this.outdoorTemperatureSensorService.setCharacteristic(
-            this.platform.Characteristic.Name,
-            'Outdoor Temperature',
-          );
-          this.outdoorTemperatureSensorService
-            .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-            .on('get', this.handleOutdoorTemperatureSensorCurrentTemperatureGet.bind(this));
-        }
-        const outdoorCelsius = this.fahrenheitToCelsius(status.outdoor_temp);
-        this.outdoorTemperatureSensorService.updateCharacteristic(
-          this.platform.Characteristic.CurrentTemperature,
-          outdoorCelsius,
-        );
-      } else if (this.outdoorTemperatureSensorService) {
-        // Remove the service if outdoor_temp is not available, zero or temperature sensors are disabled
-        this.accessory.removeService(this.outdoorTemperatureSensorService);
-        this.outdoorTemperatureSensorService = null;
-      }
+      this.platform.log.debug('Fetched status from API:', status);
+
+      this.updateHeaterCoolerCharacteristics(status);
+
+      this.indoorTemperatureSensorAccessory?.updateStatus(status);
+      this.outdoorTemperatureSensorAccessory?.updateStatus(status);
+
     } catch (error) {
       this.platform.log.error('Error updating cached status:', error);
+      this.updateHeaterCoolerCharacteristics(null);
+      this.indoorTemperatureSensorAccessory?.updateStatus(null);
+      this.outdoorTemperatureSensorAccessory?.updateStatus(null);
+    }
+  }
+
+  private updateHeaterCoolerCharacteristics(status: AirConditionerStatus | null): void {
+    if (status) {
+      const activeValue = status.is_on === 'on'
+        ? this.platform.Characteristic.Active.ACTIVE
+        : this.platform.Characteristic.Active.INACTIVE;
+      this.service.updateCharacteristic(this.platform.Characteristic.Active, activeValue);
+
+      const currentHCState = this.mapOperationModeToCurrentHeaterCoolerState(status.operation_mode);
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState, currentHCState);
+
+      const targetHCState = this.mapOperationModeToTargetHeaterCoolerState(status.operation_mode);
+      this.service.updateCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState, targetHCState);
+
+      const currentTempCelsius = fahrenheitToCelsius(status.current_temp);
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, currentTempCelsius);
+
+      const targetTempCelsius = fahrenheitToCelsius(status.target_temp);
+      this.service.updateCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature, targetTempCelsius);
+      this.service.updateCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature, targetTempCelsius);
+
+      const fanSpeed = this.mapFanModeToRotationSpeed(status.fan_mode);
+      this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, fanSpeed);
+
+      const swingMode = status.swing_mode === 'Off' ? 0 : 1;
+      this.service.updateCharacteristic(this.platform.Characteristic.SwingMode, swingMode);
+
+    } else {
+      this.service.updateCharacteristic(this.platform.Characteristic.Active, this.platform.Characteristic.Active.INACTIVE);
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState, this.platform.Characteristic.CurrentHeaterCoolerState.IDLE);
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, 20);
+      this.service.updateCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature, 22);
+      this.service.updateCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature, 22);
+      this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, 50);
+      this.service.updateCharacteristic(this.platform.Characteristic.SwingMode, 0);
     }
   }
 
   private handleActiveGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET Active');
+    
     if (this.cachedStatus) {
-      const activeValue =
-        this.cachedStatus.is_on === 'on'
-          ? this.platform.Characteristic.Active.ACTIVE
-          : this.platform.Characteristic.Active.INACTIVE;
+      const activeValue = this.cachedStatus.is_on === 'on'
+        ? this.platform.Characteristic.Active.ACTIVE
+        : this.platform.Characteristic.Active.INACTIVE;
       callback(null, activeValue);
-    } else {
-      // Return INACTIVE as a safe default instead of an error
-      callback(null, this.platform.Characteristic.Active.INACTIVE);
+      return;
     }
+    
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.Active).value;
+    callback(null, currentValue ?? this.platform.Characteristic.Active.INACTIVE);
   }
 
   private async handleActiveSet(
@@ -262,8 +338,8 @@ export class TfiacPlatformAccessory {
       } else {
         await this.deviceAPI.turnOff();
       }
-      // Optionally update cache immediately after setting state
-      this.updateCachedStatus();
+      this.cacheManager.clear();
+      await this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting Active state:', error);
@@ -273,28 +349,38 @@ export class TfiacPlatformAccessory {
 
   private handleCurrentHeaterCoolerStateGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET CurrentHeaterCoolerState');
+    
     if (this.cachedStatus) {
-      const state = this.mapOperationModeToCurrentHeaterCoolerState(
-        this.cachedStatus.operation_mode,
-      );
+      const state = this.mapOperationModeToCurrentHeaterCoolerState(this.cachedStatus.operation_mode);
       callback(null, state);
-    } else {
-      // Return IDLE as a safe default instead of an error
-      callback(null, this.platform.Characteristic.CurrentHeaterCoolerState.IDLE);
+      return;
     }
+    
+    if (this.cachedStatus === null) {
+      callback(null, this.platform.Characteristic.CurrentHeaterCoolerState.IDLE);
+      return;
+    }
+    
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState).value;
+    callback(null, currentValue ?? this.platform.Characteristic.CurrentHeaterCoolerState.IDLE);
   }
 
   private handleTargetHeaterCoolerStateGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET TargetHeaterCoolerState');
+    
     if (this.cachedStatus) {
-      const state = this.mapOperationModeToTargetHeaterCoolerState(
-        this.cachedStatus.operation_mode,
-      );
+      const state = this.mapOperationModeToTargetHeaterCoolerState(this.cachedStatus.operation_mode);
       callback(null, state);
-    } else {
-      // Return AUTO as a safe default instead of an error
-      callback(null, this.platform.Characteristic.TargetHeaterCoolerState.AUTO);
+      return;
     }
+    
+    if (this.cachedStatus === null) {
+      callback(null, this.platform.Characteristic.TargetHeaterCoolerState.AUTO);
+      return;
+    }
+    
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState).value;
+    callback(null, currentValue ?? this.platform.Characteristic.TargetHeaterCoolerState.AUTO);
   }
 
   private async handleTargetHeaterCoolerStateSet(
@@ -305,8 +391,8 @@ export class TfiacPlatformAccessory {
     try {
       const mode = this.mapTargetHeaterCoolerStateToOperationMode(value as number);
       await this.deviceAPI.setAirConditionerState('operation_mode', mode);
-      // Update cache after setting
-      this.updateCachedStatus();
+      this.cacheManager.clear();
+      await this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting TargetHeaterCoolerState:', error);
@@ -316,26 +402,38 @@ export class TfiacPlatformAccessory {
 
   private handleCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET CurrentTemperature');
-    if (this.cachedStatus) {
-      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.current_temp);
-      this.platform.log.debug(`Current temperature: ${temperatureCelsius}°C`);
-      callback(null, temperatureCelsius);
-    } else {
-      // Return a default temperature of 20°C instead of an error
-      callback(null, 20);
+    
+    if (this.cachedStatus && typeof this.cachedStatus.current_temp === 'number') {
+      const tempCelsius = fahrenheitToCelsius(this.cachedStatus.current_temp);
+      callback(null, tempCelsius);
+      return;
     }
+    
+    if (this.cachedStatus === null) {
+      callback(null, 20);
+      return;
+    }
+    
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature).value;
+    callback(null, currentValue ?? 20);
   }
 
   private handleThresholdTemperatureGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET ThresholdTemperature');
-    if (this.cachedStatus) {
-      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.target_temp);
-      this.platform.log.debug(`Threshold temperature: ${temperatureCelsius}°C`);
-      callback(null, temperatureCelsius);
-    } else {
-      // Return a default temperature of 22°C instead of an error
-      callback(null, 22);
+    
+    if (this.cachedStatus && typeof this.cachedStatus.target_temp === 'number') {
+      const tempCelsius = fahrenheitToCelsius(this.cachedStatus.target_temp);
+      callback(null, tempCelsius);
+      return;
     }
+    
+    if (this.cachedStatus === null) {
+      callback(null, 22);
+      return;
+    }
+    
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).value;
+    callback(null, currentValue ?? 22);
   }
 
   private async handleThresholdTemperatureSet(
@@ -344,9 +442,10 @@ export class TfiacPlatformAccessory {
   ): Promise<void> {
     this.platform.log.debug('Triggered SET ThresholdTemperature:', value);
     try {
-      const temperatureFahrenheit = this.celsiusToFahrenheit(value as number);
+      const temperatureFahrenheit = celsiusToFahrenheit(value as number);
       await this.deviceAPI.setAirConditionerState('target_temp', temperatureFahrenheit.toString());
-      this.updateCachedStatus();
+      this.cacheManager.clear();
+      await this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting threshold temperature:', error);
@@ -356,14 +455,15 @@ export class TfiacPlatformAccessory {
 
   private handleRotationSpeedGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET RotationSpeed');
-    if (this.cachedStatus) {
-      const fanSpeed = this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode);
-      this.platform.log.debug(`Fan speed: ${fanSpeed}`);
-      callback(null, fanSpeed);
-    } else {
-      // Return medium fan speed (50) as default instead of an error
-      callback(null, 50);
+    
+    if (this.cachedStatus && typeof this.cachedStatus.fan_mode === 'string') {
+      const speed = this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode);
+      callback(null, speed);
+      return;
     }
+    
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).value;
+    callback(null, currentValue ?? 50);
   }
 
   private async handleRotationSpeedSet(
@@ -374,7 +474,8 @@ export class TfiacPlatformAccessory {
     try {
       const fanMode = this.mapRotationSpeedToFanMode(value as number);
       await this.deviceAPI.setFanSpeed(fanMode);
-      this.updateCachedStatus();
+      this.cacheManager.clear();
+      await this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting fan speed:', error);
@@ -384,12 +485,15 @@ export class TfiacPlatformAccessory {
 
   private handleSwingModeGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET SwingMode');
-    if (this.cachedStatus) {
-      callback(null, this.cachedStatus.swing_mode === 'Off' ? 0 : 1);
-    } else {
-      // Return SWING_DISABLED (0) as default instead of an error
-      callback(null, 0);
+    
+    if (this.cachedStatus && typeof this.cachedStatus.swing_mode === 'string') {
+      const swingMode = this.cachedStatus.swing_mode === 'Off' ? 0 : 1;
+      callback(null, swingMode);
+      return;
     }
+    
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.SwingMode).value;
+    callback(null, currentValue ?? 0);
   }
 
   private async handleSwingModeSet(
@@ -400,35 +504,12 @@ export class TfiacPlatformAccessory {
     try {
       const mode = value ? 'Both' : 'Off';
       await this.deviceAPI.setSwingMode(mode);
-      this.updateCachedStatus();
+      this.cacheManager.clear();
+      await this.updateCachedStatus();
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting swing mode:', error);
       callback(error as Error);
-    }
-  }
-
-  private handleTemperatureSensorCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
-    this.platform.log.debug('Triggered GET TemperatureSensor.CurrentTemperature');
-    if (this.cachedStatus) {
-      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.current_temp);
-      this.platform.log.debug(`[TemperatureSensor] Current temperature: ${temperatureCelsius}°C`);
-      callback(null, temperatureCelsius);
-    } else {
-      // Return default temperature of 20°C instead of an error
-      callback(null, 20);
-    }
-  }
-
-  private handleOutdoorTemperatureSensorCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
-    this.platform.log.debug('Triggered GET OutdoorTemperatureSensor.CurrentTemperature');
-    if (this.cachedStatus && typeof this.cachedStatus.outdoor_temp === 'number' && !isNaN(this.cachedStatus.outdoor_temp)) {
-      const temperatureCelsius = this.fahrenheitToCelsius(this.cachedStatus.outdoor_temp);
-      this.platform.log.debug(`[TemperatureSensor] Outdoor temperature: ${temperatureCelsius}°C`);
-      callback(null, temperatureCelsius);
-    } else {
-      // Return a default outdoor temperature of 20°C instead of an error
-      callback(null, 20);
     }
   }
 
@@ -468,14 +549,6 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private fahrenheitToCelsius(fahrenheit: number): number {
-    return ((fahrenheit - 32) * 5) / 9;
-  }
-
-  private celsiusToFahrenheit(celsius: number): number {
-    return (celsius * 9) / 5 + 32;
-  }
-
   private mapFanModeToRotationSpeed(fanMode: string): number {
     const fanSpeedMap: { [key: string]: number } = {
       Auto: 50,
@@ -498,18 +571,17 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  // --- Additional helper methods for tests ---
   private convertTemperatureToDisplay(value: number, displayUnits: number): number {
     const { TemperatureDisplayUnits } = this.platform.api.hap.Characteristic;
     return displayUnits === TemperatureDisplayUnits.FAHRENHEIT
-      ? this.celsiusToFahrenheit(value)
+      ? celsiusToFahrenheit(value)
       : value;
   }
 
   private convertTemperatureFromDisplay(value: number, displayUnits: number): number {
     const { TemperatureDisplayUnits } = this.platform.api.hap.Characteristic;
     return displayUnits === TemperatureDisplayUnits.FAHRENHEIT
-      ? this.fahrenheitToCelsius(value)
+      ? fahrenheitToCelsius(value)
       : value;
   }
 
@@ -564,10 +636,13 @@ export class TfiacPlatformAccessory {
       if (typeof targetTemp !== 'number' || typeof currentTemp !== 'number') {
         return CurrentHeaterCoolerState.IDLE;
       }
-      if (targetTemp > currentTemp) {
+      const targetC = fahrenheitToCelsius(targetTemp);
+      const currentC = fahrenheitToCelsius(currentTemp);
+
+      if (targetC > currentC) {
         return CurrentHeaterCoolerState.HEATING;
       }
-      if (targetTemp < currentTemp) {
+      if (targetC < currentC) {
         return CurrentHeaterCoolerState.COOLING;
       }
       return CurrentHeaterCoolerState.IDLE;
@@ -579,5 +654,36 @@ export class TfiacPlatformAccessory {
       return CurrentHeaterCoolerState.IDLE;
     }
     return CurrentHeaterCoolerState.IDLE;
+  }
+
+  fahrenheitToCelsius(fahrenheit: number): number {
+    return fahrenheitToCelsius(fahrenheit);
+  }
+
+  celsiusToFahrenheit(celsius: number): number {
+    return celsiusToFahrenheit(celsius);
+  }
+
+  handleOutdoorTemperatureSensorCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
+    this.platform.log.debug('Triggered GET OutdoorTemperatureSensor.CurrentTemperature');
+    
+    if (this.cachedStatus && typeof this.cachedStatus.outdoor_temp === 'number' && 
+        this.cachedStatus.outdoor_temp !== 0 && !isNaN(this.cachedStatus.outdoor_temp)) {
+      const tempCelsius = fahrenheitToCelsius(this.cachedStatus.outdoor_temp);
+      callback(null, tempCelsius);
+    } else {
+      callback(null, 20);
+    }
+  }
+
+  handleTemperatureSensorCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
+    this.platform.log.debug('Triggered GET TemperatureSensor.CurrentTemperature');
+    
+    if (this.cachedStatus && typeof this.cachedStatus.current_temp === 'number') {
+      const tempCelsius = fahrenheitToCelsius(this.cachedStatus.current_temp);
+      callback(null, tempCelsius);
+    } else {
+      callback(null, 20);
+    }
   }
 }
