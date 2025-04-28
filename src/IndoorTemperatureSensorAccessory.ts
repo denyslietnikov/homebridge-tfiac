@@ -7,7 +7,7 @@ import {
 import type { TfiacPlatform } from './platform.js';
 import { TfiacDeviceConfig } from './settings.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
-import { fahrenheitToCelsius } from './utils';
+import { fahrenheitToCelsius } from './utils.js';
 
 export class IndoorTemperatureSensorAccessory {
   private service: Service;

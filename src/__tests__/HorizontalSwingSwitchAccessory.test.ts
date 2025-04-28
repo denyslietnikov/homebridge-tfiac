@@ -1,5 +1,5 @@
-import { HorizontalSwingSwitchAccessory } from '../HorizontalSwingSwitchAccessory';
-import { TfiacPlatform } from '../platform';
+import { HorizontalSwingSwitchAccessory } from '../HorizontalSwingSwitchAccessory.js';
+import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
 
 describe('HorizontalSwingSwitchAccessory', () => {

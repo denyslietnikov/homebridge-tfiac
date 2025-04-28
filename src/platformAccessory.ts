@@ -10,12 +10,12 @@ import {
   CharacteristicGetCallback,
 } from 'homebridge';
 import type { TfiacPlatform } from './platform.js';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI';
-import { TfiacDeviceConfig } from './settings';
-import { IndoorTemperatureSensorAccessory } from './IndoorTemperatureSensorAccessory'; // Import new class
-import { OutdoorTemperatureSensorAccessory } from './OutdoorTemperatureSensorAccessory'; // Import new class
-import { fahrenheitToCelsius, celsiusToFahrenheit } from './utils'; // Import helpers
-import CacheManager from './CacheManager';
+import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
+import { TfiacDeviceConfig } from './settings.js';
+import { IndoorTemperatureSensorAccessory } from './IndoorTemperatureSensorAccessory.js';
+import { OutdoorTemperatureSensorAccessory } from './OutdoorTemperatureSensorAccessory.js';
+import { fahrenheitToCelsius, celsiusToFahrenheit } from './utils.js';
+import CacheManager from './CacheManager.js';
 
 export interface CharacteristicHandlers {
   get?: (callback: CharacteristicGetCallback) => void;

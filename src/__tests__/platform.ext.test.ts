@@ -14,10 +14,10 @@ jest.mock('dgram', () => {
   return { createSocket: jest.fn().mockReturnValue(mockSocket) };
 });
 
-import { TfiacPlatformAccessory } from '../platformAccessory';
-import { TfiacPlatform } from '../platform';
+import { TfiacPlatformAccessory } from '../platformAccessory.js';
+import { TfiacPlatform } from '../platform.js';
 import { API, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
-import { PLATFORM_NAME, PLUGIN_NAME, TfiacDeviceConfig } from '../settings';
+import { PLATFORM_NAME, PLUGIN_NAME, TfiacDeviceConfig } from '../settings.js';
 import * as dgram from 'dgram';
 
 /* ------------------------------------------------------------------ */

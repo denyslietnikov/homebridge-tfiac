@@ -1,7 +1,7 @@
 import { PlatformAccessory, Service } from 'homebridge';
-import { TfiacPlatform } from '../platform';
-import { OutdoorTemperatureSensorAccessory } from '../OutdoorTemperatureSensorAccessory';
-import { TfiacDeviceConfig } from '../settings';
+import { TfiacPlatform } from '../platform.js';
+import { OutdoorTemperatureSensorAccessory } from '../OutdoorTemperatureSensorAccessory.js';
+import { TfiacDeviceConfig } from '../settings.js';
 
 describe('OutdoorTemperatureSensorAccessory', () => {
   let platform: TfiacPlatform;

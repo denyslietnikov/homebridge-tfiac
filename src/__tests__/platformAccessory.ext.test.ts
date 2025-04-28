@@ -5,8 +5,8 @@ import {
   CharacteristicSetCallback,
   Categories,
 } from 'homebridge';
-import { TfiacPlatform } from '../platform';
-import { TfiacPlatformAccessory } from '../platformAccessory';
+import { TfiacPlatform } from '../platform.js';
+import { TfiacPlatformAccessory } from '../platformAccessory.js';
 import {
   hapIdentifiers,
   hapConstants,

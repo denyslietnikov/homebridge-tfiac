@@ -1,8 +1,8 @@
 // platform.branch.test.ts
 import { API, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import { TfiacPlatform } from '../platform';
-import { PLUGIN_NAME, PLATFORM_NAME, TfiacPlatformConfig } from '../settings';
-import { TfiacPlatformAccessory } from '../platformAccessory';
+import { PLUGIN_NAME, PLATFORM_NAME, TfiacPlatformConfig } from '../settings.js';
+import { TfiacPlatformAccessory } from '../platformAccessory.js';
 
 // Mock modules with jest functions
 jest.mock('../platformAccessory');

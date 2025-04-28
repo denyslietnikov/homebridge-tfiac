@@ -9,9 +9,9 @@ import {
   Categories,
 } from 'homebridge';
 import { TfiacPlatform } from '../platform';
-import { TfiacPlatformAccessory } from '../platformAccessory';
-import AirConditionerAPI from '../AirConditionerAPI';
-import { TfiacDeviceConfig } from '../settings';
+import { TfiacPlatformAccessory } from '../platformAccessory.js';
+import AirConditionerAPI from '../AirConditionerAPI.js';
+import { TfiacDeviceConfig } from '../settings.js';
 import { jest, describe, beforeEach, afterEach, it, expect, beforeAll } from '@jest/globals';
 import { 
   hapIdentifiers, 
