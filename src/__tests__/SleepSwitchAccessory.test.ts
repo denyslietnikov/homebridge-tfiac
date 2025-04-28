@@ -119,4 +119,60 @@ describe('SleepSwitchAccessory', () => {
     expect(existingMockService.getCharacteristic().on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(existingMockService.getCharacteristic().on).toHaveBeenCalledWith('set', expect.any(Function));
   });
+
+  it('handleGet returns true if opt_sleepMode starts with sleepMode', done => {
+    const inst = new SleepSwitchAccessory(platform, accessory);
+    (inst as any).cachedStatus = { opt_sleepMode: 'sleepMode1:active' };
+    (inst as any).handleGet((err: Error | null, value?: boolean) => {
+      expect(err).toBeNull();
+      expect(value).toBe(true);
+      done();
+    });
+  });
+
+  it('handleGet returns false if opt_sleepMode does not start with sleepMode', done => {
+    const inst = new SleepSwitchAccessory(platform, accessory);
+    (inst as any).cachedStatus = { opt_sleepMode: 'off' };
+    (inst as any).handleGet((err: Error | null, value?: boolean) => {
+      expect(err).toBeNull();
+      expect(value).toBe(false);
+      done();
+    });
+  });
+
+  it('handleGet returns false if opt_sleepMode is undefined', done => {
+    const inst = new SleepSwitchAccessory(platform, accessory);
+    (inst as any).cachedStatus = {};
+    (inst as any).handleGet((err: Error | null, value?: boolean) => {
+      expect(err).toBeNull();
+      expect(value).toBe(false);
+      done();
+    });
+  });
+
+  it('updateCachedStatus updates characteristic when opt_sleepMode changes', async () => {
+    const inst = new SleepSwitchAccessory(platform, accessory);
+    (inst as any).cachedStatus = { opt_sleepMode: 'off' };
+    deviceAPI.updateState.mockResolvedValueOnce({ opt_sleepMode: 'sleepMode2:active' });
+    await (inst as any).updateCachedStatus();
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+  });
+
+  it('updateCachedStatus does not update characteristic if opt_sleepMode unchanged', async () => {
+    const inst = new SleepSwitchAccessory(platform, accessory);
+    (inst as any).cachedStatus = { opt_sleepMode: 'sleepMode1:active' };
+    deviceAPI.updateState.mockResolvedValueOnce({ opt_sleepMode: 'sleepMode1:active' });
+    await (inst as any).updateCachedStatus();
+    expect(service.updateCharacteristic).not.toHaveBeenCalledWith(platform.Characteristic.On, expect.anything());
+  });
+
+  it('updateCachedStatus handles error from updateState', async () => {
+    const inst = new SleepSwitchAccessory(platform, accessory);
+    deviceAPI.updateState.mockRejectedValueOnce(new Error('fail'));
+    await (inst as any).updateCachedStatus();
+    expect(platform.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Error updating Sleep status'),
+      expect.any(Error)
+    );
+  });
 });

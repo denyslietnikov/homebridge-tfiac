@@ -190,23 +190,30 @@ interface TestAccessoryContext {
 
 // --- Test Helpers ---
 
-// Helper to get the registered handler
+// Helper to get the registered handler - Updated for new implementation
 export const getHandlerByIdentifier = (
-  mockServiceInstance: any,
+  service: any,
   characteristicIdentifier: string, 
   event: 'get' | 'set'
 ): MockCharacteristicGetHandler | MockCharacteristicSetHandler => {
-  const characteristic = mockServiceInstance.characteristics.get(characteristicIdentifier);
-  if (!characteristic) {
-    throw new Error(`Characteristic ${characteristicIdentifier} not found/registered on mock service.`);
+  // Try using the new method first if this is an accessory instance
+  if (service && service.getCharacteristicHandler && typeof service.getCharacteristicHandler === 'function') {
+    const handler = service.getCharacteristicHandler(characteristicIdentifier, event);
+    
+    if (handler) {
+      return handler as MockCharacteristicGetHandler | MockCharacteristicSetHandler;
+    }
   }
-  const handler = event === 'get' ? characteristic.getHandler : characteristic.setHandler;
-  if (!handler) {
-    const availableHandlers = { get: !!characteristic.getHandler, set: !!characteristic.setHandler };
-    console.error(`Handler for '${event}' on characteristic '${characteristicIdentifier}' was not registered. Available:`, availableHandlers);
-    throw new Error(`Handler for '${event}' on characteristic ${characteristicIdentifier} was not registered.`);
+  
+  // Fall back to looking in the service characteristics for backwards compatibility
+  if (service && service.characteristics && service.characteristics.get) {
+    const char = service.characteristics.get(characteristicIdentifier);
+    if (char) {
+      return event === 'get' ? char.getHandler! : char.setHandler!;
+    }
   }
-  return handler;
+  
+  throw new Error(`Handler for '${event}' on characteristic ${characteristicIdentifier} was not found.`);
 };
 
 // --- The Core Test Suite ---
@@ -226,6 +233,8 @@ describe('TfiacPlatformAccessory - Core', () => {
     
     // Clear all mocks before each test
     Object.values(mockApiActions).forEach(mockFn => mockFn.mockClear());
+    // Reset the AirConditionerAPI constructor mock
+    (AirConditionerAPI as jest.Mock).mockClear();
     // Update how we reset the logger mocks
     mockLogger.info.mockClear();
     mockLogger.warn.mockClear();
@@ -290,7 +299,35 @@ describe('TfiacPlatformAccessory - Core', () => {
   // --- Test Cases ---
   describe('Initialization', () => {
     it('should create AirConditionerAPI instance', () => {
-      expect(AirConditionerAPI).toHaveBeenCalledWith(deviceConfig.ip, deviceConfig.port);
+      // Reset the mock completely
+      (AirConditionerAPI as jest.Mock).mockClear();
+      
+      // Mock startPolling to avoid setting timers
+      jest.spyOn(TfiacPlatformAccessory.prototype, 'startPolling').mockImplementation(function() {
+        // Empty mock implementation that doesn't set intervals and doesn't access this.log
+        return;
+      });
+      
+      // Create a new instance to trigger the constructor call
+      const testDeviceConfig = { name: 'Test AC', ip: '192.168.1.99', port: 7777, updateInterval: 30 };
+      const testMockAccessoryInstance = {
+        context: { deviceConfig: testDeviceConfig },
+        displayName: testDeviceConfig.name,
+        UUID: 'test-accessory-uuid',
+        category: Categories.AIR_CONDITIONER,
+        getService: jest.fn().mockReturnValue(mockServiceInstance) as any,
+        addService: jest.fn().mockReturnValue(mockServiceInstance) as any,
+        services: [mockServiceInstance as unknown],
+        on: jest.fn(),
+        emit: jest.fn(),
+        removeService: jest.fn(),
+        getServiceById: jest.fn(),
+      } as unknown as PlatformAccessory;
+      accessory = new TfiacPlatformAccessory(mockPlatform, testMockAccessoryInstance);
+      expect(AirConditionerAPI).toHaveBeenCalledWith(testDeviceConfig.ip, testDeviceConfig.port);
+      
+      // Clean up the spy
+      (TfiacPlatformAccessory.prototype.startPolling as jest.SpyInstance).mockRestore();
     });
     
     it('should get or add HeaterCooler service and set name', () => {
@@ -415,7 +452,7 @@ describe('TfiacPlatformAccessory - Core', () => {
         return Promise.resolve({...initialStatusFahrenheit});
       });
       
-      const handler = getHandlerByIdentifier(mockServiceInstance, hapIdentifiers.Characteristic.Active, 'set');
+      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.Active, 'set');
       const value = hapConstants.Characteristic.Active.ACTIVE;
       
       const callback: CharacteristicSetCallback = (error) => {
@@ -450,7 +487,7 @@ describe('TfiacPlatformAccessory - Core', () => {
         return Promise.resolve({...initialStatusFahrenheit});
       });
       
-      const handler = getHandlerByIdentifier(mockServiceInstance, hapIdentifiers.Characteristic.Active, 'set');
+      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.Active, 'set');
       const value = hapConstants.Characteristic.Active.INACTIVE;
       
       const callback: CharacteristicSetCallback = (error) => {
@@ -479,7 +516,7 @@ describe('TfiacPlatformAccessory - Core', () => {
       // Important: we need to clear updateState because the error comes BEFORE updateState is called
       mockApiActions.updateState.mockClear();
       
-      const handler = getHandlerByIdentifier(mockServiceInstance, hapIdentifiers.Characteristic.Active, 'set');
+      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.Active, 'set');
       const value = hapConstants.Characteristic.Active.ACTIVE;
       
       const callback: CharacteristicSetCallback = (error) => {
@@ -518,7 +555,7 @@ describe('TfiacPlatformAccessory - Core', () => {
         return Promise.resolve({...initialStatusFahrenheit});
       });
       
-      const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
+      const handler = getHandlerByIdentifier(accessory, charId, 'set');
       const value = hapConstants.Characteristic.TargetHeaterCoolerState.HEAT;
       
       const callback: CharacteristicSetCallback = (error) => {
@@ -545,7 +582,7 @@ describe('TfiacPlatformAccessory - Core', () => {
       const apiError = new Error('API Failed');
       mockApiActions.setAirConditionerState.mockImplementation(() => Promise.reject(apiError));
       
-      const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
+      const handler = getHandlerByIdentifier(accessory, charId, 'set');
       const value = hapConstants.Characteristic.TargetHeaterCoolerState.COOL;
       
       const callback: CharacteristicSetCallback = (error) => {

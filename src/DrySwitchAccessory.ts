@@ -54,7 +54,8 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
         this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
       }
     } catch (error) {
-      this.platform.log.error(`Error updating Dry Mode status for ${this.accessory.displayName}:`, error);
+      const name = this.accessory.context.deviceConfig.name;
+      this.platform.log.error(`Error updating Dry Mode status for ${name}:`, error);
     } finally {
       this.isPolling = false;
     }

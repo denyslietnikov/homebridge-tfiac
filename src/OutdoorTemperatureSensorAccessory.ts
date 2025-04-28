@@ -52,13 +52,20 @@ export class OutdoorTemperatureSensorAccessory {
             'Outdoor Temperature',
             'outdoor_temperature', // Add subtype for uniqueness
           );
-        this.service.setCharacteristic(
-          this.platform.Characteristic.Name,
-          'Outdoor Temperature',
-        );
-        this.service
-          .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-          .on('get', this.handleCurrentTemperatureGet.bind(this));
+        
+        // Add check before calling setCharacteristic
+        if (typeof this.service.setCharacteristic === 'function') {
+          this.service.setCharacteristic(
+            this.platform.Characteristic.Name,
+            'Outdoor Temperature',
+          );
+        }
+        
+        // Add check before registering the 'get' handler
+        const tempCharacteristic = this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature);
+        if (tempCharacteristic && typeof tempCharacteristic.on === 'function') {
+          tempCharacteristic.on('get', this.handleCurrentTemperatureGet.bind(this));
+        }
       }
       // We know status and status.outdoor_temp are valid here
       const outdoorCelsius = fahrenheitToCelsius(status!.outdoor_temp!);

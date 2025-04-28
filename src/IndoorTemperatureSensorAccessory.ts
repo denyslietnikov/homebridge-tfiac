@@ -35,15 +35,18 @@ export class IndoorTemperatureSensorAccessory {
     }
 
     // Update the display name regardless if it was existing or new
-    this.service.setCharacteristic(
-      this.platform.Characteristic.Name,
-      'Indoor Temperature',
-    );
+    if (typeof this.service.setCharacteristic === 'function') {
+      this.service.setCharacteristic(
+        this.platform.Characteristic.Name,
+        'Indoor Temperature',
+      );
+    }
 
-    // Register the GET handler
-    this.service
-      .getCharacteristic(this.platform.Characteristic.CurrentTemperature)
-      .on('get', this.handleCurrentTemperatureGet.bind(this));
+    // Register the GET handler if the characteristic supports it
+    const tempCharacteristic = this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature);
+    if (tempCharacteristic && typeof tempCharacteristic.on === 'function') {
+      tempCharacteristic.on('get', this.handleCurrentTemperatureGet.bind(this));
+    }
   }
 
   /**
