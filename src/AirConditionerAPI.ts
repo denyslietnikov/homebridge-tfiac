@@ -69,7 +69,7 @@ export class AirConditionerAPI extends EventEmitter {
     return (Date.now() % 10000000).toString();
   }
 
-  private async sendCommand(command: string, timeoutMs: number = 5000): Promise<string> {
+  private async sendCommand(command: string, timeoutMs: number = 10000): Promise<string> {
     return new Promise<string>((resolve, reject) => {
       // Create socket
       const client = dgram.createSocket('udp4');
