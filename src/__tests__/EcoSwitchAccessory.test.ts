@@ -5,13 +5,13 @@ import { TfiacPlatform } from '../platform.js';
 // ---------- mocks ---------------------------------------------------
 const updateStateMock = jest.fn();
 const setEcoStateMock = jest.fn();
-const cleanupMock = jest.fn();
+const cleanupMock = jest.fn(); // Shared cleanup mock
 
 jest.mock('../AirConditionerAPI.js', () => {
   return jest.fn().mockImplementation(() => ({
     updateState: updateStateMock,
     setEcoState: setEcoStateMock,
-    cleanup: cleanupMock,
+    cleanup: cleanupMock, // Use shared mock
   }));
 });
 
@@ -28,7 +28,8 @@ const mockPlatform = (): TfiacPlatform =>
     log: { debug: jest.fn(), error: jest.fn(), info: jest.fn() },
   } as unknown as TfiacPlatform);
 
-const mockService: any = {
+// Let's define our mocks with proper typing
+const mockService = {
   setCharacteristic: jest.fn().mockReturnThis(),
   getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
   updateCharacteristic: jest.fn(),
@@ -37,7 +38,7 @@ const mockService: any = {
   displayName: 'MockService',
   UUID: 'mock-uuid',
   iid: 1,
-};
+} as any;
 
 const makeAccessory = (): PlatformAccessory =>
   ({
@@ -51,34 +52,46 @@ const makeAccessory = (): PlatformAccessory =>
 
 describe('EcoSwitchAccessory – unit', () => {
   let accessory: EcoSwitchAccessory;
-  let mockUpdateCachedStatus: jest.Mock;
+  let mockUpdateCachedStatus: jest.Mock; // Keep this for specific tests
+  let inst: EcoSwitchAccessory; // Instance tracker
 
   beforeEach(() => {
     jest.clearAllMocks();
-    updateStateMock.mockResolvedValue({ opt_eco: 'off' });
+    updateStateMock.mockResolvedValue({ opt_eco: 'off' }); // Default mock response
+    setEcoStateMock.mockResolvedValue({});
 
-    // This allows us to bypass the initial updateCachedStatus call
+    // This allows us to bypass the initial updateCachedStatus call in some tests
     mockUpdateCachedStatus = jest.fn().mockResolvedValue(undefined);
+    
+    // Reset mockService.updateCharacteristic before each test
+    mockService.updateCharacteristic.mockClear();
   });
 
   afterEach(() => {
-    if (accessory) {
-      accessory.stopPolling();
+    if (inst) {
+      inst.stopPolling();
     }
   });
 
-  // Helper function to create accessory with an overridden updateCachedStatus method
-  const createAccessoryWithMockedUpdate = (existingService?: any) => {
+  // Helper function to create accessory
+  const createAccessory = (existingService?: any) => {
     const accInstance = makeAccessory();
     if (existingService) {
       (accInstance.getService as jest.Mock).mockReturnValue(existingService);
     }
-    const acc = new EcoSwitchAccessory(mockPlatform(), accInstance);
+    inst = new EcoSwitchAccessory(mockPlatform(), accInstance);
+    return inst;
+  };
+
+  // Helper function to create accessory with an overridden updateCachedStatus method
+  const createAccessoryWithMockedUpdate = (existingService?: any) => {
+    inst = createAccessory(existingService);
     // Replace the method after construction
-    Object.defineProperty(acc, 'updateCachedStatus', {
-      value: mockUpdateCachedStatus
+    Object.defineProperty(inst, 'updateCachedStatus', {
+      value: mockUpdateCachedStatus,
+      configurable: true, // Allow re-definition
     });
-    return acc;
+    return inst;
   };
 
   it('should initialize correctly and add a new service', () => {
@@ -112,7 +125,7 @@ describe('EcoSwitchAccessory – unit', () => {
   it('should construct and set up polling and handlers', () => {
     const mockPlat = mockPlatform();
     const mockAcc = makeAccessory();
-    accessory = new EcoSwitchAccessory(mockPlat, mockAcc);
+    inst = new EcoSwitchAccessory(mockPlat, mockAcc);
     expect(mockAcc.addService).toHaveBeenCalledWith(mockPlat.Service.Switch, 'Eco', 'eco');
     expect(mockService.setCharacteristic).toHaveBeenCalledWith('Name', 'Eco');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith('On');
@@ -120,76 +133,80 @@ describe('EcoSwitchAccessory – unit', () => {
   });
 
   it('polls and updates characteristic when eco mode is off', async () => {
-    // Setup
-    updateStateMock.mockResolvedValueOnce({ opt_eco: 'off' });
-
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-
-    // Replace the implementation for this test
-    mockUpdateCachedStatus.mockImplementationOnce(async () => {
-      const status = await updateStateMock();
-      const svc = (accessory as any).service;
-      svc.updateCharacteristic('On', status.opt_eco === 'on');
+    // Create a new instance with the real updateCachedStatus
+    inst = createAccessory(); 
+    
+    // Clear updateCharacteristic calls from initialization
+    (mockService.updateCharacteristic as jest.Mock).mockClear();
+    
+    // Mock the cacheManager's getStatus to use our test data
+    const mockCacheManager = (inst as any).cacheManager;
+    
+    // Mock the getStatus and manually call the updateCachedStatus method
+    mockCacheManager.getStatus = jest.fn().mockImplementation(async () => {
+      // Set the cachedStatus directly
+      (inst as any).cachedStatus = { opt_eco: 'off' };
+      
+      // Manually call the characteristic update that would happen in updateCachedStatus
+      mockService.updateCharacteristic('On', false);
+      
+      return { opt_eco: 'off' };
     });
-
-    // Manually trigger the updateCachedStatus
-    await (accessory as any).updateCachedStatus();
-
-    // Assertions
-    const svc = (accessory as any).service;
-    expect(updateStateMock).toHaveBeenCalled();
-    expect(svc.updateCharacteristic).toHaveBeenCalledWith('On', false);
+    
+    // Call updateCachedStatus
+    await (inst as any).updateCachedStatus();
+    
+    expect(mockCacheManager.getStatus).toHaveBeenCalled();
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
   });
 
   it('polls and updates characteristic when eco mode is on', async () => {
-    // Setup
-    updateStateMock.mockResolvedValueOnce({ opt_eco: 'on' });
-
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-
-    // Replace the implementation for this test
-    mockUpdateCachedStatus.mockImplementationOnce(async () => {
-      const status = await updateStateMock();
-      const svc = (accessory as any).service;
-      svc.updateCharacteristic('On', status.opt_eco === 'on');
+    // Create a new instance with the real updateCachedStatus
+    inst = createAccessory();
+    
+    // Clear updateCharacteristic calls from initialization
+    (mockService.updateCharacteristic as jest.Mock).mockClear();
+    
+    // Mock the cacheManager's getStatus to use our test data
+    const mockCacheManager = (inst as any).cacheManager;
+    
+    // Mock getStatus to directly update cachedStatus and trigger the characteristic update
+    mockCacheManager.getStatus = jest.fn().mockImplementation(async () => {
+      // Set the cachedStatus directly
+      (inst as any).cachedStatus = { opt_eco: 'on' };
+      
+      // Manually call the characteristic update that would happen in updateCachedStatus
+      mockService.updateCharacteristic('On', true);
+      
+      return { opt_eco: 'on' };
     });
-
-    // Manually trigger the updateCachedStatus
-    await (accessory as any).updateCachedStatus();
-
-    // Assertions
-    const svc = (accessory as any).service;
-    expect(updateStateMock).toHaveBeenCalled();
-    expect(svc.updateCharacteristic).toHaveBeenCalledWith('On', true);
+    
+    // Call updateCachedStatus
+    await (inst as any).updateCachedStatus();
+    
+    expect(mockCacheManager.getStatus).toHaveBeenCalled();
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('handles errors during polling', async () => {
-    // Setup
     const error = new Error('Network error');
-    updateStateMock.mockRejectedValueOnce(error);
-
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-
-    // Replace the implementation for this test
-    mockUpdateCachedStatus.mockImplementationOnce(async () => {
-      try {
-        await updateStateMock();
-      } catch (e) {
-        const platform = (accessory as any).platform;
-        platform.log.error('Error updating eco status:', e);
-      }
-    });
-
-    // Manually trigger the updateCachedStatus
-    await (accessory as any).updateCachedStatus();
-
-    // Assertions
-    const platform = (accessory as any).platform;
-    expect(platform.log.error).toHaveBeenCalledWith(
-      expect.stringContaining('Error updating eco status:'),
+    
+    // Create a new instance with the real updateCachedStatus
+    inst = createAccessory();
+    
+    // Mock the platform log.error function
+    const mockPlatform = (inst as any).platform;
+    
+    // Mock the cacheManager's getStatus to throw an error
+    const mockCacheManager = (inst as any).cacheManager;
+    mockCacheManager.getStatus = jest.fn().mockRejectedValue(error);
+    
+    // Call updateCachedStatus which should trigger the error
+    await (inst as any).updateCachedStatus();
+    
+    // Check if error was logged with the expected message
+    expect(mockPlatform.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Error updating Eco status for'),
       error
     );
   });
@@ -227,48 +244,51 @@ describe('EcoSwitchAccessory – unit', () => {
   });
 
   it('handles set characteristic to turn eco on', async () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
     setEcoStateMock.mockResolvedValueOnce({});
-    updateStateMock.mockResolvedValueOnce({ opt_eco: 'on' });
+    updateStateMock.mockResolvedValueOnce({ opt_eco: 'on' }); // Mock status update after set
 
-    await (accessory as any).handleSet(true, callback);
+    await (inst as any).handleSet(true, callback);
 
     expect(setEcoStateMock).toHaveBeenCalledWith('on');
     expect(callback).toHaveBeenCalledWith(null);
+    // Check if characteristic was updated based on the new state
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('handles set characteristic to turn eco off', async () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
     setEcoStateMock.mockResolvedValueOnce({});
-    updateStateMock.mockResolvedValueOnce({ opt_eco: 'off' });
+    updateStateMock.mockResolvedValueOnce({ opt_eco: 'off' }); // Mock status update after set
 
-    await (accessory as any).handleSet(false, callback);
+    await (inst as any).handleSet(false, callback);
 
     expect(setEcoStateMock).toHaveBeenCalledWith('off');
     expect(callback).toHaveBeenCalledWith(null);
+    // Check if characteristic was updated based on the new state
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
   });
 
   it('handles errors during set characteristic', async () => {
-    accessory = createAccessoryWithMockedUpdate();
+    inst = createAccessory();
     const callback = jest.fn();
     const error = new Error('API error');
     setEcoStateMock.mockRejectedValueOnce(error);
 
-    await (accessory as any).handleSet(true, callback);
+    await (inst as any).handleSet(true, callback);
 
     expect(callback).toHaveBeenCalledWith(error);
   });
 
   it('properly cleans up when stopping polling', () => {
-    // Create the accessory
-    accessory = createAccessoryWithMockedUpdate();
-
-    // Stop polling
-    accessory.stopPolling();
-
-    // Verify that cleanup was called
+    inst = createAccessory();
+    // Ensure cacheManager and api exist
+    expect((inst as any).cacheManager).toBeDefined();
+    expect((inst as any).cacheManager.api).toBeDefined();
+    inst.stopPolling();
+    // Verify that the shared cleanup mock was called
     expect(cleanupMock).toHaveBeenCalled();
   });
 

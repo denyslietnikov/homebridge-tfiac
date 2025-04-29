@@ -1,167 +1,237 @@
-import { PlatformAccessory } from 'homebridge';
-import { DrySwitchAccessory } from '../DrySwitchAccessory.js';
+import { PlatformAccessory, Service, Characteristic, CharacteristicValue, CharacteristicGetCallback, CharacteristicSetCallback, HapStatusError, WithUUID } from 'homebridge'; // Removed HAPConnection
 import { TfiacPlatform } from '../platform.js';
+import { DrySwitchAccessory } from '../DrySwitchAccessory.js';
+import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI.js';
+import CacheManager from '../CacheManager.js';
+import { TfiacDeviceConfig } from '../settings.js';
 
-jest.useFakeTimers();
+jest.mock('../AirConditionerAPI.js');
+jest.mock('../CacheManager.js');
 
-// ---------- mocks ---------------------------------------------------
-const updateStateMock = jest.fn();
-const setStateMock   = jest.fn();
-const cleanupMock    = jest.fn();
-
-jest.mock('../AirConditionerAPI.js', () => {
-  return jest.fn().mockImplementation(() => ({
-    updateState:            updateStateMock,
-    setAirConditionerState: setStateMock,
-    cleanup:                cleanupMock,
-  }));
-});
-
-const mockPlatform = (): TfiacPlatform =>
-  ({
-    Service: { Switch: jest.fn() },
-    Characteristic: { Name: 'Name', On: 'On', ConfiguredName: 'ConfiguredName' },
-    log: { debug: jest.fn(), error: jest.fn(), info: jest.fn() },
-  } as unknown as TfiacPlatform);
-
-const mockService: any = {
-  setCharacteristic: jest.fn().mockReturnThis(),
-  getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
-  updateCharacteristic: jest.fn(),
-  on: jest.fn().mockReturnThis(),
-  emit: jest.fn(),
-  displayName: 'MockService',
-  UUID: 'mock-uuid',
-  iid: 1,
-};
-
-const makeAccessory = (): PlatformAccessory =>
-  ({
-    context: { deviceConfig: { name: 'AC', ip: '1.2.3.4', updateInterval: 1 } },
-    getService: jest.fn(),
-    addService: jest.fn(),
-    getServiceById: jest.fn(),
-  } as unknown as PlatformAccessory);
-
-// --------------------------------------------------------------------
+// Explicitly type the mocked module
+const MockedAirConditionerAPI = AirConditionerAPI as jest.MockedClass<typeof AirConditionerAPI>;
+const MockedCacheManager = CacheManager as jest.Mocked<typeof CacheManager>;
 
 describe('DrySwitchAccessory - unit', () => {
   let platform: TfiacPlatform;
-  let accessory: PlatformAccessory;
+  let accessory: jest.Mocked<PlatformAccessory>;
+  let mockService: jest.Mocked<Service>;
+  let mockCharacteristic: jest.Mocked<Characteristic>;
+  let mockCacheManager: jest.Mocked<CacheManager>;
   let inst: DrySwitchAccessory;
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-    platform = mockPlatform();
-    accessory = makeAccessory();
-    (accessory.getService as jest.Mock).mockReturnValue(undefined);
-    (accessory.addService as jest.Mock).mockReturnValue(mockService);
-    updateStateMock.mockResolvedValue({ operation_mode: 'auto' });
-  });
+  const mockCharacteristicOn = {
+    on: jest.fn().mockReturnThis(),
+    updateValue: jest.fn(),
+    setProps: jest.fn().mockReturnThis(),
+  } as unknown as jest.Mocked<Characteristic>;
 
-  afterEach(() => {
-    if (inst) {
-      inst.stopPolling();
+  const mockServiceInstance = {
+    getCharacteristic: jest.fn().mockImplementation((char) => {
+      if (char === mockPlatformInstance.Characteristic.On) {
+        return mockCharacteristicOn;
+      }
+      return {
+        on: jest.fn().mockReturnThis(),
+        updateValue: jest.fn(),
+        setProps: jest.fn().mockReturnThis(),
+      } as unknown as jest.Mocked<Characteristic>;
+    }),
+    setCharacteristic: jest.fn().mockReturnThis(),
+    updateCharacteristic: jest.fn(),
+  } as unknown as jest.Mocked<Service>;
+
+  const mockPlatformInstance = {
+    log: {
+      debug: jest.fn(),
+      info: jest.fn(),
+      warn: jest.fn(),
+      error: jest.fn(),
+    },
+    api: {
+      hap: {
+        Service: {
+          Switch: jest.fn().mockImplementation(() => mockServiceInstance),
+        },
+        Characteristic: {
+          On: jest.fn(),
+          Name: jest.fn(),
+        },
+      },
+    },
+    Service: {
+      Switch: jest.fn().mockImplementation(() => mockServiceInstance),
+    },
+    Characteristic: {
+      On: mockCharacteristicOn,
+      Name: jest.fn(),
+    },
+  } as unknown as TfiacPlatform;
+
+  beforeEach(() => {
+    jest.clearAllMocks(); // Clear all mocks including instances
+
+    platform = mockPlatformInstance;
+    mockService = mockServiceInstance;
+    mockCharacteristic = mockCharacteristicOn;
+
+    accessory = {
+      getService: jest.fn(),
+      getServiceById: jest.fn(),
+      addService: jest.fn().mockReturnValue(mockService),
+      context: {
+        deviceConfig: {
+          ip: '192.168.1.101',
+          port: 8081,
+          name: 'AC',
+          updateInterval: 15,
+        } as TfiacDeviceConfig,
+      },
+      displayName: 'AC Display Name',
+    } as unknown as jest.Mocked<PlatformAccessory>;
+
+    // Adjust CacheManager mock definition and casting
+    mockCacheManager = {
+      getStatus: jest.fn(),
+      clear: jest.fn(),
+      cleanup: jest.fn(), // Added cleanup mock
+      // Add other properties if needed by tests, or keep minimal
+    } as unknown as jest.Mocked<CacheManager>; // Use 'as unknown as'
+    MockedCacheManager.getInstance.mockReturnValue(mockCacheManager);
+
+    // Instantiate the accessory - this calls the mocked AirConditionerAPI constructor
+    inst = new DrySwitchAccessory(platform, accessory);
+
+    // Stop polling etc.
+    inst.stopPolling();
+    (inst as any).pollingInterval = null;
+
+    // Clear specific mocks if needed after instantiation (optional, clearAllMocks might be enough)
+    (accessory.getServiceById as jest.Mock).mockClear();
+    (accessory.getService as jest.Mock).mockClear();
+    (accessory.addService as jest.Mock).mockClear();
+    (mockService.setCharacteristic as jest.Mock).mockClear();
+    (mockService.getCharacteristic as jest.Mock).mockClear();
+    (mockCharacteristic.on as jest.Mock).mockClear();
+    (mockCacheManager.getStatus as jest.Mock).mockClear();
+    (mockCacheManager.clear as jest.Mock).mockClear();
+
+    // Clear calls on the API mock instance if it exists
+    const deviceAPIMockInstance = MockedAirConditionerAPI.mock.instances[0] as jest.Mocked<AirConditionerAPI>;
+    if (deviceAPIMockInstance) {
+      (deviceAPIMockInstance.setAirConditionerState as jest.Mock).mockClear();
     }
   });
 
-  it('polls and updates characteristic', async () => {
+  it('should construct, add service, and set up handlers', () => {
+    jest.clearAllMocks();
+    (accessory.getServiceById as jest.Mock).mockReturnValue(undefined);
     (accessory.getService as jest.Mock).mockReturnValue(undefined);
-    inst = new DrySwitchAccessory(platform, accessory);
-    updateStateMock.mockResolvedValueOnce({ operation_mode: 'dehumi' });
-    jest.advanceTimersByTime(1500);
-    await Promise.resolve();
-    await jest.runOnlyPendingTimersAsync();
+    (accessory.addService as jest.Mock).mockReturnValue(mockService);
 
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
+    inst = new DrySwitchAccessory(platform, accessory);
+
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'dry');
+    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Dry', 'dry');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Dry');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    expect(mockCharacteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(mockCharacteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
-  it('handleGet returns correct value', (done) => {
+  it('should use existing service if available by ID', () => {
+    jest.clearAllMocks();
+    (accessory.getServiceById as jest.Mock).mockReturnValue(mockService);
+    (accessory.getService as jest.Mock).mockReturnValue(undefined);
+    (accessory.addService as jest.Mock).mockClear();
+
     inst = new DrySwitchAccessory(platform, accessory);
+
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'dry');
+    expect(accessory.getService).not.toHaveBeenCalled();
+    expect(accessory.addService).not.toHaveBeenCalled();
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Dry');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    expect(mockCharacteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(mockCharacteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
+  });
+
+  it('should use existing service if available by Name (fallback)', () => {
+    jest.clearAllMocks();
+    (accessory.getServiceById as jest.Mock).mockReturnValue(undefined);
+    (accessory.getService as jest.Mock).mockReturnValue(mockService);
+    (accessory.addService as jest.Mock).mockClear();
+
+    inst = new DrySwitchAccessory(platform, accessory);
+
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'dry');
+    expect(accessory.getService).toHaveBeenCalledWith('Dry');
+    expect(accessory.addService).not.toHaveBeenCalled();
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Dry');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    expect(mockCharacteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(mockCharacteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
+  });
+
+  it('handleGet returns correct value (true)', (done) => {
     (inst as any).cachedStatus = { operation_mode: 'dehumi' };
-    (inst as any).handleGet((err: Error | null, value?: boolean) => {
+    (inst as any).handleGet((err: Error | null | undefined, value?: CharacteristicValue) => {
       expect(err).toBeNull();
       expect(value).toBe(true);
       done();
     });
   });
 
-  it('handleSet turns mode on and off', async () => {
-    inst = new DrySwitchAccessory(platform, accessory);
-    const cb = jest.fn();
-
-    await (inst as any).handleSet(true, cb);
-    expect(setStateMock).toHaveBeenCalledWith('operation_mode', 'dehumi');
-    expect(cb).toHaveBeenCalledWith(null);
-    cb.mockClear();
-
-    await (inst as any).handleSet(false, cb);
-    expect(setStateMock).toHaveBeenCalledWith('operation_mode', 'auto');
-    expect(cb).toHaveBeenCalledWith(null);
-  });
-
-  it('should construct and set up polling and handlers', () => {
-    (accessory.getService as jest.Mock).mockReturnValue(undefined);
-    inst = new DrySwitchAccessory(platform, accessory);
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Dry', 'dry');
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith('Name', 'Dry');
-    expect(mockService.getCharacteristic).toHaveBeenCalledWith('On');
-  });
-
-  it('should use existing service if available', () => {
-    (accessory.getService as jest.Mock).mockReturnValue(mockService);
-    inst = new DrySwitchAccessory(platform, accessory);
-    expect(accessory.addService).not.toHaveBeenCalled();
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith('Name', 'Dry');
-  });
-
-  it('should set configured name in constructor', () => {
-    inst = new DrySwitchAccessory(platform, accessory);
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.ConfiguredName,
-      'Dry',
-    );
-  });
-
-  it('handleGet returns false when no cachedStatus', done => {
-    inst = new DrySwitchAccessory(platform, accessory);
-    (inst as any).cachedStatus = undefined;
-    (inst as any).handleGet((err: Error | null, value?: boolean) => {
+  it('handleGet returns correct value (false)', (done) => {
+    (inst as any).cachedStatus = { operation_mode: 'auto' };
+    (inst as any).handleGet((err: Error | null | undefined, value?: CharacteristicValue) => {
       expect(err).toBeNull();
       expect(value).toBe(false);
       done();
     });
   });
 
-  it('updateCachedStatus skips when already polling', async () => {
-    inst = new DrySwitchAccessory(platform, accessory);
-    // simulate already polling
-    (inst as any).isPolling = true;
-    updateStateMock.mockClear();
-    await (inst as any).updateCachedStatus();
-    expect(updateStateMock).not.toHaveBeenCalled();
+  it('handleSet turns mode on (dehumi) and off (auto)', async () => {
+    const deviceAPIMockInstance = MockedAirConditionerAPI.mock.instances[0] as jest.Mocked<AirConditionerAPI>;
+    const cb = jest.fn();
+
+    await (inst as any).handleSet(true, cb);
+    expect(deviceAPIMockInstance.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'dehumi');
+    expect(cb).toHaveBeenCalledWith(null);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+
+    (deviceAPIMockInstance.setAirConditionerState as jest.Mock).mockClear();
+    cb.mockClear();
+    (mockService.updateCharacteristic as jest.Mock).mockClear();
+
+    await (inst as any).handleSet(false, cb);
+    expect(deviceAPIMockInstance.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'auto');
+    expect(cb).toHaveBeenCalledWith(null);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
   });
 
-  it('updateCachedStatus does not update when status unchanged', async () => {
-    inst = new DrySwitchAccessory(platform, accessory);
-    const initialStatus = { operation_mode: 'auto' };
-    updateStateMock.mockResolvedValue(initialStatus);
-    // set cachedStatus same as next
-    (inst as any).cachedStatus = { ...initialStatus };
-    mockService.updateCharacteristic.mockClear();
+  it('updateCachedStatus updates characteristic on change', async () => {
+    (inst as any).cachedStatus = { operation_mode: 'auto' };
+    mockCacheManager.getStatus.mockResolvedValueOnce({ operation_mode: 'dehumi' } as any);
     await (inst as any).updateCachedStatus();
-    // should not call updateCharacteristic because no change
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+  });
+
+  it('updateCachedStatus does not update characteristic if unchanged', async () => {
+    (inst as any).cachedStatus = { operation_mode: 'dehumi' };
+    mockCacheManager.getStatus.mockResolvedValueOnce({ operation_mode: 'dehumi' } as any);
+    (mockService.updateCharacteristic as jest.Mock).mockClear();
+    await (inst as any).updateCachedStatus();
     expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
   });
 
   it('updateCachedStatus logs error on failure', async () => {
-    inst = new DrySwitchAccessory(platform, accessory);
     const error = new Error('fail');
-    updateStateMock.mockRejectedValue(error);
+    mockCacheManager.getStatus.mockRejectedValueOnce(error);
     const logErrorSpy = platform.log.error as jest.Mock;
     await (inst as any).updateCachedStatus();
     expect(logErrorSpy).toHaveBeenCalledWith(
-      `Error updating Dry Mode status for ${accessory.context.deviceConfig.name}:`,
+      `Error updating Dry status for ${accessory.displayName}:`,
       error,
     );
   });

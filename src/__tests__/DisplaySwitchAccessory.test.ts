@@ -1,3 +1,16 @@
+// Mock dependencies
+const updateStateMock = jest.fn();
+const setDisplayStateMock = jest.fn();
+const cleanupMock = jest.fn(); // Shared cleanup mock
+
+jest.mock('../AirConditionerAPI.js', () => {
+  return jest.fn().mockImplementation(() => ({
+    updateState: updateStateMock,
+    setDisplayState: setDisplayStateMock,
+    cleanup: cleanupMock, // Use shared mock
+  }));
+});
+
 import { DisplaySwitchAccessory } from '../DisplaySwitchAccessory.js';
 import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
@@ -6,8 +19,7 @@ describe('DisplaySwitchAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: PlatformAccessory;
   let service: Service;
-  let deviceAPI: any;
-  let log: any;
+  let inst: DisplaySwitchAccessory; // Keep track of the instance
 
   const mockService: any = {
     setCharacteristic: jest.fn().mockReturnThis(),
@@ -36,54 +48,58 @@ describe('DisplaySwitchAccessory', () => {
     } as unknown as TfiacPlatform);
 
   beforeEach(() => {
-    log = { debug: jest.fn(), error: jest.fn(), info: jest.fn() };
+    jest.clearAllMocks(); // Clear all mocks before each test
     platform = mockPlatform();
     service = mockService;
     accessory = makeAccessory();
-    deviceAPI = {
-      updateState: jest.fn().mockResolvedValue({ opt_display: 'on' }),
-      setDisplayState: jest.fn().mockResolvedValue(undefined),
-      cleanup: jest.fn(),
-    };
-    jest.spyOn(require('../AirConditionerAPI'), 'default').mockImplementation(() => deviceAPI);
+    updateStateMock.mockResolvedValue({ opt_display: 'on' }); // Default mock response
+    setDisplayStateMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
+    if (inst) {
+      inst.stopPolling(); // Ensure polling stops after each test
+    }
     jest.restoreAllMocks();
-    jest.clearAllMocks();
   });
 
+  const createAccessory = () => {
+    inst = new DisplaySwitchAccessory(platform, accessory);
+    return inst;
+  };
+
   it('should construct and set up polling and handlers', () => {
-    const inst = new DisplaySwitchAccessory(platform, accessory);
+    createAccessory();
     expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Display', 'display');
     expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Display');
     expect(service.getCharacteristic).toHaveBeenCalledWith('On');
+    // Update expectations to match how event handlers are now registered
+    const mockCharacteristic = service.getCharacteristic('On');
+    expect(mockCharacteristic?.on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(mockCharacteristic?.on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   it('should stop polling and cleanup', () => {
-    const inst = new DisplaySwitchAccessory(platform, accessory);
-    (inst as any).pollingInterval = setInterval(() => {}, 1000);
+    createAccessory();
+    // Ensure cacheManager and api exist
+    expect((inst as any).cacheManager).toBeDefined();
+    expect((inst as any).cacheManager.api).toBeDefined();
     inst.stopPolling();
-    expect(deviceAPI.cleanup).toHaveBeenCalled();
+    // Assert the shared cleanupMock
+    expect(cleanupMock).toHaveBeenCalled();
   });
 
   it('should update cached status and update characteristic', async () => {
-    const inst = new DisplaySwitchAccessory(platform, accessory);
+    createAccessory();
+    updateStateMock.mockResolvedValueOnce({ opt_display: 'on' });
     await (inst as any).updateCachedStatus();
+    expect(updateStateMock).toHaveBeenCalled();
     expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('should handle get with cached status', done => {
-    const inst = new DisplaySwitchAccessory(platform, accessory);
-    (inst as any).cachedStatus = {
-      opt_display: 'on',
-      current_temp: 0,
-      target_temp: 0,
-      operation_mode: '',
-      fan_mode: '',
-      swing_mode: '',
-      opt_sleepMode: '',
-    };
+    createAccessory();
+    (inst as any).cachedStatus = { opt_display: 'on' };
     (inst as any).handleGet((err: any, val: any) => {
       expect(err).toBeNull();
       expect(val).toBe(true);
@@ -92,10 +108,9 @@ describe('DisplaySwitchAccessory', () => {
   });
 
   it('should handle get with no cached status', done => {
-    const inst = new DisplaySwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = null;
     (inst as any).handleGet((err: any, val: any) => {
-      // Now expecting default value (false) instead of an error
       expect(err).toBeNull();
       expect(val).toBe(false);
       done();
@@ -103,18 +118,22 @@ describe('DisplaySwitchAccessory', () => {
   });
 
   it('should handle set and update status', async () => {
-    const inst = new DisplaySwitchAccessory(platform, accessory);
+    createAccessory();
     const cb = jest.fn();
+    setDisplayStateMock.mockResolvedValueOnce(undefined);
     await (inst as any).handleSet(true, cb);
-    expect(deviceAPI.setDisplayState).toHaveBeenCalledWith('on');
+    expect(setDisplayStateMock).toHaveBeenCalledWith('on');
     expect(cb).toHaveBeenCalledWith(null);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('should handle set error', async () => {
-    deviceAPI.setDisplayState.mockRejectedValueOnce(new Error('fail'));
-    const inst = new DisplaySwitchAccessory(platform, accessory);
+    createAccessory();
+    const error = new Error('fail');
+    setDisplayStateMock.mockRejectedValueOnce(error);
     const cb = jest.fn();
     await (inst as any).handleSet(true, cb);
-    expect(cb).toHaveBeenCalledWith(expect.any(Error));
+    expect(setDisplayStateMock).toHaveBeenCalledWith('on');
+    expect(cb).toHaveBeenCalledWith(error);
   });
 });

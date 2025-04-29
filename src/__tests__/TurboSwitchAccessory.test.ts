@@ -5,13 +5,13 @@ import { TurboSwitchAccessory } from '../TurboSwitchAccessory.js';
 // ---------- mocks ---------------------------------------------------
 const updateStateMock = jest.fn();
 const setSuperStateMock = jest.fn();
-const cleanupMock = jest.fn();
+const cleanupMock = jest.fn(); // Use this single mock
 
 jest.mock('../AirConditionerAPI.js', () => {
   return jest.fn().mockImplementation(() => ({
     updateState: updateStateMock,
     setTurboState: setSuperStateMock,
-    cleanup: cleanupMock,
+    cleanup: cleanupMock, // All instances use the same top-level mock
   }));
 });
 
@@ -200,7 +200,12 @@ describe('TurboSwitchAccessory – unit', () => {
 
   it('properly cleans up when stopping polling', () => {
     inst = createAccessory();
+    // Ensure cacheManager exists and has an api instance before stopping
+    expect((inst as any).cacheManager).toBeDefined();
+    expect((inst as any).cacheManager.api).toBeDefined();
+
     inst.stopPolling();
+    // Now assert the shared cleanupMock
     expect(cleanupMock).toHaveBeenCalled();
   });
 

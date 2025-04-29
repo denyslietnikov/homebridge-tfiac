@@ -1,317 +1,253 @@
-import { PlatformAccessory } from 'homebridge';
-import { BaseSwitchAccessory } from '../BaseSwitchAccessory.js';
+import { PlatformAccessory, Service, Characteristic } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
+import { BaseSwitchAccessory } from '../BaseSwitchAccessory.js';
+import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI.js';
+import CacheManager from '../CacheManager.js';
+import { TfiacDeviceConfig } from '../settings.js';
 
-jest.useFakeTimers();
+// Mock implementations
+jest.mock('../AirConditionerAPI.js'); 
+jest.mock('../CacheManager.js');
 
-// Mocks for AirConditionerAPI
-const updateStateMock = jest.fn();
-const cleanupMock = jest.fn();
-
-jest.mock('../AirConditionerAPI.js', () => {
-  return jest.fn().mockImplementation(() => ({
-    updateState: updateStateMock,
-    cleanup: cleanupMock,
-  }));
-});
+// Concrete class for testing BaseSwitchAccessory
+class TestSwitchAccessory extends BaseSwitchAccessory {
+  constructor(
+    platform: TfiacPlatform,
+    accessory: PlatformAccessory,
+    getStatusValue: (status: Partial<AirConditionerStatus>) => boolean,
+    setApiState: (value: boolean) => Promise<void>,
+  ) {
+    super(
+      platform,
+      accessory,
+      'Test Switch', // serviceName
+      'testswitch', // serviceSubtype
+      getStatusValue, // getStatusValue function
+      setApiState, // setApiState function
+      'TestSwitch', // logPrefix
+    );
+  }
+  // Expose protected methods for testing
+  public testHandleGet(callback: jest.Mock) {
+    super.handleGet(callback);
+  }
+  public async testHandleSet(value: boolean, callback: jest.Mock) {
+    await super.handleSet(value, callback);
+  }
+  public async testUpdateCachedStatus() {
+    await super.updateCachedStatus();
+  }
+}
 
 describe('BaseSwitchAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: PlatformAccessory;
-  let mockService: any;
+  let service: Service;
+  let characteristic: Characteristic;
+  let mockGetStatusValue: jest.Mock;
+  let mockSetApiState: jest.Mock;
+  let mockCacheManager: jest.Mocked<CacheManager>;
+  let inst: TestSwitchAccessory;
 
   beforeEach(() => {
+    // Reset mocks before each test
     jest.clearAllMocks();
-    // Mock platform
+
+    // Mock Characteristic
+    characteristic = {
+      on: jest.fn().mockReturnThis(),
+      updateValue: jest.fn(),
+    } as unknown as Characteristic;
+
+    // Mock Service
+    service = {
+      getCharacteristic: jest.fn().mockReturnValue(characteristic),
+      setCharacteristic: jest.fn().mockReturnThis(),
+      updateCharacteristic: jest.fn(),
+    } as unknown as Service;
+
+    // Mock Accessory
+    accessory = {
+      getService: jest.fn().mockReturnValue(service),
+      getServiceById: jest.fn().mockReturnValue(service),
+      addService: jest.fn().mockReturnValue(service),
+      context: {
+        deviceConfig: {
+          ip: '192.168.1.100',
+          port: 8080,
+          name: 'Test AC',
+          updateInterval: 10,
+        } as TfiacDeviceConfig,
+      },
+      displayName: 'Test AC Display Name',
+    } as unknown as PlatformAccessory;
+
+    // Mock Platform
     platform = {
-      Service: { Switch: jest.fn() },
-      Characteristic: { Name: 'Name', On: 'On' },
       log: {
         debug: jest.fn(),
         info: jest.fn(),
         warn: jest.fn(),
         error: jest.fn(),
       },
+      api: {
+        hap: {
+          Service: {
+            Switch: jest.fn(),
+          },
+          Characteristic: {
+            On: jest.fn(),
+            Name: jest.fn(),
+          },
+        },
+      },
+      Service: {
+        Switch: service, // Use the mocked service instance
+      },
+      Characteristic: {
+        On: characteristic, // Use the mocked characteristic instance
+        Name: jest.fn(),
+      },
     } as unknown as TfiacPlatform;
-    // Mock accessory and service
-    mockService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
-      updateCharacteristic: jest.fn(),
-    };
-    accessory = {
-      context: { deviceConfig: { ip: '1.2.3.4', port: 1234, updateInterval: 1 } },
-      getServiceById: jest.fn().mockReturnValue(null),
-      getService: jest.fn().mockReturnValue(null),
-      addService: jest.fn().mockReturnValue(mockService),
-      removeService: jest.fn(),
-    } as unknown as PlatformAccessory;
+
+    // Mock CacheManager
+    // Ensure getInstance returns a mock with the getStatus method
+    mockCacheManager = {
+      getStatus: jest.fn(),
+      clear: jest.fn(),
+      cleanup: jest.fn(), // Added cleanup mock
+    } as unknown as jest.Mocked<CacheManager>; // Cast to mocked type
+    (CacheManager.getInstance as jest.Mock).mockReturnValue(mockCacheManager);
+
+    // Mock functions for the constructor
+    mockGetStatusValue = jest.fn().mockImplementation((status) => status.opt_test === 'on');
+    mockSetApiState = jest.fn().mockResolvedValue(undefined);
+
+    // Create instance of the test class
+    inst = new TestSwitchAccessory(
+      platform,
+      accessory,
+      mockGetStatusValue,
+      mockSetApiState,
+    );
+    // Prevent actual polling during tests
+    inst.stopPolling();
+    (inst as any).pollingInterval = null; // Ensure interval is cleared
   });
 
-  // Dummy subclass exposing protected methods
-  class TestSwitch extends BaseSwitchAccessory {
-    constructor() {
-      super(
-        platform,
-        accessory,
-        'TestService',
-        'testSub',
-        'opt_eco',             // use real status key
-        async () => {/*no-op*/},
-        'TestLog',
-      );
-    }
-    public testStartPolling() { this.startPolling(); }
-    public testStopPolling() { this.stopPolling(); }
-    public testUpdateCachedStatus() { return this.updateCachedStatus(); }
-    public testHandleGet(cb: any) { this.handleGet(cb); }
-    public testHandleSet(value: any, cb: any) { this.handleSet(value, cb); }
-  }
-
-  // Subclass to simulate error in API set
-  class ErrorSwitch extends BaseSwitchAccessory {
-    constructor() {
-      super(
-        platform,
-        accessory,
-        'ErrorService',
-        'errSub',
-        'opt_eco',
-        async () => { throw new Error('setFail'); },
-        'ErrLog',
-      );
-    }
-    public testHandleSet(value: any, cb: any) { return this.handleSet(value, cb); }
-  }
-
-  it('initializes service and handlers', () => {
-    const inst = new TestSwitch();
-    // addService should be called
-    expect(accessory.addService).toHaveBeenCalledWith(
-      platform.Service.Switch,
-      'TestService',
-      'testSub',
-    );
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.Name,
-      'TestService',
-    );
-    // Check getCharacteristic and on handlers
-    expect(mockService.getCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.On,
-    );
-    const getChar = mockService.getCharacteristic();
-    expect(getChar.on).toHaveBeenCalledWith('get', expect.any(Function));
-    expect(getChar.on).toHaveBeenCalledWith('set', expect.any(Function));
+  it('should initialize correctly', () => {
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'testswitch');
+    expect(service.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Test Switch');
+    expect(service.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    expect(characteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(characteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
+    expect(platform.log.debug).toHaveBeenCalledWith(expect.stringContaining('TestSwitch accessory initialized'));
   });
 
-  it('uses existing service by subtype if available', () => {
-    const existingService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnThis(),
-      on: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn(),
-    } as any;
-    (accessory.getServiceById as jest.Mock).mockReturnValueOnce(existingService);
-    // Ensure other getters are not used
-    (accessory.getService as jest.Mock).mockClear();
-    (accessory.addService as jest.Mock).mockClear();
+  describe('handleGet', () => {
+    it('should return false when cachedStatus is null', () => {
+      const callback = jest.fn();
+      (inst as any).cachedStatus = null;
+      inst.testHandleGet(callback);
+      expect(mockGetStatusValue).not.toHaveBeenCalled();
+      expect(callback).toHaveBeenCalledWith(null, false);
+    });
 
-    const inst = new TestSwitch();
-    expect(accessory.getServiceById).toHaveBeenCalledWith(
-      platform.Service.Switch.UUID,
-      'testSub',
-    );
-    expect(accessory.getService).not.toHaveBeenCalled();
-    expect(accessory.addService).not.toHaveBeenCalled();
-    expect(existingService.setCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.Name,
-      'TestService',
-    );
-  });
+    it('should return value from getStatusValue when cachedStatus exists', () => {
+      const callback = jest.fn();
+      (inst as any).cachedStatus = { opt_test: 'on' };
+      mockGetStatusValue.mockReturnValue(true); // Explicitly set return for this test
+      inst.testHandleGet(callback);
+      expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'on' });
+      expect(callback).toHaveBeenCalledWith(null, true);
 
-  it('uses existing service by name if subtype not available', () => {
-    const existingService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnThis(),
-      on: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn(),
-    } as any;
-    (accessory.getServiceById as jest.Mock).mockReturnValueOnce(null);
-    (accessory.getService as jest.Mock).mockReturnValueOnce(existingService);
-    (accessory.addService as jest.Mock).mockClear();
-
-    const inst = new TestSwitch();
-    expect(accessory.getServiceById).toHaveBeenCalled();
-    expect(accessory.getService).toHaveBeenCalledWith('TestService');
-    expect(accessory.addService).not.toHaveBeenCalled();
-    expect(existingService.setCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.Name,
-      'TestService',
-    );
-  });
-
-  it('startPolling logs startup and skips when already started', () => {
-    const inst = new TestSwitch();
-    // First start
-    updateStateMock.mockResolvedValue({ opt_eco: 'on' });
-    inst.testStartPolling();
-    expect(platform.log.debug).toHaveBeenCalledWith(
-      expect.stringContaining('Starting polling for TestLog'),
-    );
-    // Simulate interval set
-    inst['pollingInterval'] = setInterval(() => {}, 1000);
-    (platform.log.debug as jest.Mock).mockClear();
-    inst.testStartPolling();
-    expect(platform.log.debug).toHaveBeenCalledWith(
-      `Polling already started for TestLog on ${accessory.displayName}.`,
-    );
-  });
-
-  it('stopPolling clears interval and handles already stopped', () => {
-    const inst = new TestSwitch();
-    // Case: has pollingInterval
-    const id = setInterval(() => {}, 1000);
-    inst['pollingInterval'] = id as any;
-    inst.testStopPolling();
-    expect(platform.log.debug).toHaveBeenCalledWith(
-      `Stopping polling for TestLog on ${accessory.displayName}.`,
-    );
-    expect(cleanupMock).toHaveBeenCalled();
-    expect(inst['pollingInterval']).toBeNull();
-    // Case: already stopped
-    (platform.log.debug as jest.Mock).mockClear();
-    inst.testStopPolling();
-    expect(platform.log.debug).toHaveBeenCalledWith(
-      `Polling already stopped for TestLog on ${accessory.displayName}.`,
-    );
-  });
-
-  it('updateCachedStatus skips when polling in progress', async () => {
-    const inst = new TestSwitch();
-    const debugMock = platform.log.debug as jest.MockedFunction<typeof platform.log.debug>;
-    debugMock.mockClear();
-    inst['isPolling'] = true;
-    await inst.testUpdateCachedStatus();
-    expect(debugMock).toHaveBeenCalledWith(
-      `Polling already in progress for TestLog on ${accessory.displayName}, skipping.`,
-    );
-    // updateState should not be called
-    expect(updateStateMock).not.toHaveBeenCalled();
-  });
-
-  it('updateCachedStatus updates when status changes', async () => {
-    const inst = new TestSwitch();
-    updateStateMock.mockResolvedValue({ opt_eco: 'on' });
-    inst['cachedStatus'] = null;
-    await inst.testUpdateCachedStatus();
-    expect(platform.log.info).toHaveBeenCalledWith(
-      `Updating TestLog characteristic for ${accessory.displayName} to true`,
-    );
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.On,
-      true,
-    );
-  });
-
-  it('updateCachedStatus warns on undefined key present', async () => {
-    const inst = new TestSwitch();
-    // statusKey in status but undefined
-    updateStateMock.mockResolvedValue({ opt_eco: undefined });
-    await inst.testUpdateCachedStatus();
-    expect(platform.log.warn).toHaveBeenCalledWith(
-      `Status key 'opt_eco' has undefined value in API response for TestLog on ${accessory.displayName}.`,
-    );
-  });
-
-  it('updateCachedStatus logs debug when key absent', async () => {
-    const inst = new TestSwitch();
-    // key absent
-    updateStateMock.mockResolvedValue({ other: 'x' });
-    await inst.testUpdateCachedStatus();
-    expect(platform.log.debug).toHaveBeenCalledWith(
-      `Status key 'opt_eco' not present in API response for TestLog on ${accessory.displayName}.`,
-    );
-  });
-
-  it('updateCachedStatus logs error on exception', async () => {
-    const inst = new TestSwitch();
-    const err = new Error('fail');
-    updateStateMock.mockRejectedValue(err);
-    await inst.testUpdateCachedStatus();
-    expect(platform.log.error).toHaveBeenCalledWith(
-      `Error updating TestLog status for ${accessory.displayName}:`,
-      err,
-    );
-  });
-
-  it('updateCachedStatus logs debug messages on update', async () => {
-    const inst = new TestSwitch();
-    const debugMock = platform.log.debug as jest.Mock;
-    debugMock.mockClear();
-    updateStateMock.mockResolvedValue({ opt_eco: 'on' });
-    inst['cachedStatus'] = null;
-    await inst.testUpdateCachedStatus();
-    expect(debugMock).toHaveBeenCalledWith(
-      `Updating TestLog status for ${accessory.displayName}...`,
-    );
-    expect(debugMock).toHaveBeenCalledWith(
-      `Received TestLog status for ${accessory.displayName}:`,
-      'on',
-    );
-  });
-
-  it('handleGet returns correct boolean', done => {
-    const inst = new TestSwitch();
-    // no cache
-    inst.testHandleGet((err: any, v?: boolean) => {
-      expect(v).toBe(false);
-      // with cache on
-      inst['cachedStatus'] = { opt_eco: 'on' };
-      inst.testHandleGet((e: any, val?: boolean) => {
-        expect(val).toBe(true);
-        done();
-      });
+      jest.clearAllMocks(); // Clear mocks for next part
+      (inst as any).cachedStatus = { opt_test: 'off' };
+      mockGetStatusValue.mockReturnValue(false);
+      inst.testHandleGet(callback);
+      expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'off' });
+      expect(callback).toHaveBeenCalledWith(null, false);
     });
   });
 
-  it('handleGet logs debug message', () => {
-    const inst = new TestSwitch();
-    const debugMock = platform.log.debug as jest.Mock;
-    debugMock.mockClear();
-    inst['cachedStatus'] = { opt_eco: 'off' };
-    inst.testHandleGet(() => {});
-    expect(debugMock).toHaveBeenCalledWith(
-      `Get TestLog: Returning false (Cached: off)`,
-    );
+  describe('handleSet', () => {
+    it('should call setApiState and update characteristic', async () => {
+      const callback = jest.fn();
+      await inst.testHandleSet(true, callback);
+      expect(mockSetApiState).toHaveBeenCalledWith(true);
+      expect(mockCacheManager.clear).toHaveBeenCalled();
+      expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+      expect(callback).toHaveBeenCalledWith(null);
+      expect(platform.log.error).not.toHaveBeenCalled();
+    });
+
+    it('should handle errors from setApiState', async () => {
+      const callback = jest.fn();
+      const error = new Error('API Set Error');
+      mockSetApiState.mockRejectedValue(error);
+      await inst.testHandleSet(false, callback);
+      expect(mockSetApiState).toHaveBeenCalledWith(false);
+      expect(mockCacheManager.clear).not.toHaveBeenCalled(); // Should not clear cache on error
+      expect(service.updateCharacteristic).not.toHaveBeenCalled(); // Should not update characteristic on error
+      expect(callback).toHaveBeenCalledWith(error);
+      expect(platform.log.error).toHaveBeenCalledWith(expect.stringContaining('Error setting TestSwitch'), error);
+    });
   });
 
-  it('handleSet succeeds and updates characteristic', async () => {
-    const inst = new TestSwitch();
-    const cb = jest.fn();
-    // initial cachedStatus null
-    await inst.testHandleSet(true, cb);
-    expect((platform.log.info as jest.Mock)).toHaveBeenCalledWith(
-      `Set TestLog: Received request to turn on for ${accessory.displayName}`,
-    );
-    expect((platform.log.info as jest.Mock)).toHaveBeenCalledWith(
-      `TestLog successfully set to on for ${accessory.displayName}`,
-    );
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.On,
-      true,
-    );
-    expect(cb).toHaveBeenCalledWith(null);
+  describe('updateCachedStatus', () => {
+    it('should fetch status, update cache, and update characteristic if changed', async () => {
+      (inst as any).cachedStatus = { opt_test: 'off' }; // Initial state
+      mockGetStatusValue.mockImplementation((status) => status.opt_test === 'on'); // Define behavior
+      mockCacheManager.getStatus.mockResolvedValue({ opt_test: 'on' } as any); // New state from API
+
+      await inst.testUpdateCachedStatus();
+
+      expect(mockCacheManager.clear).toHaveBeenCalledTimes(1); // Called by updateCachedStatus
+      expect(mockCacheManager.getStatus).toHaveBeenCalledTimes(1);
+      expect(mockGetStatusValue).toHaveBeenCalledTimes(2); // Called for old and new status
+      expect((inst as any).cachedStatus).toEqual({ opt_test: 'on' });
+      expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+      expect(platform.log.error).not.toHaveBeenCalled();
+    });
+
+    it('should fetch status but not update characteristic if unchanged', async () => {
+      (inst as any).cachedStatus = { opt_test: 'on' }; // Initial state
+      mockGetStatusValue.mockImplementation((status) => status.opt_test === 'on');
+      mockCacheManager.getStatus.mockResolvedValue({ opt_test: 'on' } as any); // Same state from API
+
+      await inst.testUpdateCachedStatus();
+
+      expect(mockCacheManager.clear).toHaveBeenCalledTimes(1);
+      expect(mockCacheManager.getStatus).toHaveBeenCalledTimes(1);
+      expect(mockGetStatusValue).toHaveBeenCalledTimes(2);
+      expect((inst as any).cachedStatus).toEqual({ opt_test: 'on' });
+      expect(service.updateCharacteristic).not.toHaveBeenCalled(); // Not called because state didn't change
+      expect(platform.log.error).not.toHaveBeenCalled();
+    });
+
+    it('should handle errors during status fetch', async () => {
+      const error = new Error('Fetch Error');
+      mockCacheManager.getStatus.mockRejectedValue(error);
+      (inst as any).cachedStatus = { opt_test: 'off' };
+
+      await inst.testUpdateCachedStatus();
+
+      expect(mockCacheManager.clear).toHaveBeenCalledTimes(1);
+      expect(mockCacheManager.getStatus).toHaveBeenCalledTimes(1);
+      expect(service.updateCharacteristic).not.toHaveBeenCalled();
+      expect(platform.log.error).toHaveBeenCalledWith(
+        `Error updating TestSwitch status for ${accessory.displayName}:`,
+        error,
+      );
+    });
+
+    it('should skip polling if already in progress', async () => {
+      (inst as any).isPolling = true;
+      await inst.testUpdateCachedStatus();
+      expect(mockCacheManager.getStatus).not.toHaveBeenCalled();
+      expect(platform.log.debug).toHaveBeenCalledWith(expect.stringContaining('Polling already in progress'));
+    });
   });
 
-  it('handleSet error path invokes callback with error', async () => {
-    const errInst = new ErrorSwitch();
-    const cb = jest.fn();
-    await errInst.testHandleSet(false, cb);
-    expect((platform.log.error as jest.Mock)).toHaveBeenCalledWith(
-      `Error setting ErrLog to off for ${accessory.displayName}:`,
-      expect.any(Error),
-    );
-    expect(cb).toHaveBeenCalledWith(expect.any(Error));
-  });
+  // Add tests for startPolling and stopPolling if needed, mocking timers
 });

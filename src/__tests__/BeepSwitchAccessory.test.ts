@@ -1,10 +1,20 @@
 import { CharacteristicSetCallback, PlatformAccessory } from 'homebridge';
-import { BeepSwitchAccessory } from '../BeepSwitchAccessory';
+import { BeepSwitchAccessory } from '../BeepSwitchAccessory.js';
 import AirConditionerAPI from '../AirConditionerAPI.js';
 import { TfiacPlatform } from '../platform.js';
 
 // Mock dependencies
-jest.mock('../AirConditionerAPI');
+const updateStateMock = jest.fn();
+const setBeepStateMock = jest.fn();
+const cleanupMock = jest.fn(); // Shared cleanup mock
+
+jest.mock('../AirConditionerAPI', () => {
+  return jest.fn().mockImplementation(() => ({
+    updateState: updateStateMock,
+    setBeepState: setBeepStateMock,
+    cleanup: cleanupMock, // Use shared mock
+  }));
+});
 
 const mockPlatform = {
   log: {
@@ -46,7 +56,6 @@ const mockService = {
 
 describe('BeepSwitchAccessory', () => {
   let beepAccessory: BeepSwitchAccessory;
-  let mockAPI: jest.Mocked<AirConditionerAPI>;
 
   beforeEach(() => {
     // Reset all mocks
@@ -54,9 +63,6 @@ describe('BeepSwitchAccessory', () => {
     // Set up the mocks
     (mockAccessory.getService as jest.Mock).mockReturnValue(null);
     (mockAccessory.addService as jest.Mock).mockReturnValue(mockService);
-    (AirConditionerAPI as jest.MockedClass<typeof AirConditionerAPI>).mockClear();
-    mockAPI = new AirConditionerAPI('') as jest.Mocked<AirConditionerAPI>;
-    (AirConditionerAPI as jest.MockedClass<typeof AirConditionerAPI>).mockImplementation(() => mockAPI);
   });
 
   afterEach(() => {
@@ -97,8 +103,10 @@ describe('BeepSwitchAccessory', () => {
 
   it('should stop polling when stopPolling is called', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
+    expect((beepAccessory as any).cacheManager).toBeDefined();
+    expect((beepAccessory as any).cacheManager.api).toBeDefined();
     beepAccessory.stopPolling();
-    expect(mockAPI.cleanup).toHaveBeenCalledTimes(1);
+    expect(cleanupMock).toHaveBeenCalledTimes(1);
   });
 
   it('should update cached status and characteristics', async () => {
@@ -112,11 +120,10 @@ describe('BeepSwitchAccessory', () => {
       is_on: 'on',
       swing_mode: 'Off',
     };
-    mockAPI.updateState.mockResolvedValue(mockStatus);
-    mockAPI.updateState.mockClear();
-    // Call the private method using any
+    updateStateMock.mockResolvedValue(mockStatus);
+    updateStateMock.mockClear();
     await (beepAccessory as any).updateCachedStatus();
-    expect(mockAPI.updateState).toHaveBeenCalledTimes(1);
+    expect(updateStateMock).toHaveBeenCalledTimes(1);
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
       mockPlatform.Characteristic.On,
       true
@@ -125,51 +132,47 @@ describe('BeepSwitchAccessory', () => {
 
   it('should handle errors when updating status', async () => {
     const error = new Error('Test error');
-    mockAPI.updateState.mockRejectedValueOnce(error);
+    updateStateMock.mockRejectedValueOnce(error);
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
     await (beepAccessory as any).updateCachedStatus();
+    expect(mockPlatform.log.error).toHaveBeenCalledWith(expect.stringContaining('Error updating Beep status'), error);
   });
 
   it('should handle get characteristic callback', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
-    // Set up the mock cached status
     (beepAccessory as any).cachedStatus = {
       opt_beep: 'on',
     };
     const callback = jest.fn();
-    // Call the private method using any
     (beepAccessory as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, true);
   });
 
   it('should handle get characteristic callback with no cached status', () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
-    // Set up empty cached status
     (beepAccessory as any).cachedStatus = null;
     const callback = jest.fn();
-    // Call the private method using any
     (beepAccessory as any).handleGet(callback);
-    // Now we expect a default value (false) instead of an error
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('should handle set characteristic callback', async () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
     const callback = jest.fn();
+    setBeepStateMock.mockResolvedValueOnce({});
     await (beepAccessory as any).handleSet(true, callback);
-    expect(mockAPI.setBeepState).toHaveBeenCalledWith('on');
+    expect(setBeepStateMock).toHaveBeenCalledWith('on');
     expect(callback).toHaveBeenCalledWith(null);
   });
 
   it('should handle errors in set characteristic callback', async () => {
     beepAccessory = new BeepSwitchAccessory(mockPlatform, mockAccessory);
     const error = new Error('Test error');
-    mockAPI.setBeepState.mockRejectedValue(error);
-    mockAPI.updateState.mockClear();
+    setBeepStateMock.mockRejectedValue(error);
+    updateStateMock.mockClear();
     const callback = jest.fn();
-    // Call the private method using any
     await (beepAccessory as any).handleSet(true, callback);
-    expect(mockAPI.setBeepState).toHaveBeenCalledWith('on');
+    expect(setBeepStateMock).toHaveBeenCalledWith('on');
     expect(callback).toHaveBeenCalledWith(error);
   });
 
