@@ -44,13 +44,17 @@ export class AirConditionerAPI extends EventEmitter {
   public available: boolean;
   private lastSeq: number;
   private activeTimeouts: NodeJS.Timeout[] = [];
+  private maxRetries: number = 3; // Maximum number of retries for a command
+  private retryDelay: number = 1000; // Delay between retries in milliseconds
 
-  constructor(ip: string, port: number = 7777) {
+  constructor(ip: string, port: number = 7777, maxRetries: number = 3, retryDelay: number = 1000) {
     super();
     this.ip = ip;
     this.port = port;
     this.available = true;
     this.lastSeq = 0;
+    this.maxRetries = maxRetries;
+    this.retryDelay = retryDelay;
   }
 
   /**
@@ -67,6 +71,33 @@ export class AirConditionerAPI extends EventEmitter {
   private get seq(): string {
     // Return a sequence number (in this case we can use timestamp)
     return (Date.now() % 10000000).toString();
+  }
+
+  private async sendCommandWithRetry(command: string, timeoutMs: number = 10000, retryCount: number = 0): Promise<string> {
+    try {
+      return await this.sendCommand(command, timeoutMs);
+    } catch (error) {
+      // If we've reached max retries, rethrow the error
+      if (retryCount >= this.maxRetries) {
+        this.emit('debug', `Max retries (${this.maxRetries}) reached for command, giving up.`);
+        throw error;
+      }
+
+      // If it's a timeout error, retry
+      if (error instanceof Error && error.message === 'Command timed out') {
+        const nextRetry = retryCount + 1;
+        this.emit('debug', `Command timed out, retry attempt ${nextRetry}/${this.maxRetries}`);
+        
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+        
+        // Try again with incremented retry count
+        return this.sendCommandWithRetry(command, timeoutMs, nextRetry);
+      }
+
+      // For other errors, just rethrow
+      throw error;
+    }
   }
 
   private async sendCommand(command: string, timeoutMs: number = 10000): Promise<string> {
@@ -155,13 +186,13 @@ export class AirConditionerAPI extends EventEmitter {
   async turnOn(): Promise<void> {
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><TurnOn>on</TurnOn></SetMessage></msg>`;
-    await this.sendCommand(command);
+    await this.sendCommandWithRetry(command);
   }
 
   async turnOff(): Promise<void> {
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><TurnOn>off</TurnOn></SetMessage></msg>`;
-    await this.sendCommand(command);
+    await this.sendCommandWithRetry(command);
   }
 
   private mapWindDirectionToSwingMode(status: StatusUpdateMsg): string {
@@ -182,7 +213,7 @@ export class AirConditionerAPI extends EventEmitter {
     const command = `<msg msgid="SyncStatusReq" type="Control" seq="${this.seq}">
                       <SyncStatusReq></SyncStatusReq></msg>`;
     this.emit('debug', `Sending updateState command: ${command}`);
-    const response = await this.sendCommand(command);
+    const response = await this.sendCommandWithRetry(command);
     this.emit('debug', `Received response: ${response}`);
     try {
       const xmlObject = await xml2js.parseStringPromise(response);
@@ -220,7 +251,7 @@ export class AirConditionerAPI extends EventEmitter {
     const updateMessage = this.createUpdateMessage(status);
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage>${updateMessage}</SetMessage></msg>`;
-    await this.sendCommand(command);
+    await this.sendCommandWithRetry(command);
   }
 
   async setSwingMode(value: string): Promise<void> {
@@ -232,13 +263,13 @@ export class AirConditionerAPI extends EventEmitter {
     };
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage>${SET_SWING[value as keyof typeof SET_SWING]}</SetMessage></msg>`;
-    await this.sendCommand(command);
+    await this.sendCommandWithRetry(command);
   }
 
   async setFanSpeed(value: string): Promise<void> {
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><WindSpeed>${value}</WindSpeed></SetMessage></msg>`;
-    await this.sendCommand(command);
+    await this.sendCommandWithRetry(command);
   }
 
   /**
@@ -247,7 +278,7 @@ export class AirConditionerAPI extends EventEmitter {
   private async setOptionState(option: string, value: string): Promise<void> {
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><${option}>${value}</${option}></SetMessage></msg>`;
-    await this.sendCommand(command);
+    await this.sendCommandWithRetry(command);
   }
 
   /**

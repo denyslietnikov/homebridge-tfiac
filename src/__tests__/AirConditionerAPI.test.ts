@@ -638,24 +638,35 @@ describe('AirConditionerAPI extra coverage', () => {
     await api.setDisplayState('on');
     await api.setDisplayState('off');
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_display>on</Opt_display>'));
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_display>off</Opt_display>'));
+    // Check for the XML substring anywhere in the command string
+    const firstCall = spy.mock.calls[0][0] as string;
+    const secondCall = spy.mock.calls[1][0] as string;
+    expect(firstCall).toMatch(/<Opt_display>on<\/Opt_display>/);
+    expect(secondCall).toMatch(/<Opt_display>off<\/Opt_display>/);
   });
 
   it('should call setTurboState for on and off', async () => {
     const spy = jest.spyOn(api as any, 'sendCommand').mockResolvedValue('ok');
     await api.setTurboState('on');
     await api.setTurboState('off');
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_super>on</Opt_super>'));
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_super>off</Opt_super>'));
+    expect(spy).toHaveBeenCalledTimes(2);
+    // Check for the XML substring anywhere in the command string
+    const firstCall = spy.mock.calls[0][0] as string;
+    const secondCall = spy.mock.calls[1][0] as string;
+    expect(firstCall).toMatch(/<Opt_super>on<\/Opt_super>/);
+    expect(secondCall).toMatch(/<Opt_super>off<\/Opt_super>/);
   });
 
   it('should call setSleepState for on and off', async () => {
     const spy = jest.spyOn(api as any, 'sendCommand').mockResolvedValue('ok');
     await api.setSleepState('on');
     await api.setSleepState('off');
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_sleepMode>sleepMode1:'));
-    expect(spy).toHaveBeenCalledWith(expect.stringContaining('<Opt_sleepMode>off</Opt_sleepMode>'));
+    expect(spy).toHaveBeenCalledTimes(2);
+    // Check for the XML substring anywhere in the command string
+    const firstCall = spy.mock.calls[0][0] as string;
+    const secondCall = spy.mock.calls[1][0] as string;
+    expect(firstCall).toMatch(/<Opt_sleepMode>sleepMode1:/);
+    expect(secondCall).toMatch(/<Opt_sleepMode>off<\/Opt_sleepMode>/);
   });
 
   it('should cleanup all timeouts', () => {
