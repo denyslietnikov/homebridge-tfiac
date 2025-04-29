@@ -60,6 +60,11 @@ export class OutdoorTemperatureSensorAccessory {
             this.platform.Characteristic.Name,
             serviceName,
           );
+          // Add ConfiguredName characteristic to match other services
+          this.service.updateCharacteristic(
+            this.platform.Characteristic.ConfiguredName,
+            serviceName,
+          );
         }
         
         // Add check before registering the 'get' handler
