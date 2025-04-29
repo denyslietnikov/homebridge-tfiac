@@ -41,6 +41,11 @@ export class IndoorTemperatureSensorAccessory {
         this.platform.Characteristic.Name,
         serviceName,
       );
+      // Add ConfiguredName characteristic to match other services
+      this.service.updateCharacteristic(
+        this.platform.Characteristic.ConfiguredName,
+        serviceName,
+      );
     }
 
     // Register the GET handler if the characteristic supports it
