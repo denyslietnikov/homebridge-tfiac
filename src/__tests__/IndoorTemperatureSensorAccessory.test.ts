@@ -2,6 +2,7 @@ import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
 import { IndoorTemperatureSensorAccessory } from '../IndoorTemperatureSensorAccessory.js';
 import { TfiacDeviceConfig } from '../settings.js';
+import { PowerState } from '../enums.js'; // Import Enum
 
 describe('IndoorTemperatureSensorAccessory', () => {
   let platform: TfiacPlatform;
@@ -113,7 +114,7 @@ describe('IndoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
     };
     

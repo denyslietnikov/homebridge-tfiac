@@ -24,6 +24,7 @@ import {
   toFahrenheit,
   createMockApiActions
 } from './testUtils.js';
+import { OperationMode, PowerState, FanSpeed } from '../enums.js'; // Import Enums
 
 // Interface for test context
 interface TestAccessoryContext {
@@ -562,19 +563,20 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     describe('Operation Mode Mapping', () => {
       it('should map Homebridge modes to API modes correctly', () => {
         const targetStateChar = hapConstants.Characteristic.TargetHeaterCoolerState;
-        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.AUTO)).toBe('auto');
-        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.HEAT)).toBe('heat');
-        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.COOL)).toBe('cool');
+        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.AUTO)).toBe(OperationMode.Auto);
+        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.HEAT)).toBe(OperationMode.Heat);
+        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.COOL)).toBe(OperationMode.Cool);
+        expect(helperMethods.mapHomebridgeModeToAPIMode(9999)).toBe(OperationMode.Auto); // Invalid value
       });
       
       it('should map API modes to Homebridge modes correctly', () => {
         const targetStateChar = hapConstants.Characteristic.TargetHeaterCoolerState;
-        expect(helperMethods.mapAPIModeToHomebridgeMode('auto')).toBe(targetStateChar.AUTO);
-        expect(helperMethods.mapAPIModeToHomebridgeMode('heat')).toBe(targetStateChar.HEAT);
-        expect(helperMethods.mapAPIModeToHomebridgeMode('cool')).toBe(targetStateChar.COOL);
-        expect(helperMethods.mapAPIModeToHomebridgeMode('dry')).toBe(targetStateChar.COOL);
-        expect(helperMethods.mapAPIModeToHomebridgeMode('fan')).toBe(targetStateChar.AUTO);
-        expect(helperMethods.mapAPIModeToHomebridgeMode('unknown')).toBe(targetStateChar.AUTO);
+        expect(helperMethods.mapAPIModeToHomebridgeMode(OperationMode.Auto)).toBe(targetStateChar.AUTO);
+        expect(helperMethods.mapAPIModeToHomebridgeMode(OperationMode.Heat)).toBe(targetStateChar.HEAT);
+        expect(helperMethods.mapAPIModeToHomebridgeMode(OperationMode.Cool)).toBe(targetStateChar.COOL);
+        expect(helperMethods.mapAPIModeToHomebridgeMode(OperationMode.Dry)).toBe(targetStateChar.AUTO);
+        expect(helperMethods.mapAPIModeToHomebridgeMode(OperationMode.FanOnly)).toBe(targetStateChar.AUTO);
+        expect(helperMethods.mapAPIModeToHomebridgeMode('unknown' as OperationMode)).toBe(targetStateChar.AUTO);
       });
     });
   });

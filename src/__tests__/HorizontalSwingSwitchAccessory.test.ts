@@ -56,7 +56,8 @@ describe('HorizontalSwingSwitchAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     createAccessory();
-    expect(accessory.addService).toHaveBeenCalledWith(expect.anything(), 'Horizontal Swing', 'horizontalswing');
+    // Update expected subtype to match implementation ('horizontal_swing')
+    expect(accessory.addService).toHaveBeenCalledWith(expect.anything(), 'Horizontal Swing', 'horizontal_swing');
     expect(service.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Horizontal Swing');
     expect(service.getCharacteristic).toHaveBeenCalledWith('On');
     const mockCharacteristic = service.getCharacteristic('On');

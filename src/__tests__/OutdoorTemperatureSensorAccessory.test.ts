@@ -2,6 +2,7 @@ import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
 import { OutdoorTemperatureSensorAccessory } from '../OutdoorTemperatureSensorAccessory.js';
 import { TfiacDeviceConfig } from '../settings.js';
+import { PowerState } from '../enums.js'; // Import Enum
 import { 
   setupTestPlatform, 
   createMockPlatformAccessory, 
@@ -57,7 +58,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: 86, // ~30°C
     };
@@ -92,7 +93,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: 86, // ~30°C
     };
@@ -113,7 +114,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: 0, // Invalid value
     };
@@ -129,7 +130,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: NaN,
     };
@@ -147,7 +148,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: 86,
     };
@@ -164,7 +165,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: 86,
     };
@@ -196,7 +197,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       // outdoor_temp missing
     };
@@ -211,7 +212,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: "notanumber",
     };
@@ -234,7 +235,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 70,
       operation_mode: 'cool',
       fan_mode: 'Auto',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: 86,
     } as any;
@@ -253,7 +254,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       target_temp: 65,
       operation_mode: 'heat',
       fan_mode: 'Low',
-      is_on: 'on',
+      is_on: PowerState.On, // Use Enum
       swing_mode: 'off',
       outdoor_temp: 68,
     } as any;

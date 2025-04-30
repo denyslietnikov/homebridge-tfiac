@@ -16,6 +16,7 @@ import { IndoorTemperatureSensorAccessory } from './IndoorTemperatureSensorAcces
 import { OutdoorTemperatureSensorAccessory } from './OutdoorTemperatureSensorAccessory.js';
 import { fahrenheitToCelsius, celsiusToFahrenheit } from './utils.js';
 import CacheManager from './CacheManager.js';
+import { PowerState, OperationMode, FanSpeed, SwingMode } from './enums.js';
 
 export interface CharacteristicHandlers {
   get?: (callback: CharacteristicGetCallback) => void;
@@ -299,15 +300,15 @@ export class TfiacPlatformAccessory {
 
   private updateHeaterCoolerCharacteristics(status: AirConditionerStatus | null): void {
     if (status) {
-      const activeValue = status.is_on === 'on'
+      const activeValue = status.is_on === PowerState.On
         ? this.platform.Characteristic.Active.ACTIVE
         : this.platform.Characteristic.Active.INACTIVE;
       this.service.updateCharacteristic(this.platform.Characteristic.Active, activeValue);
 
-      const currentHCState = this.mapOperationModeToCurrentHeaterCoolerState(status.operation_mode);
+      const currentHCState = this.mapOperationModeToCurrentHeaterCoolerState(status.operation_mode as OperationMode);
       this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState, currentHCState);
 
-      const targetHCState = this.mapOperationModeToTargetHeaterCoolerState(status.operation_mode);
+      const targetHCState = this.mapOperationModeToTargetHeaterCoolerState(status.operation_mode as OperationMode);
       this.service.updateCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState, targetHCState);
 
       const currentTempCelsius = fahrenheitToCelsius(status.current_temp);
@@ -317,10 +318,10 @@ export class TfiacPlatformAccessory {
       this.service.updateCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature, targetTempCelsius);
       this.service.updateCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature, targetTempCelsius);
 
-      const fanSpeed = this.mapFanModeToRotationSpeed(status.fan_mode);
+      const fanSpeed = this.mapFanModeToRotationSpeed(status.fan_mode as FanSpeed);
       this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, fanSpeed);
 
-      const swingMode = status.swing_mode === 'Off' ? 0 : 1;
+      const swingMode = status.swing_mode === SwingMode.Off ? 0 : 1;
       this.service.updateCharacteristic(this.platform.Characteristic.SwingMode, swingMode);
 
     } else {
@@ -338,7 +339,7 @@ export class TfiacPlatformAccessory {
     this.platform.log.debug('Triggered GET Active');
     
     if (this.cachedStatus) {
-      const activeValue = this.cachedStatus.is_on === 'on'
+      const activeValue = this.cachedStatus.is_on === PowerState.On
         ? this.platform.Characteristic.Active.ACTIVE
         : this.platform.Characteristic.Active.INACTIVE;
       callback(null, activeValue);
@@ -373,7 +374,7 @@ export class TfiacPlatformAccessory {
     this.platform.log.debug('Triggered GET CurrentHeaterCoolerState');
     
     if (this.cachedStatus) {
-      const state = this.mapOperationModeToCurrentHeaterCoolerState(this.cachedStatus.operation_mode);
+      const state = this.mapOperationModeToCurrentHeaterCoolerState(this.cachedStatus.operation_mode as OperationMode);
       callback(null, state);
       return;
     }
@@ -391,7 +392,7 @@ export class TfiacPlatformAccessory {
     this.platform.log.debug('Triggered GET TargetHeaterCoolerState');
     
     if (this.cachedStatus) {
-      const state = this.mapOperationModeToTargetHeaterCoolerState(this.cachedStatus.operation_mode);
+      const state = this.mapOperationModeToTargetHeaterCoolerState(this.cachedStatus.operation_mode as OperationMode);
       callback(null, state);
       return;
     }
@@ -481,7 +482,7 @@ export class TfiacPlatformAccessory {
     this.platform.log.debug('Triggered GET RotationSpeed');
     
     if (this.cachedStatus && typeof this.cachedStatus.fan_mode === 'string') {
-      const speed = this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode);
+      const speed = this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode as FanSpeed);
       callback(null, speed);
       return;
     }
@@ -513,7 +514,7 @@ export class TfiacPlatformAccessory {
     this.platform.log.debug('Triggered GET SwingMode');
     
     if (this.cachedStatus && typeof this.cachedStatus.swing_mode === 'string') {
-      const swingMode = this.cachedStatus.swing_mode === 'Off' ? 0 : 1;
+      const swingMode = this.cachedStatus.swing_mode === SwingMode.Off ? 0 : 1;
       callback(null, swingMode);
       return;
     }
@@ -527,7 +528,7 @@ export class TfiacPlatformAccessory {
     callback: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET SwingMode:', value);
-    const mode = value === this.platform.api.hap.Characteristic.SwingMode.SWING_ENABLED ? 'Both' : 'Off'; // Use platform.api.hap instance
+    const mode = value === this.platform.api.hap.Characteristic.SwingMode.SWING_ENABLED ? SwingMode.Both : SwingMode.Off; // Use Enum
     try {
       await this.deviceAPI.setSwingMode(mode);
       this.cacheManager.clear();
@@ -541,61 +542,64 @@ export class TfiacPlatformAccessory {
     }
   }
 
-  private mapOperationModeToCurrentHeaterCoolerState(mode: string): number {
+  private mapOperationModeToCurrentHeaterCoolerState(mode: OperationMode): number {
     const { CurrentHeaterCoolerState } = this.platform.Characteristic;
     switch (mode) {
-    case 'cool':
+    case OperationMode.Cool:
       return CurrentHeaterCoolerState.COOLING;
-    case 'heat':
+    case OperationMode.Heat:
       return CurrentHeaterCoolerState.HEATING;
     default:
       return CurrentHeaterCoolerState.IDLE;
     }
   }
 
-  private mapOperationModeToTargetHeaterCoolerState(mode: string): number {
+  private mapOperationModeToTargetHeaterCoolerState(mode: OperationMode): number {
     const { TargetHeaterCoolerState } = this.platform.Characteristic;
     switch (mode) {
-    case 'cool':
+    case OperationMode.Cool:
       return TargetHeaterCoolerState.COOL;
-    case 'heat':
+    case OperationMode.Heat:
       return TargetHeaterCoolerState.HEAT;
+    case OperationMode.Dry:
+    case OperationMode.FanOnly:
+    case OperationMode.Auto:
     default:
       return TargetHeaterCoolerState.AUTO;
     }
   }
 
-  private mapTargetHeaterCoolerStateToOperationMode(state: number): string {
+  private mapTargetHeaterCoolerStateToOperationMode(state: number): OperationMode {
     const { TargetHeaterCoolerState } = this.platform.Characteristic;
     switch (state) {
     case TargetHeaterCoolerState.COOL:
-      return 'cool';
+      return OperationMode.Cool;
     case TargetHeaterCoolerState.HEAT:
-      return 'heat';
+      return OperationMode.Heat;
     default:
-      return 'auto';
+      return OperationMode.Auto;
     }
   }
 
-  private mapFanModeToRotationSpeed(fanMode: string): number {
-    const fanSpeedMap: { [key: string]: number } = {
-      Auto: 50,
-      Low: 25,
-      Middle: 50,
-      High: 75,
+  private mapFanModeToRotationSpeed(fanMode: FanSpeed): number {
+    const fanSpeedMap: { [key in FanSpeed]?: number } = {
+      [FanSpeed.Auto]: 50,
+      [FanSpeed.Low]: 25,
+      [FanSpeed.Middle]: 50,
+      [FanSpeed.High]: 75,
     };
-    return fanSpeedMap[fanMode] || 50;
+    return fanSpeedMap[fanMode] ?? 50;
   }
 
-  private mapRotationSpeedToFanMode(speed: number): string {
-    if (speed <= 25) {
-      return 'Low';
-    } else if (speed <= 50) {
-      return 'Middle';
-    } else if (speed <= 75) {
-      return 'High';
+  private mapRotationSpeedToFanMode(speed: number): FanSpeed {
+    if (speed > 75) {
+      return FanSpeed.Auto;
+    } else if (speed > 50) {
+      return FanSpeed.High;
+    } else if (speed > 25) {
+      return FanSpeed.Middle;
     } else {
-      return 'Auto';
+      return FanSpeed.Low;
     }
   }
 
@@ -613,52 +617,53 @@ export class TfiacPlatformAccessory {
       : value;
   }
 
-  private mapHomebridgeModeToAPIMode(state: number): string {
+  private mapHomebridgeModeToAPIMode(state: number): OperationMode { // Return OperationMode
     const { TargetHeaterCoolerState } = this.platform.api.hap.Characteristic;
     switch (state) {
     case TargetHeaterCoolerState.HEAT:
-      return 'heat';
+      return OperationMode.Heat;
     case TargetHeaterCoolerState.COOL:
-      return 'cool';
+      return OperationMode.Cool;
     default:
-      return 'auto';
+      return OperationMode.Auto;
     }
   }
 
-  private mapAPIModeToHomebridgeMode(mode: string): number {
+  private mapAPIModeToHomebridgeMode(mode: OperationMode | string): number { // Accept OperationMode
     const { TargetHeaterCoolerState } = this.platform.api.hap.Characteristic;
     switch (mode) {
-    case 'heat':
+    case OperationMode.Heat:
       return TargetHeaterCoolerState.HEAT;
-    case 'cool':
-    case 'dry':
+    case OperationMode.Cool:
       return TargetHeaterCoolerState.COOL;
-    case 'fan':
+    case OperationMode.Dry:
+    case OperationMode.FanOnly:
+    case OperationMode.Auto:
     default:
       return TargetHeaterCoolerState.AUTO;
     }
   }
 
-  private mapAPIActiveToHomebridgeActive(state: string): number {
+  private mapAPIActiveToHomebridgeActive(state: PowerState): number { // Accept PowerState
     const { Active } = this.platform.api.hap.Characteristic;
-    return state === 'on' ? Active.ACTIVE : Active.INACTIVE;
+    return state === PowerState.On ? Active.ACTIVE : Active.INACTIVE;
   }
 
   private mapAPICurrentModeToHomebridgeCurrentMode(
-    mode: string,
-    powerState?: string,
+    mode: OperationMode | string, // Accept OperationMode
+    powerState?: PowerState, // Accept PowerState
     targetTemp?: number,
     currentTemp?: number,
   ): number {
     const { CurrentHeaterCoolerState } = this.platform.api.hap.Characteristic;
-    if (mode === 'heat') {
+    if (mode === OperationMode.Heat) {
       return CurrentHeaterCoolerState.HEATING;
     }
-    if (mode === 'cool') {
+    if (mode === OperationMode.Cool) {
       return CurrentHeaterCoolerState.COOLING;
     }
-    if (mode === 'auto') {
-      if (powerState !== 'on') {
+    if (mode === OperationMode.Auto) {
+      if (powerState !== PowerState.On) {
         return CurrentHeaterCoolerState.IDLE;
       }
       if (typeof targetTemp !== 'number' || typeof currentTemp !== 'number') {
@@ -675,10 +680,10 @@ export class TfiacPlatformAccessory {
       }
       return CurrentHeaterCoolerState.IDLE;
     }
-    if (mode === 'dry') {
+    if (mode === OperationMode.Dry) {
       return CurrentHeaterCoolerState.COOLING;
     }
-    if (mode === 'fan') {
+    if (mode === OperationMode.FanOnly) {
       return CurrentHeaterCoolerState.IDLE;
     }
     return CurrentHeaterCoolerState.IDLE;

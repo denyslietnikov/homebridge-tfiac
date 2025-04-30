@@ -340,6 +340,10 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       const discoveryPort = 7777; // Standard TFIAC port
 
       const socket = dgram.createSocket('udp4');
+      // Allow process to exit if this is the only handle
+      if (typeof socket.unref === 'function') {
+        socket.unref();
+      }
       let discoveryTimeout: NodeJS.Timeout | null = null;
 
       const cleanup = () => {
@@ -418,6 +422,10 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           cleanup();
           resolve(discoveredIPs);
         }, timeoutMs);
+        // Ensure timeout does not keep process alive
+        if (discoveryTimeout.unref) {
+          discoveryTimeout.unref();
+        }
       } catch (err) {
         this.log.error('Error setting up discovery socket:', err);
         cleanup();

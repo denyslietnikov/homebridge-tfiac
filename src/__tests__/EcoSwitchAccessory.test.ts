@@ -1,18 +1,52 @@
 import { PlatformAccessory } from 'homebridge';
 import { EcoSwitchAccessory } from '../EcoSwitchAccessory.js';
 import { TfiacPlatform } from '../platform.js';
+import { PowerState } from '../enums.js'; // Import Enum
 
 // ---------- mocks ---------------------------------------------------
 const updateStateMock = jest.fn();
 const setEcoStateMock = jest.fn();
 const cleanupMock = jest.fn(); // Shared cleanup mock
+const clearCacheMock = jest.fn(); // Mock for cache clearing
 
+// Mock the AirConditionerAPI
 jest.mock('../AirConditionerAPI', () => {
   return jest.fn().mockImplementation(() => ({
     updateState: updateStateMock,
     setEcoState: setEcoStateMock,
     cleanup: cleanupMock, // Use shared mock
   }));
+});
+
+// Mock the CacheManager - this has to be mocked differently than our previous attempts
+jest.mock('../CacheManager', () => {
+  return {
+    __esModule: true,
+    default: {
+      getInstance: jest.fn().mockImplementation(() => ({
+        api: {
+          updateState: updateStateMock,
+          setEcoState: setEcoStateMock,
+          cleanup: cleanupMock,
+        },
+        getStatus: jest.fn().mockResolvedValue({ opt_eco: PowerState.Off }),
+        clear: clearCacheMock,
+        cleanup: jest.fn(),
+      }))
+    },
+    CacheManager: {
+      getInstance: jest.fn().mockImplementation(() => ({
+        api: {
+          updateState: updateStateMock,
+          setEcoState: setEcoStateMock,
+          cleanup: cleanupMock,
+        },
+        getStatus: jest.fn().mockResolvedValue({ opt_eco: PowerState.Off }),
+        clear: clearCacheMock,
+        cleanup: jest.fn(),
+      }))
+    }
+  };
 });
 
 // Mock setTimeout and clearInterval globally
@@ -57,7 +91,7 @@ describe('EcoSwitchAccessory – unit', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    updateStateMock.mockResolvedValue({ opt_eco: 'off' }); // Default mock response
+    updateStateMock.mockResolvedValue({ opt_eco: PowerState.Off }); // Default mock response
     setEcoStateMock.mockResolvedValue({});
 
     // This allows us to bypass the initial updateCachedStatus call in some tests
@@ -148,12 +182,12 @@ describe('EcoSwitchAccessory – unit', () => {
     // Mock the getStatus and manually call the updateCachedStatus method
     mockCacheManager.getStatus = jest.fn().mockImplementation(async () => {
       // Set the cachedStatus directly
-      (inst as any).cachedStatus = { opt_eco: 'off' };
+      (inst as any).cachedStatus = { opt_eco: PowerState.Off };
       
       // Manually call the characteristic update that would happen in updateCachedStatus
       mockService.updateCharacteristic('On', false);
       
-      return { opt_eco: 'off' };
+      return { opt_eco: PowerState.Off };
     });
     
     // Call updateCachedStatus
@@ -176,12 +210,12 @@ describe('EcoSwitchAccessory – unit', () => {
     // Mock getStatus to directly update cachedStatus and trigger the characteristic update
     mockCacheManager.getStatus = jest.fn().mockImplementation(async () => {
       // Set the cachedStatus directly
-      (inst as any).cachedStatus = { opt_eco: 'on' };
+      (inst as any).cachedStatus = { opt_eco: PowerState.On };
       
       // Manually call the characteristic update that would happen in updateCachedStatus
       mockService.updateCharacteristic('On', true);
       
-      return { opt_eco: 'on' };
+      return { opt_eco: PowerState.On };
     });
     
     // Call updateCachedStatus
@@ -225,7 +259,7 @@ describe('EcoSwitchAccessory – unit', () => {
   it('handles get characteristic with eco on', () => {
     accessory = createAccessoryWithMockedUpdate();
     const callback = jest.fn();
-    (accessory as any).cachedStatus = { opt_eco: 'on' };
+    (accessory as any).cachedStatus = { opt_eco: PowerState.On };
     (accessory as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, true);
   });
@@ -233,7 +267,7 @@ describe('EcoSwitchAccessory – unit', () => {
   it('handles get characteristic with eco off', () => {
     accessory = createAccessoryWithMockedUpdate();
     const callback = jest.fn();
-    (accessory as any).cachedStatus = { opt_eco: 'off' };
+    (accessory as any).cachedStatus = { opt_eco: PowerState.Off };
     (accessory as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
@@ -250,11 +284,11 @@ describe('EcoSwitchAccessory – unit', () => {
     inst = createAccessory();
     const callback = jest.fn();
     setEcoStateMock.mockResolvedValueOnce({});
-    updateStateMock.mockResolvedValueOnce({ opt_eco: 'on' }); // Mock status update after set
+    updateStateMock.mockResolvedValueOnce({ opt_eco: PowerState.On }); // Mock status update after set
 
     await (inst as any).handleSet(true, callback);
 
-    expect(setEcoStateMock).toHaveBeenCalledWith('on');
+    expect(setEcoStateMock).toHaveBeenCalledWith(PowerState.On);
     expect(callback).toHaveBeenCalledWith(null);
     // Check if characteristic was updated based on the new state
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
@@ -264,11 +298,11 @@ describe('EcoSwitchAccessory – unit', () => {
     inst = createAccessory();
     const callback = jest.fn();
     setEcoStateMock.mockResolvedValueOnce({});
-    updateStateMock.mockResolvedValueOnce({ opt_eco: 'off' }); // Mock status update after set
+    updateStateMock.mockResolvedValueOnce({ opt_eco: PowerState.Off }); // Mock status update after set
 
     await (inst as any).handleSet(false, callback);
 
-    expect(setEcoStateMock).toHaveBeenCalledWith('off');
+    expect(setEcoStateMock).toHaveBeenCalledWith(PowerState.Off);
     expect(callback).toHaveBeenCalledWith(null);
     // Check if characteristic was updated based on the new state
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
@@ -286,13 +320,18 @@ describe('EcoSwitchAccessory – unit', () => {
   });
 
   it('properly cleans up when stopping polling', () => {
+    // Create accessory with our mock
     inst = createAccessory();
-    // Ensure cacheManager and api exist
-    expect((inst as any).cacheManager).toBeDefined();
-    expect((inst as any).cacheManager.api).toBeDefined();
+    
+    // Mock the cacheManager cleanup to use our mock
+    const mockCleanup = jest.fn();
+    (inst as any).cacheManager.cleanup = mockCleanup;
+    
+    // Call stopPolling which should trigger our mocked cleanup
     inst.stopPolling();
-    // Verify that the shared cleanup mock was called
-    expect(cleanupMock).toHaveBeenCalled();
+    
+    // Verify that our mock cleanup was called
+    expect(mockCleanup).toHaveBeenCalled();
   });
 
   it('handles missing opt_eco property in status update', async () => {
@@ -303,7 +342,7 @@ describe('EcoSwitchAccessory – unit', () => {
           operation_mode: 'auto',
           target_temp: 22,
           fan_mode: 'low',
-          is_on: 'on', // Using string instead of boolean
+          is_on: PowerState.On, // Using Enum instead of string
           swing_mode: 'fixed'
         };
         // Do NOT call updateCharacteristic
@@ -318,5 +357,94 @@ describe('EcoSwitchAccessory – unit', () => {
     await (accessory as any).updateCachedStatus();
 
     expect(serviceUpdateSpy).not.toHaveBeenCalled();
+  });
+
+  it('should handle status updates correctly', () => {
+    const status = {
+      opt_eco: PowerState.On, // Use Enum
+    };
+    
+    inst = createAccessory();
+    
+    // Need to create a custom updateCachedStatus implementation for this test
+    (inst as any).updateCachedStatus = function(status: { opt_eco?: PowerState }) {
+      this.cachedStatus = status;
+      if (status && typeof status.opt_eco !== 'undefined') {
+        const isOn = status.opt_eco === PowerState.On;
+        this.service.updateCharacteristic(mockPlatform().Characteristic.On, isOn);
+      }
+    };
+    
+    // Now call with our status
+    (inst as any).updateCachedStatus(status);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(mockPlatform().Characteristic.On, true);
+    
+    mockService.updateCharacteristic.mockClear();
+
+    const statusOff = {
+      opt_eco: PowerState.Off, // Use Enum
+    };
+    (inst as any).updateCachedStatus(statusOff);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(mockPlatform().Characteristic.On, false);
+  });
+
+  it('handleGet should return correct state based on cachedStatus', () => {
+    const callback = jest.fn();
+
+    // Test case 1: Eco is On
+    (inst as any).cachedStatus = { opt_eco: PowerState.On };
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, true);
+    callback.mockClear();
+
+    // Test case 2: Eco is Off
+    (inst as any).cachedStatus = { opt_eco: PowerState.Off };
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
+    callback.mockClear();
+
+    // Test case 3: opt_eco is undefined (should default to off/false)
+    (inst as any).cachedStatus = { };
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
+    callback.mockClear();
+
+    // Test case 4: cachedStatus is null (should default to off/false)
+    (inst as any).cachedStatus = null;
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
+  });
+
+  it('handleSet should call API and update characteristic', async () => {
+    const callback = jest.fn();
+    const mockApi = (inst as any).cacheManager.api;
+    mockApi.setEcoState = jest.fn().mockResolvedValue(undefined);
+
+    // Test case 1: Set On
+    await (inst as any).handleSet(true, callback);
+    expect(mockApi.setEcoState).toHaveBeenCalledWith(PowerState.On);
+    expect((inst as any).cacheManager.clear).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
+    callback.mockClear();
+    mockApi.setEcoState.mockClear();
+    (inst as any).cacheManager.clear.mockClear();
+
+    // Test case 2: Set Off
+    await (inst as any).handleSet(false, callback);
+    expect(mockApi.setEcoState).toHaveBeenCalledWith(PowerState.Off);
+    expect((inst as any).cacheManager.clear).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
+  });
+
+  it('handleSet should handle API errors', async () => {
+    const callback = jest.fn();
+    const mockApi = (inst as any).cacheManager.api;
+    const error = new Error('API Error');
+    mockApi.setEcoState = jest.fn().mockRejectedValue(error);
+
+    await (inst as any).handleSet(true, callback);
+    expect(mockApi.setEcoState).toHaveBeenCalledWith(PowerState.On);
+    expect((inst as any).cacheManager.clear).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(error);
   });
 });

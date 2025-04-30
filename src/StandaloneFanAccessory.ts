@@ -6,6 +6,7 @@ import {
 import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
+import { PowerState, FanSpeed } from './enums.js';
 
 export class StandaloneFanAccessory {
   private service: Service;
@@ -66,15 +67,19 @@ export class StandaloneFanAccessory {
   private async updateCachedStatus(): Promise<void> {
     try {
       const status = await this.deviceAPI.updateState();
+      const oldIsOn = this.cachedStatus?.is_on === PowerState.On;
       this.cachedStatus = status;
       if (this.service && status) {
-        this.service.updateCharacteristic(
-          this.platform.Characteristic.On,
-          status.is_on === 'on',
-        );
+        const newIsOn = this.cachedStatus.is_on === PowerState.On;
+        if (newIsOn !== oldIsOn) {
+          this.platform.log.info(`Updating On characteristic for ${this.accessory.displayName} to ${newIsOn}`);
+          this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
+        }
+
+        const newRotationSpeed = this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode as FanSpeed);
         this.service.updateCharacteristic(
           this.platform.Characteristic.RotationSpeed,
-          this.mapFanModeToRotationSpeed(status.fan_mode),
+          newRotationSpeed,
         );
       }
     } catch (error) {
@@ -83,12 +88,8 @@ export class StandaloneFanAccessory {
   }
 
   private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
-    if (this.cachedStatus) {
-      callback(null, this.cachedStatus.is_on === 'on');
-    } else {
-      // Return a default value (off) instead of an error
-      callback(null, false);
-    }
+    const currentValue = this.cachedStatus ? this.cachedStatus.is_on === PowerState.On : false;
+    callback(null, currentValue);
   }
 
   private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
@@ -108,15 +109,11 @@ export class StandaloneFanAccessory {
   }
 
   private handleRotationSpeedGet(callback: (err: Error | null, value?: number) => void): void {
-    if (this.cachedStatus) {
-      callback(null, this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode));
-    } else {
-      // Return a default medium speed (50) instead of an error
-      callback(null, 50);
-    }
+    const currentValue = this.cachedStatus ? this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode as FanSpeed) : 50;
+    callback(null, currentValue);
   }
 
-  private handleRotationSpeedSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
+  private async handleRotationSpeedSet(value: CharacteristicValue, callback: (err?: Error | null) => void): Promise<void> {
     (async () => {
       try {
         const fanMode = this.mapRotationSpeedToFanMode(value as number);
@@ -129,25 +126,25 @@ export class StandaloneFanAccessory {
     })();
   }
 
-  private mapFanModeToRotationSpeed(fanMode: string): number {
-    const fanSpeedMap: { [key: string]: number } = {
-      Auto: 50,
-      Low: 25,
-      Middle: 50,
-      High: 75,
+  private mapFanModeToRotationSpeed(fanMode: FanSpeed): number {
+    const fanSpeedMap: { [key in FanSpeed]?: number } = {
+      [FanSpeed.Auto]: 50,
+      [FanSpeed.Low]: 25,
+      [FanSpeed.Middle]: 50,
+      [FanSpeed.High]: 75,
     };
-    return fanSpeedMap[fanMode] || 50;
+    return fanSpeedMap[fanMode] ?? 50; // Default to 50 if mode is unknown
   }
 
-  private mapRotationSpeedToFanMode(speed: number): string {
+  private mapRotationSpeedToFanMode(speed: number): FanSpeed {
     if (speed <= 25) {
-      return 'Low';
+      return FanSpeed.Low;
     } else if (speed <= 50) {
-      return 'Middle';
+      return FanSpeed.Middle;
     } else if (speed <= 75) {
-      return 'High';
+      return FanSpeed.High;
     } else {
-      return 'Auto';
+      return FanSpeed.Auto;
     }
   }
 }

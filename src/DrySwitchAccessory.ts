@@ -1,25 +1,24 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import AirConditionerAPI from './AirConditionerAPI.js';
+import { OperationMode } from './enums.js';
 
 export class DrySwitchAccessory extends BaseSwitchAccessory {
   constructor(
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    const serviceName = 'Dry';
-    const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,
-      serviceName, // Service Name
-      'dry', // Service Subtype
-      (status) => status.operation_mode === 'dehumi', // getStatusValue
-      async (value) => { // setApiState
-        await deviceAPI.setAirConditionerState('operation_mode', value ? 'dehumi' : 'auto');
+      'Dry',
+      'dry',
+      (status) => status.operation_mode === OperationMode.Dry,
+      async (value) => {
+        const mode = value ? OperationMode.Dry : OperationMode.Auto;
+        await this.cacheManager.api.setAirConditionerState('operation_mode', mode);
       },
-      'Dry', // Log Prefix
+      'Dry',
     );
   }
 }

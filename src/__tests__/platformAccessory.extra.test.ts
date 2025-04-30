@@ -8,6 +8,7 @@ import {
   createMockService,
   createMockPlatformAccessory
 } from './testUtils';
+import { PowerState, OperationMode, FanSpeed } from '../enums.js'; // Import Enums
 
 describe('TfiacPlatformAccessory extra tests', () => {
   let platform: Partial<TfiacPlatform>;
@@ -152,8 +153,12 @@ describe('TfiacPlatformAccessory extra tests', () => {
   it('updateHeaterCoolerCharacteristics sets values on non-null status', () => {
     const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
     const status: AirConditionerStatus = {
-      is_on: 'on', operation_mode: 'heat', current_temp: 212,
-      target_temp: 212, fan_mode: 'High', swing_mode: 'Both',
+      is_on: PowerState.On, // Use Enum
+      operation_mode: OperationMode.Heat, // Use Enum
+      current_temp: 212,
+      target_temp: 212,
+      fan_mode: FanSpeed.High, // Use Enum
+      swing_mode: 'Both',
     };
     (inst as any).updateHeaterCoolerCharacteristics(status);
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
@@ -192,14 +197,19 @@ describe('TfiacPlatformAccessory extra tests', () => {
 
   it('map and handler functions behave correctly', () => {
     const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState']('cool')).toBe(2);
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState']('heat')).toBe(1);
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState']('other')).toBe(0);
+    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Cool)).toBe(2); // Use Enum
+    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Heat)).toBe(1); // Use Enum
+    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Auto)).toBe(0); // Use Enum
+    expect(inst['mapOperationModeToCurrentHeaterCoolerState']('other' as OperationMode)).toBe(0); // Handle unknown
 
-    expect(inst['mapFanModeToRotationSpeed']('Low')).toBe(25);
-    expect(inst['mapFanModeToRotationSpeed']('X')).toBe(50);
-    expect(inst['mapRotationSpeedToFanMode'](10)).toBe('Low');
-    expect(inst['mapRotationSpeedToFanMode'](60)).toBe('High');
+    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Low)).toBe(25); // Use Enum
+    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Middle)).toBe(50); // Use Enum for Middle
+    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.High)).toBe(75); // Use Enum
+    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Auto)).toBe(50); // Use Enum
+    expect(inst['mapFanModeToRotationSpeed']('X' as FanSpeed)).toBe(50); // Handle unknown, map to Middle
+
+    expect(inst['mapRotationSpeedToFanMode'](10)).toBe(FanSpeed.Low);
+    expect(inst['mapRotationSpeedToFanMode'](60)).toBe(FanSpeed.High);
 
     expect(inst.fahrenheitToCelsius(32)).toBe(0);
     expect(inst.celsiusToFahrenheit(0)).toBe(32);
