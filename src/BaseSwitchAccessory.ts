@@ -5,6 +5,7 @@ import {
   CharacteristicSetCallback,
   CharacteristicGetCallback,
 } from 'homebridge';
+import type { WithUUID, Characteristic } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
@@ -26,8 +27,8 @@ type SetApiStateFn = (value: boolean) => Promise<void>;
  */
 export abstract class BaseSwitchAccessory {
   protected readonly service: Service;
-  private readonly nameChar: any;
-  private readonly onChar: any;
+  private readonly nameChar: WithUUID<new () => Characteristic>;
+  private readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
   protected cachedStatus: Partial<AirConditionerStatus> | null = null;
   protected pollingInterval: NodeJS.Timeout | null = null;
@@ -52,17 +53,17 @@ export abstract class BaseSwitchAccessory {
       this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype) ||
       this.accessory.addService(this.platform.Service.Switch, this.serviceName, this.serviceSubtype);
 
-    // Determine characteristic identifiers for On and Name, with string fallback for tests
-    this.nameChar = this.platform.Characteristic.Name ?? 'Name';
-    this.onChar = this.platform.Characteristic.On ?? 'On';
+    // Determine characteristic constructions for Name and On
+    this.nameChar = this.platform.Characteristic.Name;
+    this.onChar = this.platform.Characteristic.On;
 
     // Set the service name characteristic
     this.service.setCharacteristic(this.nameChar, this.serviceName);
 
     // Register handlers for the On characteristic
-    this.service.getCharacteristic(this.onChar)
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
+    const onCharacteristic = this.service.getCharacteristic(this.onChar)!; // assert non-null
+    onCharacteristic.on('get', this.handleGet.bind(this));
+    onCharacteristic.on('set', this.handleSet.bind(this));
 
     this.startPolling();
     this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);

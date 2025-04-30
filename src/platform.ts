@@ -1,12 +1,12 @@
 // platform.ts
 
 import {
-  API,
   DynamicPlatformPlugin,
   Logger,
   PlatformAccessory,
   Service,
   Characteristic,
+  API,
 } from 'homebridge';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
@@ -81,7 +81,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   constructor(
     public readonly log: Logger,
     public readonly config: TfiacPlatformConfig, // Use specific type
-    public api: any,
+    public api: API,
   ) {
     // Initialize Service and Characteristic after api is assigned
     this.Service = this.api.hap.Service;

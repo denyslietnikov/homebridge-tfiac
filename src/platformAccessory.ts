@@ -38,7 +38,7 @@ export class TfiacPlatformAccessory {
   private characteristicHandlers: Map<string, CharacteristicHandlers> = new Map();
 
   constructor(
-    platformArg: any,
+    platformArg: TfiacPlatform | (() => TfiacPlatform),
     private readonly accessory: PlatformAccessory,
   ) {
     // Normalize platform: if a factory function is passed, call it
@@ -47,9 +47,9 @@ export class TfiacPlatformAccessory {
 
     // Determine Characteristic type (use only platform's Characteristic implementation)
     const CharacteristicType = this.platform.Characteristic ?? this.platform.api?.hap?.Characteristic;
-    // Use hardcoded service type names to support test mocks
-    const heaterServiceType: any = 'HeaterCooler';
-    const tempSensorServiceType: any = 'TemperatureSensor';
+    // Use platform-provided service constructors
+    const heaterServiceType = this.platform.Service.HeaterCooler;
+    const tempSensorServiceType: string = 'TemperatureSensor';
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
 
     const ip = deviceConfig.ip;
