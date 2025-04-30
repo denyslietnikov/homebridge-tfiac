@@ -48,9 +48,29 @@ export abstract class BaseSwitchAccessory {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManager.getInstance(this.deviceConfig);
 
-    // Try to get existing service by subtype, otherwise add new service
+    // Remove duplicate service with the same UUID and subtype before adding
+    const services = Array.isArray(this.accessory.services) ? this.accessory.services : [];
+    const duplicate = services.find(
+      s => s.subtype === this.serviceSubtype &&
+        (
+          s.UUID === this.platform.Service.Switch.UUID ||
+          s.UUID === this.platform.Service.Fanv2?.UUID ||
+          s.UUID === this.platform.Service.TemperatureSensor?.UUID ||
+          s.UUID === this.platform.Service.HumiditySensor?.UUID
+        ),
+    );
+    if (duplicate) {
+      this.platform.log.warn(
+        `Duplicate service with UUID ${duplicate.UUID} and subtype ${duplicate.subtype} found, removing before re-adding.`,
+      );
+      this.accessory.removeService(duplicate);
+    }
+
     this.service =
       this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype) ||
+      (this.platform.Service.Fanv2 && this.accessory.getServiceById(this.platform.Service.Fanv2.UUID, this.serviceSubtype)) ||
+      (this.platform.Service.TemperatureSensor && this.accessory.getServiceById(this.platform.Service.TemperatureSensor.UUID, this.serviceSubtype)) ||
+      (this.platform.Service.HumiditySensor && this.accessory.getServiceById(this.platform.Service.HumiditySensor.UUID, this.serviceSubtype)) ||
       this.accessory.addService(this.platform.Service.Switch, this.serviceName, this.serviceSubtype);
 
     // Determine characteristic constructions for Name and On
