@@ -32,7 +32,6 @@ export class FanSpeedAccessory {
       this.accessory.getService(serviceName) ||
       this.accessory.addService(this.platform.Service.Fanv2, serviceName, 'fan_speed');
     
-    this.service.setCharacteristic(this.platform.Characteristic.Name, serviceName);
     this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
 
     this.startPolling();

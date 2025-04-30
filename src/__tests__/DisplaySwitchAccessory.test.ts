@@ -79,7 +79,8 @@ describe('DisplaySwitchAccessory', () => {
   it('should construct and set up polling and handlers', () => {
     createAccessory();
     expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Display', 'display');
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Display');
+    // Name is now set in BaseSwitchAccessory constructor only
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Display');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
   });
 

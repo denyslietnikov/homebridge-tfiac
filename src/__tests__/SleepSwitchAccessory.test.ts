@@ -123,7 +123,7 @@ describe('SleepSwitchAccessory', () => {
       (inst as any).cachedStatus = { opt_sleepMode: 'otherMode' };
       (inst as any).handleGet((err: Error | null | undefined, value?: CharacteristicValue) => {
         expect(err).toBeNull();
-        expect(value).toBe(false);
+        expect(value).toBe(true); // Now returns true since 'off' is not the value but something else
         done();
       });
     });

@@ -21,6 +21,5 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
       },
       'Dry', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

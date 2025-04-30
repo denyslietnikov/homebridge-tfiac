@@ -99,13 +99,11 @@ describe('DrySwitchAccessory', () => {
   };
 
   it('should construct and set up polling and handlers', () => {
-    inst = new DrySwitchAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
+    createAccessory();
     // getService is called with "Dry" in BaseSwitchAccessory.constructor
     expect(accessory.addService).toHaveBeenCalled();
-    expect(mockService.updateCharacteristic).toHaveBeenCalled();
+    // Name is now set in BaseSwitchAccessory constructor only
+    expect(mockService.setCharacteristic).toHaveBeenCalled();
     expect(mockService.getCharacteristic).toHaveBeenCalled();
     expect(mockOnCharacteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(mockOnCharacteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
