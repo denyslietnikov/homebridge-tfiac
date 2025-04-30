@@ -38,6 +38,8 @@ export class TfiacPlatformAccessory {
 
   private characteristicHandlers: Map<string, CharacteristicHandlers> = new Map();
 
+  private deviceConfig: TfiacDeviceConfig;
+
   constructor(
     platformArg: TfiacPlatform | (() => TfiacPlatform),
     private readonly accessory: PlatformAccessory,
@@ -52,6 +54,7 @@ export class TfiacPlatformAccessory {
     const heaterServiceType = this.platform.Service.HeaterCooler;
     const tempSensorServiceType: string = 'TemperatureSensor';
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
+    this.deviceConfig = deviceConfig;
 
     const ip = deviceConfig.ip;
     const port = deviceConfig.port ?? 7777;
@@ -299,6 +302,7 @@ export class TfiacPlatformAccessory {
   }
 
   private updateHeaterCoolerCharacteristics(status: AirConditionerStatus | null): void {
+    const correction = typeof this.deviceConfig.temperatureCorrection === 'number' ? this.deviceConfig.temperatureCorrection : 0;
     if (status) {
       const activeValue = status.is_on === PowerState.On
         ? this.platform.Characteristic.Active.ACTIVE
@@ -311,7 +315,7 @@ export class TfiacPlatformAccessory {
       const targetHCState = this.mapOperationModeToTargetHeaterCoolerState(status.operation_mode as OperationMode);
       this.service.updateCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState, targetHCState);
 
-      const currentTempCelsius = fahrenheitToCelsius(status.current_temp);
+      const currentTempCelsius = fahrenheitToCelsius(status.current_temp) + correction;
       this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, currentTempCelsius);
 
       const targetTempCelsius = fahrenheitToCelsius(status.target_temp);
@@ -327,7 +331,7 @@ export class TfiacPlatformAccessory {
     } else {
       this.service.updateCharacteristic(this.platform.Characteristic.Active, this.platform.Characteristic.Active.INACTIVE);
       this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState, this.platform.Characteristic.CurrentHeaterCoolerState.IDLE);
-      this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, 20);
+      this.service.updateCharacteristic(this.platform.Characteristic.CurrentTemperature, 20 + correction);
       this.service.updateCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature, 22);
       this.service.updateCharacteristic(this.platform.Characteristic.HeatingThresholdTemperature, 22);
       this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, 50);
@@ -425,20 +429,20 @@ export class TfiacPlatformAccessory {
 
   private handleCurrentTemperatureGet(callback: CharacteristicGetCallback): void {
     this.platform.log.debug('Triggered GET CurrentTemperature');
-    
+    const correction = typeof this.deviceConfig.temperatureCorrection === 'number' ? this.deviceConfig.temperatureCorrection : 0;
     if (this.cachedStatus && typeof this.cachedStatus.current_temp === 'number') {
-      const tempCelsius = fahrenheitToCelsius(this.cachedStatus.current_temp);
+      const tempCelsius = fahrenheitToCelsius(this.cachedStatus.current_temp) + correction;
       callback(null, tempCelsius);
       return;
     }
-    
     if (this.cachedStatus === null) {
-      callback(null, 20);
+      callback(null, 20 + correction);
       return;
     }
-    
     const currentValue = this.service.getCharacteristic('CurrentTemperature')!.value;
-    callback(null, currentValue ?? 20);
+    // Ensure currentValue is a number before adding correction
+    const baseValue = typeof currentValue === 'number' ? currentValue : 20;
+    callback(null, baseValue + correction);
   }
 
   private handleThresholdTemperatureGet(callback: CharacteristicGetCallback): void {
