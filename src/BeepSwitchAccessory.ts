@@ -19,6 +19,5 @@ export class BeepSwitchAccessory extends BaseSwitchAccessory {
       async (value) => deviceAPI.setBeepState(value ? 'on' : 'off'), // setApiState
       'Beep', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

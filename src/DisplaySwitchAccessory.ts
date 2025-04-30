@@ -19,6 +19,5 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       async (value) => deviceAPI.setDisplayState(value ? 'on' : 'off'), // setApiState
       'Display', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

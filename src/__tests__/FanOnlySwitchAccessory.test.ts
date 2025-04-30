@@ -67,7 +67,7 @@ describe('FanOnlySwitchAccessory – unit', () => {
   it('polls and updates characteristic', async () => {
     (accessory.getService as jest.Mock).mockReturnValue(undefined);
     inst = new FanOnlySwitchAccessory(platform, accessory);
-    updateStateMock.mockResolvedValueOnce({ operation_mode: 'fan' });
+    updateStateMock.mockResolvedValueOnce({ operation_mode: 'fan_only' });
     jest.advanceTimersByTime(1500);
     await Promise.resolve();
     await jest.runOnlyPendingTimersAsync();
@@ -78,7 +78,7 @@ describe('FanOnlySwitchAccessory – unit', () => {
   it('handleGet returns correct value', done => {
     (accessory.getService as jest.Mock).mockReturnValue(mockService);
     inst = new FanOnlySwitchAccessory(platform, accessory);
-    (inst as any).cachedStatus = { operation_mode: 'fan' };
+    (inst as any).cachedStatus = { operation_mode: 'fan_only' };
     (inst as any).handleGet((err: Error | null, value?: boolean) => {
       expect(err).toBeNull();
       expect(value).toBe(true);
@@ -92,7 +92,7 @@ describe('FanOnlySwitchAccessory – unit', () => {
     const cb = jest.fn();
 
     await (inst as any).handleSet(true, cb);
-    expect(setStateMock).toHaveBeenCalledWith('operation_mode', 'fan');
+    expect(setStateMock).toHaveBeenCalledWith('operation_mode', 'fan_only');
     expect(cb).toHaveBeenCalledWith(null);
     cb.mockClear();
 

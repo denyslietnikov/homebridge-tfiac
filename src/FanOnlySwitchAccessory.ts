@@ -15,12 +15,11 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
       accessory,
       serviceName, // Service Name
       'fanonly', // Service Subtype
-      (status) => status.operation_mode === 'fan', // getStatusValue
+      (status) => status.operation_mode === 'fan_only', // getStatusValue
       async (value) => { // setApiState
-        await deviceAPI.setAirConditionerState('operation_mode', value ? 'fan' : 'auto');
+        await deviceAPI.setAirConditionerState('operation_mode', value ? 'fan_only' : 'auto');
       },
       'Fan Only', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

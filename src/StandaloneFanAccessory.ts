@@ -27,7 +27,6 @@ export class StandaloneFanAccessory {
       this.accessory.getService(serviceName) ||
       this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalone_fan');
     
-    this.service.updateCharacteristic(this.platform.Characteristic.Name, serviceName);
     this.service.updateCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
     
     this.service

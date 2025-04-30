@@ -90,10 +90,11 @@ describe('BeepSwitchAccessory', () => {
   };
 
   it('should construct and set up polling and handlers', () => {
-    inst = new BeepSwitchAccessory(platform, accessory);
+    createAccessory();
     // getService is called with "Beep" in BaseSwitchAccessory.constructor
     expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Beep', 'beep');
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Beep');
+    // Name is now set in BaseSwitchAccessory constructor only
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Beep');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
     expect(mockOnCharacteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(mockOnCharacteristic.on).toHaveBeenCalledWith('set', expect.any(Function));

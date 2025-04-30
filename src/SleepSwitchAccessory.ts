@@ -15,10 +15,9 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       serviceName, // Service Name
       'sleep', // Service Subtype
-      (status) => typeof status.opt_sleepMode === 'string' && status.opt_sleepMode.startsWith('sleepMode'), // getStatusValue
+      (status) => status.opt_sleepMode !== 'off', // getStatusValue
       async (value) => deviceAPI.setSleepState(value ? 'on' : 'off'), // setApiState
       'Sleep', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }
