@@ -47,8 +47,8 @@ interface OptionalAccessoryConfig<T> {
 }
 
 export class TfiacPlatform implements DynamicPlatformPlugin {
-  public readonly Service: typeof Service;
-  public readonly Characteristic: typeof Characteristic;
+  public Service: typeof Service;
+  public Characteristic: typeof Characteristic;
 
   // Array of discovered accessories
   private readonly accessories: PlatformAccessory[] = [];
@@ -81,7 +81,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   constructor(
     public readonly log: Logger,
     public readonly config: TfiacPlatformConfig, // Use specific type
-    public readonly api: API,
+    public api: any,
   ) {
     // Initialize Service and Characteristic after api is assigned
     this.Service = this.api.hap.Service;

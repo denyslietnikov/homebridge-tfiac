@@ -4,6 +4,7 @@ import { SleepSwitchAccessory } from '../SleepSwitchAccessory.js';
 import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI.js';
 import CacheManager from '../CacheManager.js';
 import { TfiacDeviceConfig } from '../settings.js';
+import { setupTestPlatform, createMockPlatformAccessory, createMockService, createMockCharacteristic } from './testUtils.js';
 
 jest.mock('../AirConditionerAPI.js');
 jest.mock('../CacheManager.js');
@@ -23,59 +24,26 @@ describe('SleepSwitchAccessory', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    characteristic = {
-      on: jest.fn().mockReturnThis(),
-      updateValue: jest.fn(),
-      setProps: jest.fn().mockReturnThis(),
-    } as unknown as jest.Mocked<Characteristic>;
-
-    service = {
-      getCharacteristic: jest.fn().mockReturnValue(characteristic),
-      setCharacteristic: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn(),
-    } as unknown as jest.Mocked<Service>;
-
-    accessory = {
-      getService: jest.fn().mockReturnValue(service),
-      getServiceById: jest.fn().mockReturnValue(service),
-      addService: jest.fn().mockReturnValue(service),
-      context: {
-        deviceConfig: {
-          ip: '192.168.1.100',
-          port: 8080,
-          name: 'Test AC',
-          updateInterval: 10,
-        } as TfiacDeviceConfig,
-      },
-      displayName: 'Test AC Display Name',
-    } as unknown as jest.Mocked<PlatformAccessory>;
-
-    platform = {
-      log: {
-        debug: jest.fn(),
-        info: jest.fn(),
-        warn: jest.fn(),
-        error: jest.fn(),
-      },
-      api: {
-        hap: {
-          Service: {
-            Switch: jest.fn().mockImplementation(() => service),
-          },
-          Characteristic: {
-            On: jest.fn(),
-            Name: jest.fn(),
-          },
-        },
-      },
-      Service: {
-        Switch: jest.fn().mockImplementation(() => service),
-      },
-      Characteristic: {
-        On: characteristic,
-        Name: jest.fn(),
-      },
-    } as unknown as TfiacPlatform;
+    // Use the standard test utilities to create mock objects
+    platform = setupTestPlatform();
+    
+    // Create mocks with proper typing
+    characteristic = createMockCharacteristic() as unknown as jest.Mocked<Characteristic>;
+    service = createMockService() as unknown as jest.Mocked<Service>;
+    
+    const deviceConfig = {
+      ip: '192.168.1.100',
+      port: 8080,
+      name: 'Test AC',
+      updateInterval: 10,
+    } as TfiacDeviceConfig;
+    
+    accessory = createMockPlatformAccessory(
+      'Test AC Display Name', 
+      'test-uuid', 
+      deviceConfig,
+      service
+    ) as jest.Mocked<PlatformAccessory>;
 
     // Adjust CacheManager mock definition and casting
     mockCacheManager = {
@@ -91,12 +59,17 @@ describe('SleepSwitchAccessory', () => {
     inst.stopPolling();
     (inst as any).pollingInterval = null;
 
+    // Since service is now created through createMockService() and passed to createMockPlatformAccessory(),
+    // we need to make sure the service methods are correctly mocked
     (service.setCharacteristic as jest.Mock).mockClear();
     (service.updateCharacteristic as jest.Mock).mockClear();
     (platform.log.debug as jest.Mock).mockClear();
+    
+    // Update to match the structure of the mock characteristic returned by createMockCharacteristic()
     (characteristic.on as jest.Mock).mockClear();
+    
     (accessory.getServiceById as jest.Mock).mockClear();
-    (service.getCharacteristic as jest.Mock).mockClear();
+    (service.getCharacteristic as jest.Mock).mockClear().mockReturnValue(characteristic);
     (mockCacheManager.getStatus as jest.Mock).mockClear();
     (mockCacheManager.clear as jest.Mock).mockClear();
 
@@ -164,6 +137,7 @@ describe('SleepSwitchAccessory', () => {
       expect(deviceAPIMockInstance.setSleepState).toHaveBeenCalledWith('on');
       expect(mockCacheManager.clear).toHaveBeenCalled();
       expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+      expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
       expect(callback).toHaveBeenCalledWith(null);
     });
 
@@ -173,6 +147,7 @@ describe('SleepSwitchAccessory', () => {
       await (inst as any).handleSet(false, callback);
       expect(deviceAPIMockInstance.setSleepState).toHaveBeenCalledWith('off');
       expect(mockCacheManager.clear).toHaveBeenCalled();
+      expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
       expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
       expect(callback).toHaveBeenCalledWith(null);
     });
@@ -197,6 +172,7 @@ describe('SleepSwitchAccessory', () => {
       mockCacheManager.getStatus.mockResolvedValueOnce({ opt_sleepMode: 'sleepMode2:active' } as any);
       await (inst as any).updateCachedStatus();
       expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+      expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
       expect(service.updateCharacteristic).toHaveBeenCalledTimes(1);
     });
 
@@ -204,6 +180,7 @@ describe('SleepSwitchAccessory', () => {
       (inst as any).cachedStatus = { opt_sleepMode: 'sleepMode1:active' };
       mockCacheManager.getStatus.mockResolvedValueOnce({ opt_sleepMode: 'off' } as any);
       await (inst as any).updateCachedStatus();
+      expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
       expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
       expect(service.updateCharacteristic).toHaveBeenCalledTimes(1);
     });

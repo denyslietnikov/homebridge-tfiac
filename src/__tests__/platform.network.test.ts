@@ -2,6 +2,7 @@
 import { TfiacPlatform } from '../platform.js';
 import { API } from 'homebridge';
 import * as dgram from 'dgram';
+import { createMockLogger, createMockAPI, MockLogger, MockAPI } from './testUtils.js';
 
 // Define interface for the mock socket
 interface MockSocket {
@@ -87,32 +88,9 @@ const createMockSocket = (options: {
 };
 
 describe('TfiacPlatform Network Discovery', () => {
-  // Mock API and logger
-  const mockLogger = {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    success: jest.fn(),
-    log: jest.fn(),
-  };
-
-  const mockAPI = {
-    hap: {
-      uuid: {
-        generate: jest.fn((input) => `uuid-${input}`),
-      },
-      Service: class {},
-      Characteristic: class {},
-      Categories: {
-        AIR_CONDITIONER: 'AIR_CONDITIONER',
-      },
-    },
-    on: jest.fn(),
-    registerPlatformAccessories: jest.fn(),
-    unregisterPlatformAccessories: jest.fn(),
-    updatePlatformAccessories: jest.fn(),
-  } as unknown as API;
+  // Use the common mock logger and API from testUtils
+  let mockLogger: MockLogger;
+  let mockAPI: MockAPI;
 
   const mockConfig = {
     platform: 'TFIAC',
@@ -128,6 +106,9 @@ describe('TfiacPlatform Network Discovery', () => {
 
   // Clear all mocks before each test
   beforeEach(() => {
+    mockLogger = createMockLogger();
+    mockAPI = createMockAPI();
+    
     jest.clearAllMocks();
     jest.useRealTimers();
   });

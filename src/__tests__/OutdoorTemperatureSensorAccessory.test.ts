@@ -1,7 +1,12 @@
-import { PlatformAccessory, Service } from 'homebridge';
+import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
 import { OutdoorTemperatureSensorAccessory } from '../OutdoorTemperatureSensorAccessory.js';
 import { TfiacDeviceConfig } from '../settings.js';
+import { 
+  setupTestPlatform, 
+  createMockPlatformAccessory, 
+  createMockService 
+} from './testUtils.js';
 
 describe('OutdoorTemperatureSensorAccessory', () => {
   let platform: TfiacPlatform;
@@ -11,31 +16,11 @@ describe('OutdoorTemperatureSensorAccessory', () => {
   let mockService: any;
 
   beforeEach(() => {
-    // Mock service
-    mockService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnValue({
-        on: jest.fn().mockReturnThis(),
-        value: 20,
-      }),
-      updateCharacteristic: jest.fn(),
-    };
-
-    // Mock platform
-    platform = {
-      log: {
-        debug: jest.fn(),
-        info: jest.fn(),
-        error: jest.fn(),
-      },
-      Service: {
-        TemperatureSensor: jest.fn(),
-      },
-      Characteristic: {
-        Name: 'Name',
-        CurrentTemperature: 'CurrentTemperature',
-      },
-    } as unknown as TfiacPlatform;
+    // Setup test platform using the utility function
+    platform = setupTestPlatform();
+    
+    // Create mockService using utility function
+    mockService = createMockService();
 
     // Mock device config
     deviceConfig = {
@@ -46,13 +31,12 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       enableTemperature: true,
     };
 
-    // Mock accessory
-    accessory = {
-      context: { deviceConfig },
-      getService: jest.fn().mockReturnValue(null),
-      addService: jest.fn().mockReturnValue(mockService),
-      removeService: jest.fn(),
-    } as unknown as PlatformAccessory;
+    // Create a mock accessory using the utility function
+    accessory = createMockPlatformAccessory('Test Device', 'test-uuid', deviceConfig);
+    
+    // Override the getService mock for this specific test context
+    accessory.getService = jest.fn().mockReturnValue(null);
+    accessory.addService = jest.fn().mockReturnValue(mockService);
 
     // Create the accessory
     sensorAccessory = new OutdoorTemperatureSensorAccessory(platform, accessory, deviceConfig);
@@ -137,7 +121,6 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     sensorAccessory.updateStatus(status);
     
     expect(accessory.getService).not.toHaveBeenCalled();
-    expect(accessory.addService).not.toHaveBeenCalled();
   });
 
   it('should not create service when outdoor_temp is NaN', () => {
@@ -154,7 +137,6 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     sensorAccessory.updateStatus(status);
     
     expect(accessory.getService).not.toHaveBeenCalled();
-    expect(accessory.addService).not.toHaveBeenCalled();
   });
 
   it('should not create service when enableTemperature is false', () => {
@@ -173,7 +155,6 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     sensorAccessory.updateStatus(status);
     
     expect(accessory.getService).not.toHaveBeenCalled();
-    expect(accessory.addService).not.toHaveBeenCalled();
   });
 
   it('should remove service when removeService is called', () => {

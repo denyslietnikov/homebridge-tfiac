@@ -7,7 +7,7 @@ const updateStateMock = jest.fn();
 const setEcoStateMock = jest.fn();
 const cleanupMock = jest.fn(); // Shared cleanup mock
 
-jest.mock('../AirConditionerAPI.js', () => {
+jest.mock('../AirConditionerAPI', () => {
   return jest.fn().mockImplementation(() => ({
     updateState: updateStateMock,
     setEcoState: setEcoStateMock,
@@ -111,10 +111,13 @@ describe('EcoSwitchAccessory – unit', () => {
       getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
       updateCharacteristic: jest.fn(),
     };
-    accessory = createAccessoryWithMockedUpdate(existingMockService);
-    const platformAcc = (accessory as any).accessory as PlatformAccessory;
-    const svc = (accessory as any).service;
-    expect(platformAcc.getService).toHaveBeenCalledWith('Eco');
+    // Create a mock accessory and attach a jest mock for getServiceById
+    const accInstance = makeAccessory();
+    (accInstance.getServiceById as jest.Mock).mockReturnValue(existingMockService);
+    inst = new EcoSwitchAccessory(mockPlatform(), accInstance);
+    const platformAcc = (inst as any).accessory as PlatformAccessory;
+    const svc = (inst as any).service;
+    expect(platformAcc.getServiceById).toHaveBeenCalled();
     expect(platformAcc.addService).not.toHaveBeenCalled();
     expect(svc.setCharacteristic).toHaveBeenCalledWith('Name', 'Eco');
     expect(svc.getCharacteristic).toHaveBeenCalledWith('On');

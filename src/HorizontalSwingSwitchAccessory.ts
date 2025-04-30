@@ -28,7 +28,7 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       },
       'Horizontal Swing', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    // Name characteristic set in BaseSwitchAccessory constructor; no additional setup needed here
   }
 
   // Override handleGet to check if swing_mode includes Horizontal
@@ -82,7 +82,7 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       if (this.cachedStatus) {
         this.cachedStatus.swing_mode = newMode;
       }
-      this.service.updateCharacteristic(this.platform.Characteristic.On, requestedState);
+      this.service.updateCharacteristic('On', requestedState);
       callback(null);
 
     } catch (error) {
@@ -110,7 +110,7 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       if (newMode !== oldMode) {
         const newIsOn = newMode === 'Horizontal' || newMode === 'Both';
         this.platform.log.info(`Updating Horizontal Swing characteristic for ${this.accessory.displayName} to ${newIsOn}`);
-        this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
+        this.service.updateCharacteristic('On', newIsOn);
       }
     } catch (error) {
       this.platform.log.error(`Error updating Horizontal Swing status for ${this.accessory.displayName}:`, error);

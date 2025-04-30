@@ -2,43 +2,93 @@ import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatformAccessory } from '../platformAccessory.js';
 import type { TfiacPlatform } from '../platform.js';
 import { AirConditionerStatus } from '../AirConditionerAPI.js';
+import { 
+  createMockAPI, 
+  createMockPlatform,
+  createMockService,
+  createMockPlatformAccessory
+} from './testUtils';
 
 describe('TfiacPlatformAccessory extra tests', () => {
   let platform: Partial<TfiacPlatform>;
   let accessory: Partial<PlatformAccessory>;
   let service: any;
+  let mockAPI: any;
 
   beforeEach(() => {
-    // Stub service with characteristic storage
+    // Get mock API with HAP constants
+    mockAPI = createMockAPI();
+
+    // Create basic mock service and extend it with spies
+    service = createMockService() as any;
+
+    // Characteristic value storage for assertions
     const charStore: Record<string, any> = {};
-    service = {
-      updateCharacteristic: jest.fn((char, val) => { charStore[char] = val; }),
-      getCharacteristic: jest.fn((char) => ({ value: charStore[char], on: jest.fn() })),
-      setCharacteristic: jest.fn(),
-    };
-    // Stub accessory
-    accessory = {
+
+    // Override service.getCharacteristic to always supply an object that includes updateValue
+    service.getCharacteristic = jest.fn((char: any) => {
+      const key = String(char);
+      if (!charStore[key]) {
+        // each characteristic mock only needs value, on, and updateValue for these tests
+        charStore[key] = {
+          value: undefined,
+          on: jest.fn().mockReturnThis(),
+          updateValue: jest.fn((val: any) => {
+            charStore[key].value = val;
+            return charStore[key];
+          }),
+        };
+      }
+      return charStore[key];
+    });
+
+    // Simplified set/updateCharacteristic that work with the above mock
+    service.setCharacteristic = jest.fn((char: any, val: any) => {
+      service.getCharacteristic(char).updateValue(val);
+      return service;
+    });
+
+    service.updateCharacteristic = jest.fn((char: any, val: any) => {
+      service.getCharacteristic(char).updateValue(val);
+      return service;
+    });
+
+    // Create a bare‑bones accessory and then augment with the fields we need
+    accessory = createMockPlatformAccessory() as any;
+    Object.assign(accessory, {
       context: { deviceConfig: { name: 'AC', ip: '1', updateInterval: 1 } },
       getService: jest.fn().mockReturnValue(service),
       addService: jest.fn().mockReturnValue(service),
       getServiceById: jest.fn(),
       removeService: jest.fn(),
+    });
+
+    // Create mock platform
+    platform = createMockPlatform();
+
+    // Make Service / Characteristic maps typeless to avoid TS clashes in unit tests
+    (platform as any).Service = {
+      HeaterCooler: 'HeaterCooler',
+      TemperatureSensor: 'TemperatureSensor',
     };
-    // Stub platform
-    platform = {
-      Service: { HeaterCooler: 'HeaterCooler', TemperatureSensor: 'TemperatureSensor' },
-      Characteristic: {
-        Name: 'Name', Active: { ACTIVE: 1, INACTIVE: 0 },
-        CurrentHeaterCoolerState: { IDLE: 0, COOLING: 2, HEATING: 1 },
-        TargetHeaterCoolerState: { AUTO: 0, COOL: 1, HEAT: 2 },
-        CurrentTemperature: 'CurrentTemperature',
-        CoolingThresholdTemperature: 'CoolingThresholdTemperature',
-        HeatingThresholdTemperature: 'HeatingThresholdTemperature',
-        RotationSpeed: 'RotationSpeed', SwingMode: 'SwingMode',
+
+    (platform as any).Characteristic = {
+      Name: 'Name',
+      Active: { ACTIVE: 1, INACTIVE: 0 },
+      CurrentHeaterCoolerState: { IDLE: 0, COOLING: 2, HEATING: 1 },
+      TargetHeaterCoolerState: { AUTO: 0, COOL: 1, HEAT: 2 },
+      CurrentTemperature: 'CurrentTemperature',
+      CoolingThresholdTemperature: 'CoolingThresholdTemperature',
+      HeatingThresholdTemperature: 'HeatingThresholdTemperature',
+      RotationSpeed: 'RotationSpeed',
+      SwingMode: 'SwingMode',
+    };
+
+    (platform as any).api = {
+      hap: {
+        Characteristic: { TemperatureDisplayUnits: { FAHRENHEIT: 1 } },
       },
-      log: { debug: jest.fn(), info: jest.fn(), error: jest.fn() },
-      api: { hap: { Characteristic: { TemperatureDisplayUnits: { FAHRENHEIT: 1 } } } },
-    } as any;
+    };
   });
 
   it('should remove sensors when disable temperature', () => {

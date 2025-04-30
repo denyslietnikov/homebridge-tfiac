@@ -54,7 +54,6 @@ describe('FanOnlySwitchAccessory – unit', () => {
     jest.clearAllMocks();
     platform = mockPlatform();
     accessory = makeAccessory();
-    (accessory.getService as jest.Mock).mockReturnValue(undefined);
     (accessory.addService as jest.Mock).mockReturnValue(mockService);
     updateStateMock.mockResolvedValue({ operation_mode: 'auto' });
   });
@@ -77,6 +76,7 @@ describe('FanOnlySwitchAccessory – unit', () => {
   });
 
   it('handleGet returns correct value', done => {
+    (accessory.getService as jest.Mock).mockReturnValue(mockService);
     inst = new FanOnlySwitchAccessory(platform, accessory);
     (inst as any).cachedStatus = { operation_mode: 'fan' };
     (inst as any).handleGet((err: Error | null, value?: boolean) => {
@@ -87,6 +87,7 @@ describe('FanOnlySwitchAccessory – unit', () => {
   });
 
   it('handleSet turns mode on and off', async () => {
+    (accessory.getService as jest.Mock).mockReturnValue(mockService);
     inst = new FanOnlySwitchAccessory(platform, accessory);
     const cb = jest.fn();
 
@@ -109,7 +110,7 @@ describe('FanOnlySwitchAccessory – unit', () => {
   });
 
   it('should use existing service if available', () => {
-    (accessory.getService as jest.Mock).mockReturnValue(mockService);
+    (accessory.getServiceById as jest.Mock).mockReturnValue(mockService);
     inst = new FanOnlySwitchAccessory(platform, accessory);
     expect(accessory.addService).not.toHaveBeenCalled();
     expect(mockService.setCharacteristic).toHaveBeenCalledWith('Name', 'Fan Only');

@@ -19,6 +19,5 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
       async (value) => deviceAPI.setTurboState(value ? 'on' : 'off'), // setApiState
       'Turbo', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

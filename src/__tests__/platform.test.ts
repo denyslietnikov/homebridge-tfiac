@@ -6,6 +6,16 @@ import { jest, describe, beforeEach, it, expect, afterEach } from '@jest/globals
 import { Accessory, LegacyTypes } from 'hap-nodejs';
 import { TfiacPlatformAccessory } from '../platformAccessory.js';
 import { TfiacPlatformConfig, TfiacDeviceConfig } from '../settings.js';
+import {
+  createMockLogger,
+  createMockService,
+  createMockCharacteristic,
+  createMockPlatformAccessory,
+  mockPlatformAccessory
+} from './testUtils.js';
+
+// Create a mockLogger instance
+const mockLogger = createMockLogger();
 
 // Collection to store TfiacPlatformAccessory instances for cleanup
 const tfiacAccessoryInstances: TfiacPlatformAccessory[] = [];
@@ -87,104 +97,7 @@ let didFinishLaunchingCallback: () => void = () => {};
 let didFinishLaunchingHandler: (() => void) | null = null;
 
 // Mock Service instance
-const mockServiceInstance = {
-  on: jest.fn().mockReturnThis(),
-  setCharacteristic: jest.fn().mockReturnThis(),
-  updateCharacteristic: jest.fn().mockReturnThis(),
-  getCharacteristic: jest.fn().mockReturnValue({
-    on: jest.fn().mockReturnThis(),
-    setProps: jest.fn().mockReturnThis(),
-    setValue: jest.fn().mockReturnThis(),
-    updateValue: jest.fn().mockReturnThis(),
-  }),
-  emit: jest.fn(),
-  displayName: 'Mock Service',
-  UUID: 'mock-uuid',
-  iid: 1,
-  characteristics: [],
-  optionalCharacteristics: [],
-  isHiddenService: false,
-  isPrimaryService: false,
-  linked: [],
-} as unknown as Service;
-
-// Interface for the mocked PlatformAccessory (minimal set)
-interface MockedPlatformAccessory extends Omit<PlatformAccessory, 'getService' | 'addService'> {
-  displayName: string;
-  UUID: string;
-  getService(service: typeof Service): Service | undefined;
-  addService(service: typeof Service, name?: string): Service;
-  context: Record<string, unknown>;
-}
-
-// Minimal implementation of the mocked accessory
-class MockPlatformAccessory implements Partial<MockedPlatformAccessory> {
-  displayName: string;
-  UUID: string;
-  context: Record<string, unknown>;
-  category?: Categories;
-  // Return our mockServiceInstance
-  getService = jest.fn<(service: typeof Service) => Service | undefined>().mockReturnValue(mockServiceInstance);
-  addService = jest.fn<(service: typeof Service, name?: string) => Service>().mockReturnValue(mockServiceInstance);
-  services: Service[] = [];
-  // For _associatedHAPAccessory, assign a minimal value with type assertion
-  _associatedHAPAccessory: Accessory = {} as Accessory;
-  // Define the on and emit methods as functions without strict typing
-  on = jest.fn<(event: 'identify', listener: () => void) => PlatformAccessory>().mockReturnThis();
-  emit = jest.fn<(event: 'identify') => boolean>().mockReturnValue(true);
-
-  constructor(displayName: string, uuid: string) {
-    this.displayName = displayName;
-    this.UUID = uuid;
-    this.context = {};
-  }
-}
-
-// Mock static methods of PlatformAccessory
-const mockStatic = {
-  serialize: jest.fn().mockReturnValue({}),
-  deserialize: jest.fn().mockReturnValue(new MockPlatformAccessory('', '')),
-  prototype: new MockPlatformAccessory('', ''),
-};
-
-// Create a mocked constructor for PlatformAccessory with added static properties
-const mockPlatformAccessory = Object.assign(
-  jest.fn((displayName: string, uuid: string) => new MockPlatformAccessory(displayName, uuid)),
-  mockStatic,
-) as unknown as typeof PlatformAccessory;
-
-// Mock Service and Characteristic
-const mockCharacteristicInstance = {
-  on: jest.fn().mockReturnThis(),
-  setProps: jest.fn().mockReturnThis(),
-  setValue: jest.fn().mockReturnThis(),
-  updateValue: jest.fn().mockReturnThis(),
-};
-
-const mockService = {
-  prototype: {},
-  Thermostat: jest.fn(() => mockServiceInstance),
-  HeaterCooler: jest.fn(() => mockServiceInstance),
-  AccessoryInformation: jest.fn(() => mockServiceInstance),
-} as unknown as typeof Service;
-
-const mockCharacteristic = {
-  prototype: {},
-  CurrentTemperature: jest.fn(() => mockCharacteristicInstance),
-  TargetTemperature: jest.fn(() => mockCharacteristicInstance),
-  TemperatureDisplayUnits: jest.fn(() => mockCharacteristicInstance),
-  Active: jest.fn(() => mockCharacteristicInstance),
-  CurrentHeaterCoolerState: jest.fn(() => mockCharacteristicInstance),
-  TargetHeaterCoolerState: jest.fn(() => mockCharacteristicInstance),
-  SwingMode: jest.fn(() => mockCharacteristicInstance),
-  RotationSpeed: jest.fn(() => mockCharacteristicInstance),
-  CoolingThresholdTemperature: jest.fn(() => mockCharacteristicInstance),
-  HeatingThresholdTemperature: jest.fn(() => mockCharacteristicInstance),
-  Name: jest.fn(() => mockCharacteristicInstance),
-  Manufacturer: jest.fn(() => mockCharacteristicInstance),
-  Model: jest.fn(() => mockCharacteristicInstance),
-  SerialNumber: jest.fn(() => mockCharacteristicInstance),
-} as unknown as typeof Characteristic;
+const mockServiceInstance = createMockService();
 
 // Fix write mock function type
 type WriteFunction = {
@@ -203,14 +116,6 @@ const mockCategories = {
   AIR_CONDITIONER: 22,
 } as Record<keyof typeof Categories, number>;
 
-// Define mock logger
-const mockLogger: Logger = {
-  debug: jest.fn(),
-  info: jest.fn(),
-  warn: jest.fn(),
-  error: jest.fn(),
-} as unknown as Logger;
-
 // Cast the mockAPI object to type API, adding a minimal set of properties,
 const mockAPI: API = {
   hap: {
@@ -223,8 +128,29 @@ const mockAPI: API = {
       toShortForm: jest.fn().mockReturnValue('mock-uuid'),
       toLongForm: jest.fn().mockReturnValue('mock-uuid'),
     },
-    Service: mockService,
-    Characteristic: mockCharacteristic,
+    Service: {
+      prototype: {},
+      Thermostat: jest.fn(() => mockServiceInstance),
+      HeaterCooler: jest.fn(() => mockServiceInstance),
+      AccessoryInformation: jest.fn(() => mockServiceInstance),
+    } as unknown as typeof Service,
+    Characteristic: {
+      prototype: {},
+      CurrentTemperature: jest.fn(() => createMockCharacteristic()),
+      TargetTemperature: jest.fn(() => createMockCharacteristic()),
+      TemperatureDisplayUnits: jest.fn(() => createMockCharacteristic()),
+      Active: jest.fn(() => createMockCharacteristic()),
+      CurrentHeaterCoolerState: jest.fn(() => createMockCharacteristic()),
+      TargetHeaterCoolerState: jest.fn(() => createMockCharacteristic()),
+      SwingMode: jest.fn(() => createMockCharacteristic()),
+      RotationSpeed: jest.fn(() => createMockCharacteristic()),
+      CoolingThresholdTemperature: jest.fn(() => createMockCharacteristic()),
+      HeatingThresholdTemperature: jest.fn(() => createMockCharacteristic()),
+      Name: jest.fn(() => createMockCharacteristic()),
+      Manufacturer: jest.fn(() => createMockCharacteristic()),
+      Model: jest.fn(() => createMockCharacteristic()),
+      SerialNumber: jest.fn(() => createMockCharacteristic()),
+    } as unknown as typeof Characteristic,
     Categories: mockCategories,
     HAPLibraryVersion: { major: 1, minor: 0 },
     LegacyTypes: {} as typeof LegacyTypes,
@@ -237,7 +163,7 @@ const mockAPI: API = {
     }
     return mockAPI;
   }),
-  platformAccessory: mockPlatformAccessory,
+  platformAccessory: jest.fn((displayName: string, uuid: string) => createMockPlatformAccessory(displayName, uuid)),
   registerPlatformAccessories: jest.fn(),
   updatePlatformAccessories: jest.fn(),
   unregisterPlatformAccessories: jest.fn(),

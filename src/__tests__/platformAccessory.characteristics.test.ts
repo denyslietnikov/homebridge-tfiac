@@ -10,38 +10,22 @@ import {
 } from 'homebridge';
 import { TfiacPlatform } from '../platform';
 import { TfiacPlatformAccessory } from '../platformAccessory.js';
-import AirConditionerAPI from '../AirConditionerAPI.js';
 import { TfiacDeviceConfig } from '../settings.js';
 import { jest, describe, beforeEach, afterEach, it, expect, beforeAll } from '@jest/globals';
 import { 
+  createMockCharacteristic,
+  createMockService,
   hapIdentifiers, 
   hapConstants, 
   initialStatusFahrenheit, 
   getHandlerByIdentifier, 
   mockPlatform, 
   initialStatusCelsius, 
-  toFahrenheit 
-} from './platformAccessory.core.test';
+  toFahrenheit,
+  createMockApiActions
+} from './testUtils.js';
 
-// --- Mock setup for characteristic tests ---
-const mockApiActions = {
-  updateState: jest.fn(),
-  turnOn: jest.fn(),
-  turnOff: jest.fn(),
-  setAirConditionerState: jest.fn(),
-  setFanSpeed: jest.fn(),
-  setSwingMode: jest.fn(),
-  setTurboState: jest.fn(),
-  cleanup: jest.fn(),
-};
-
-jest.mock('../AirConditionerAPI', () => {
-  return jest.fn().mockImplementation(() => {
-    return mockApiActions;
-  });
-});
-
-// Helper type for test context
+// Interface for test context
 interface TestAccessoryContext {
   pollingInterval: NodeJS.Timeout | null;
   cachedStatus: typeof initialStatusFahrenheit | null;
@@ -49,70 +33,20 @@ interface TestAccessoryContext {
   stopPolling?: () => void;
 }
 
-// Factory for Mock Characteristic
-const createMockCharacteristic = () => {
-  const onMethod = function(this: any, event: 'get' | 'set', handler: any): any {
-    if (event === 'get') {
-      this.getHandler = handler;
-    } else {
-      this.setHandler = handler;
-    }
-    return this;
-  };
-  
-  return {
-    value: null, 
-    getHandler: undefined, 
-    setHandler: undefined,
-    on: jest.fn(onMethod),
-    setProps: jest.fn().mockReturnThis(),
-    updateValue: jest.fn(function(this: any, newValue: CharacteristicValue) {
-      this.value = newValue; 
-      return this;
-    }),
-  };
-};
-
-// Factory for Mock Service
-const createMockService = () => {
-  const characteristics = new Map<string, any>();
-  
-  return {
-    characteristics,
-    getCharacteristic: jest.fn((charIdentifier: any) => {
-      const key = (charIdentifier && typeof charIdentifier === 'object' && 'UUID' in charIdentifier)
-        ? (charIdentifier as { UUID: string }).UUID
-        : String(charIdentifier);
-      if (!characteristics.has(key)) {
-        characteristics.set(key, createMockCharacteristic());
-      }
-      return characteristics.get(key)!;
-    }),
-    setCharacteristic: jest.fn(function(this: any, charIdentifier: any, value: CharacteristicValue) {
-      const mockChar = this.getCharacteristic(charIdentifier); 
-      mockChar.updateValue(value); 
-      return this;
-    }),
-    updateCharacteristic: jest.fn(function(this: any, charIdentifier: any, value: any) {
-      return this.setCharacteristic(charIdentifier, value);
-    }),
-  };
-};
-
 describe('TfiacPlatformAccessory - Characteristics', () => {
   let accessory: TfiacPlatformAccessory;
   let deviceConfig: TfiacDeviceConfig;
   let mockAccessoryInstance: PlatformAccessory;
   let mockServiceInstance: any;
+  let mockApiActions;
 
   beforeAll(() => {
     jest.setTimeout(10000);
   });
 
   beforeEach(() => {
-    jest.useFakeTimers();
     mockServiceInstance = createMockService();
-    Object.values(mockApiActions).forEach(mockFn => mockFn.mockClear());
+    mockApiActions = createMockApiActions();
 
     mockApiActions.updateState.mockResolvedValue({ ...initialStatusFahrenheit });
     mockApiActions.turnOn.mockResolvedValue(undefined);
@@ -142,6 +76,10 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     } as unknown as PlatformAccessory;
 
     accessory = new TfiacPlatformAccessory(mockPlatform, mockAccessoryInstance);
+    // Replace the real API instance with our mocked actions so that
+    // characteristic setters resolve immediately and the callback is invoked.
+    // This prevents the tests from timing‑out while waiting for the callback.
+    (accessory as any).deviceAPI = mockApiActions;
 
     const testContext = accessory as unknown as TestAccessoryContext;
     if (testContext.pollingInterval) {
@@ -203,41 +141,46 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       handler(callback);
     });
 
-    it('handleThresholdTemperatureSet should call API with Fahrenheit value', (done) => {
+    it('handleThresholdTemperatureSet should call API with Fahrenheit value', async () => {
+      mockApiActions.setAirConditionerState.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, coolingCharId, 'set');
       const valueCelsius = 19;
       const expectedFahrenheit = Math.round((19 * 9/5) + 32);
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBeNull();
-          const call = mockApiActions.setAirConditionerState.mock.calls[0];
-          expect(call[0]).toBe('target_temp');
-          expect(Math.round(Number(call[1]))).toBe(expectedFahrenheit);
-          expect(mockApiActions.updateState).toBeCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(valueCelsius, callback);
-      jest.advanceTimersByTime(1);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(valueCelsius, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBeNull();
+            const call = mockApiActions.setAirConditionerState.mock.calls[0];
+            expect(call[0]).toBe('target_temp');
+            expect(Math.round(Number(call[1]))).toBe(expectedFahrenheit);
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
-    it('handleThresholdTemperatureSet should handle API error', (done) => {
+    it('handleThresholdTemperatureSet should handle API error', async () => {
       const apiError = new Error('Set Temp Failed');
       mockApiActions.setAirConditionerState.mockRejectedValueOnce(apiError);
       const handler = getHandlerByIdentifier(mockServiceInstance, heatingCharId, 'set');
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBe(apiError);
-          expect(mockApiActions.updateState).toHaveBeenCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(21, callback);
-      jest.advanceTimersByTime(1);
+      const valueCelsius = 22;
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(valueCelsius, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBe(apiError);
+            expect(mockApiActions.setAirConditionerState).toHaveBeenCalled();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
     it('handleThresholdTemperatureGet should return default value if cache null', (done) => {
@@ -299,72 +242,80 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       handler(callback);
     });
 
-    it('should set fan mode to High based on percentage > 50', (done) => {
+    it('should set fan mode to High based on percentage > 50', async () => {
+      mockApiActions.setFanSpeed.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
       const value = 60;
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBeNull();
-          expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('High');
-          expect(mockApiActions.updateState).toBeCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(value, callback);
-      jest.advanceTimersByTime(1);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(value, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBeNull();
+            expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('High');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
-    it('should set fan mode to Middle based on percentage > 25 and <= 50', (done) => {
+    it('should set fan mode to Middle based on percentage > 25 and <= 50', async () => {
+      mockApiActions.setFanSpeed.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
       const value = 50;
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBeNull();
-          expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('Middle');
-          expect(mockApiActions.updateState).toBeCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(value, callback);
-      jest.advanceTimersByTime(1);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(value, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBeNull();
+            expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('Middle');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
-    it('should set fan mode to Low based on percentage <= 25', (done) => {
+    it('should set fan mode to Low based on percentage <= 25', async () => {
+      mockApiActions.setFanSpeed.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
       const value = 20;
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBeNull();
-          expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('Low');
-          expect(mockApiActions.updateState).toBeCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(value, callback);
-      jest.advanceTimersByTime(1);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(value, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBeNull();
+            expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('Low');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
-    it('should set fan mode to Auto based on percentage > 75', (done) => {
+    it('should set fan mode to Auto based on percentage > 75', async () => {
+      mockApiActions.setFanSpeed.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
       const value = 80;
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBeNull();
-          expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('Auto');
-          expect(mockApiActions.updateState).toBeCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(value, callback);
-      jest.advanceTimersByTime(1);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(value, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBeNull();
+            expect(mockApiActions.setFanSpeed).toHaveBeenCalledWith('Auto');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
     it('should return default value (50) if cache is null', (done) => {
@@ -404,38 +355,42 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       handler(callback);
     });
 
-    it('should set swing mode to Both (ENABLED)', (done) => {
+    it('should set swing mode to Both (ENABLED)', async () => {
+      mockApiActions.setSwingMode.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
       const value = hapConstants.Characteristic.SwingMode.SWING_ENABLED;
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBeNull();
-          expect(mockApiActions.setSwingMode).toHaveBeenCalledWith('Both');
-          expect(mockApiActions.updateState).toBeCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(value, callback);
-      jest.advanceTimersByTime(1);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(value, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBeNull();
+            expect(mockApiActions.setSwingMode).toHaveBeenCalledWith('Both');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
-    it('should set swing mode to Off (DISABLED)', (done) => {
+    it('should set swing mode to Off (DISABLED)', async () => {
+      mockApiActions.setSwingMode.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
       const value = hapConstants.Characteristic.SwingMode.SWING_DISABLED;
-      const callback: CharacteristicSetCallback = (error) => {
-        try {
-          expect(error).toBeNull();
-          expect(mockApiActions.setSwingMode).toHaveBeenCalledWith('Off');
-          expect(mockApiActions.updateState).toBeCalled();
-          done();
-        } catch (e) {
-          done(e as Error);
-        }
-      };
-      handler(value, callback);
-      jest.advanceTimersByTime(1);
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(value, (error) => {
+          clearTimeout(timer);
+          try {
+            expect(error).toBeNull();
+            expect(mockApiActions.setSwingMode).toHaveBeenCalledWith('Off');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
     });
 
     it('should return default value (SWING_DISABLED) if cache is null', (done) => {

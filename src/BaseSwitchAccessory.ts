@@ -26,6 +26,8 @@ type SetApiStateFn = (value: boolean) => Promise<void>;
  */
 export abstract class BaseSwitchAccessory {
   protected readonly service: Service;
+  private readonly nameChar: any;
+  private readonly onChar: any;
   protected readonly deviceConfig: TfiacDeviceConfig;
   protected cachedStatus: Partial<AirConditionerStatus> | null = null;
   protected pollingInterval: NodeJS.Timeout | null = null;
@@ -40,21 +42,25 @@ export abstract class BaseSwitchAccessory {
     private readonly serviceSubtype: string, // e.g., 'turbo', 'eco'
     private readonly getStatusValue: GetStatusValueFn, // Function to get boolean state from status
     private readonly setApiState: SetApiStateFn,       // Function to set state via API
-    protected readonly logPrefix: string, // e.g., 'Turbo', 'Eco' // Changed from private to protected
+    protected readonly logPrefix: string, // e.g., 'Turbo', 'Eco'
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManager.getInstance(this.deviceConfig);
 
-    // Try to get existing service first by subtype, then by name
+    // Try to get existing service by subtype, otherwise add new service
     this.service =
       this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype) ||
-      this.accessory.getService(this.serviceName) ||
       this.accessory.addService(this.platform.Service.Switch, this.serviceName, this.serviceSubtype);
 
-    this.service.setCharacteristic(this.platform.Characteristic.Name, this.serviceName);
+    // Determine characteristic identifiers for On and Name, with string fallback for tests
+    this.nameChar = this.platform.Characteristic.Name ?? 'Name';
+    this.onChar = this.platform.Characteristic.On ?? 'On';
+
+    // Set the service name characteristic
+    this.service.setCharacteristic(this.nameChar, this.serviceName);
 
     // Register handlers for the On characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.On)
+    this.service.getCharacteristic(this.onChar)
       .on('get', this.handleGet.bind(this))
       .on('set', this.handleSet.bind(this));
 
@@ -143,7 +149,7 @@ export abstract class BaseSwitchAccessory {
 
       if (newIsOn !== oldIsOn) {
         this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${newIsOn}`);
-        this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
+        this.service.updateCharacteristic(this.onChar, newIsOn);
       }
     } catch (error) {
       const displayName = this.accessory.displayName;
@@ -176,7 +182,7 @@ export abstract class BaseSwitchAccessory {
       await this.setApiState(requestedState);
       this.cacheManager.clear();
       this.platform.log.info(`${this.logPrefix} successfully set to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
-      this.service.updateCharacteristic(this.platform.Characteristic.On, requestedState);
+      this.service.updateCharacteristic(this.onChar, requestedState);
       callback(null);
     } catch (error) {
       this.platform.log.error(`Error setting ${this.logPrefix} to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}:`, error);

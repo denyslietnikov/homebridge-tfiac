@@ -20,5 +20,6 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
       'Eco', // Log Prefix
     );
     this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
+    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }
