@@ -70,6 +70,11 @@ export class TfiacPlatformAccessory {
         CharacteristicType.Name,
         deviceConfig.name ?? 'Unnamed AC',
       );
+      // Also set ConfiguredName for better display in Home app
+      this.service.setCharacteristic(
+        CharacteristicType.ConfiguredName,
+        deviceConfig.name ?? 'Unnamed AC',
+      );
     } else if (typeof this.service.updateCharacteristic === 'function') {
       this.service.updateCharacteristic(
         CharacteristicType.Name,

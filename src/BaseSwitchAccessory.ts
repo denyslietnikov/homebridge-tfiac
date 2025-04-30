@@ -59,6 +59,8 @@ export abstract class BaseSwitchAccessory {
 
     // Set the service name characteristic
     this.service.setCharacteristic(this.nameChar, this.serviceName);
+    // ALSO set the configured name characteristic for better display in Home app
+    this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, this.serviceName);
 
     // Register handlers for the On characteristic
     const onCharacteristic = this.service.getCharacteristic(this.onChar)!; // assert non-null
