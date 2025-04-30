@@ -14,12 +14,12 @@ import {
   getHandlerByIdentifier,
   initialStatusFahrenheit,
   createMockAPI,
-} from './testUtils';
+} from './testUtils.js';
 import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
-import { celsiusToFahrenheit, fahrenheitToCelsius } from '../utils';
+import { celsiusToFahrenheit, fahrenheitToCelsius } from '../utils.js';
 
 // Import AirConditionerAPI to mock it
-import AirConditionerAPI from '../AirConditionerAPI';
+import AirConditionerAPI from '../AirConditionerAPI.js';
 
 // Create mock API actions
 const mockApiActions = createMockApiActions(initialStatusFahrenheit);

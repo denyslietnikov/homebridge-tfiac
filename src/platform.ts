@@ -1,12 +1,12 @@
 // platform.ts
 
 import {
+  API,
   DynamicPlatformPlugin,
   Logger,
   PlatformAccessory,
   Service,
   Characteristic,
-  API,
 } from 'homebridge';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
@@ -49,6 +49,7 @@ interface OptionalAccessoryConfig<T> {
 export class TfiacPlatform implements DynamicPlatformPlugin {
   public Service: typeof Service;
   public Characteristic: typeof Characteristic;
+  public readonly api: API;
 
   // Array of discovered accessories
   private readonly accessories: PlatformAccessory[] = [];
@@ -80,9 +81,10 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
   constructor(
     public readonly log: Logger,
-    public readonly config: TfiacPlatformConfig, // Use specific type
-    public api: API,
+    public readonly config: TfiacPlatformConfig,
+    apiParam: unknown,
   ) {
+    this.api = apiParam as API;
     // Initialize Service and Characteristic after api is assigned
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;

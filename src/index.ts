@@ -1,9 +1,12 @@
 // index.ts
 
-import { API } from 'homebridge';
-import { PLATFORM_NAME } from './settings.js';
+import { API, PlatformPluginConstructor } from 'homebridge';
+import { PLATFORM_NAME, TfiacPlatformConfig } from './settings.js';
 import { TfiacPlatform } from './platform.js';
 
 export default (api: API) => {
-  api.registerPlatform(PLATFORM_NAME, TfiacPlatform);
+  api.registerPlatform(
+    PLATFORM_NAME,
+    TfiacPlatform as PlatformPluginConstructor<TfiacPlatformConfig>,
+  );
 };
