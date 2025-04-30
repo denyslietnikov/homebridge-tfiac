@@ -74,10 +74,11 @@ export class IndoorTemperatureSensorAccessory {
    * @param status The latest status from the AirConditionerAPI.
    */
   public updateStatus(status: AirConditionerStatus | null): void {
+    const correction = typeof this.deviceConfig.temperatureCorrection === 'number' ? this.deviceConfig.temperatureCorrection : 0;
     if (status) {
-      const temperatureCelsius = fahrenheitToCelsius(status.current_temp);
+      const temperatureCelsius = fahrenheitToCelsius(status.current_temp) + correction;
       this.platform.log.debug(
-        `[IndoorTemperatureSensor] Updating temperature to: ${temperatureCelsius}°C`,
+        `[IndoorTemperatureSensor] Updating temperature to: ${temperatureCelsius}°C (correction: ${correction})`,
       );
       this.service.updateCharacteristic(
         this.platform.Characteristic.CurrentTemperature,
@@ -87,10 +88,9 @@ export class IndoorTemperatureSensorAccessory {
       this.platform.log.debug(
         '[IndoorTemperatureSensor] No status available, setting default temperature (20°C)',
       );
-      // Optionally set a default value or leave it as is
       this.service.updateCharacteristic(
         this.platform.Characteristic.CurrentTemperature,
-        20, // Default value when status is null
+        20 + correction, // Default value when status is null
       );
     }
   }
