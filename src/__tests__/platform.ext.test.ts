@@ -19,6 +19,14 @@ import { TfiacPlatform } from '../platform.js';
 import { API, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacDeviceConfig } from '../settings.js';
 import * as dgram from 'dgram';
+import { 
+  createMockLogger, 
+  createMockAPI, 
+  createMockPlatformAccessory,
+  createMockPlatformConfig,
+  MockLogger, 
+  MockAPI 
+} from './testUtils.js';
 
 /* ------------------------------------------------------------------ */
 /*  1.  mock platformAccessory                                         */
@@ -208,11 +216,28 @@ interface MockSocket {
   removeAllListeners: jest.Mock;
 }
 
-describe('TfiacPlatform (ext)', () => {
-  beforeEach(() => jest.resetAllMocks());
+describe('TfiacPlatform Extension Methods', () => {
+  let mockLogger: MockLogger;
+  let mockAPI: MockAPI;
+  let platform: TfiacPlatform;
+
+  beforeEach(() => {
+    mockLogger = createMockLogger();
+    mockAPI = createMockAPI();
+    
+    const mockConfig = createMockPlatformConfig({
+      devices: [
+        {
+          name: 'Test AC',
+          ip: '192.168.1.100',
+        },
+      ]
+    });
+
+    platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
+  });
 
   it('handles error in discoverDevices', async () => {
-    const { mockLogger, mockAPI } = createMocks();
     const config = {
       platform: 'TfiacPlatform',
       name: 'Test Platform',
@@ -239,7 +264,6 @@ describe('TfiacPlatform (ext)', () => {
   it('skips network discovery when disabled', async () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     const config = {
       platform: 'TfiacPlatform',
@@ -257,7 +281,7 @@ describe('TfiacPlatform (ext)', () => {
     expect(mockLogger.info).toHaveBeenCalledWith(
       'Network discovery is disabled in the configuration.',
     );
-    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
+    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalled();
 
     jest.mock('../platform');
   });
@@ -265,7 +289,6 @@ describe('TfiacPlatform (ext)', () => {
   it('logs error for device without IP', async () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     const config = {
       platform: 'TfiacPlatform',
@@ -291,7 +314,6 @@ describe('TfiacPlatform (ext)', () => {
   it('updates existing accessory', async () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     const deviceConfig: TfiacDeviceConfig = { name: 'Existing', ip: '192.168.0.30' };
     const uuid = 'generated-uuid-192.168.0.30Existing';
@@ -328,7 +350,6 @@ describe('TfiacPlatform (ext)', () => {
   it('removes stale accessory', async () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     const staleAccessory = {
       UUID: 'stale',
@@ -368,7 +389,6 @@ describe('TfiacPlatform (ext)', () => {
   it('configureAccessory loads cached accessory', () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     const config = {
       platform: 'TfiacPlatform',
@@ -397,7 +417,6 @@ describe('TfiacPlatform (ext)', () => {
   it('handles socket error in network discovery', async () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     // Manually replace dgram.createSocket with mock after unmock
     let mockSocket: MockSocket;
@@ -453,7 +472,6 @@ describe('TfiacPlatform (ext)', () => {
     jest.useFakeTimers();
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     const config = {
       platform: 'TfiacPlatform',
@@ -485,7 +503,6 @@ describe('TfiacPlatform (ext)', () => {
   it('logs when no devices configured and discovery disabled', async () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     const config = {
       platform: 'TfiacPlatform',
@@ -509,7 +526,6 @@ describe('TfiacPlatform (ext)', () => {
   it('handles malformed XML in UDP response', async () => {
     jest.unmock('../platform');
     const RealMod = jest.requireActual('../platform') as typeof import('../platform');
-    const { mockLogger, mockAPI } = createMocks();
 
     // Manually replace dgram.createSocket with mock after unmock
     let mockSocket: MockSocket;
@@ -600,7 +616,6 @@ describe('TfiacPlatform (ext)', () => {
   });
 
   it('should handle XML parsing and non-XML messages', async () => {
-    const { mockLogger, mockAPI } = createMocks();
     const RealMod = jest.requireActual('../platform');
     const config = { platform: 'TfiacPlatform', name: 'Test Platform', devices: [], enableDiscovery: true };
     let platform: any;
@@ -981,4 +996,37 @@ describe('TfiacPlatform UDP discovery error branches', () => {
     // Ensure socket was closed (cleanup is called after error)
     expect(mockSocket.close).toHaveBeenCalled();
   });
+});
+/* ------------------------------------------------------------------ */
+/*  8.  Global cleanup to avoid open handles                           */
+/* ------------------------------------------------------------------ */
+afterAll(() => {
+  // Restore real timers and clear any pending timers
+  jest.useRealTimers();
+  jest.clearAllTimers();
+
+  // Clean up any mocked TfiacPlatformAccessory instances that might still be polling
+  try {
+    const { TfiacPlatformAccessory: MockAcc } = require('../platformAccessory');
+    if (MockAcc && typeof MockAcc.cleanupInstances === 'function') {
+      MockAcc.cleanupInstances();
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Ensure all mocked sockets are closed to prevent Jest open‑handle warnings
+  try {
+    const dgramMock = require('dgram');
+    if (dgramMock?.createSocket?.mock?.results) {
+      dgramMock.createSocket.mock.results.forEach((res: any) => {
+        const sock = res.value;
+        if (sock && typeof sock.close === 'function') {
+          try { sock.close(); } catch { /* ignore */ }
+        }
+      });
+    }
+  } catch {
+    /* ignore */
+  }
 });

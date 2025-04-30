@@ -15,11 +15,11 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       serviceName, // Service Name
       'eco', // Service Subtype
-      'opt_eco', // Status Key
-      deviceAPI.setEcoState.bind(deviceAPI), // API Set Method
+      (status) => status.opt_eco === 'on', // getStatusValue
+      async (value) => deviceAPI.setEcoState(value ? 'on' : 'off'), // setApiState
       'Eco', // Log Prefix
     );
     this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
-    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
+    this.service.setCharacteristic(platform.Characteristic.Name, serviceName);
   }
 }

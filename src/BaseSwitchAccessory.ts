@@ -5,10 +5,21 @@ import {
   CharacteristicSetCallback,
   CharacteristicGetCallback,
 } from 'homebridge';
+import type { WithUUID, Characteristic } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
+import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
+
+/**
+ * Function type to determine the boolean state from the status object.
+ */
+type GetStatusValueFn = (status: Partial<AirConditionerStatus>) => boolean;
+
+/**
+ * Function type to set the state via the API.
+ */
+type SetApiStateFn = (value: boolean) => Promise<void>;
 
 /**
  * Base class for simple switch accessories (On/Off).
@@ -16,39 +27,43 @@ import CacheManager from './CacheManager.js';
  */
 export abstract class BaseSwitchAccessory {
   protected readonly service: Service;
-  protected readonly deviceAPI: AirConditionerAPI;
+  private readonly nameChar: WithUUID<new () => Characteristic>;
+  private readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
   protected cachedStatus: Partial<AirConditionerStatus> | null = null;
   protected pollingInterval: NodeJS.Timeout | null = null;
+  protected initialDelayTimer: NodeJS.Timeout | null = null;
   protected isPolling = false; // Flag to prevent concurrent polling updates
-  private cacheManager: CacheManager;
+  protected cacheManager: CacheManager;
 
   constructor(
     protected readonly platform: TfiacPlatform,
     protected readonly accessory: PlatformAccessory,
     private readonly serviceName: string, // e.g., 'Turbo', 'Eco Mode'
     private readonly serviceSubtype: string, // e.g., 'turbo', 'eco'
-    private readonly statusKey: keyof AirConditionerStatus, // e.g., 'opt_super', 'opt_eco'
-    private readonly apiSetMethod: (value: 'on' | 'off') => Promise<void>, // Bound API method, e.g., this.deviceAPI.setTurboState.bind(this.deviceAPI)
-    private readonly logPrefix: string, // e.g., 'Turbo', 'Eco'
+    private readonly getStatusValue: GetStatusValueFn, // Function to get boolean state from status
+    private readonly setApiState: SetApiStateFn,       // Function to set state via API
+    protected readonly logPrefix: string, // e.g., 'Turbo', 'Eco'
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManager.getInstance(this.deviceConfig);
-    // Ensure deviceAPI is instantiated here if not passed in
-    this.deviceAPI = new AirConditionerAPI(this.deviceConfig.ip, this.deviceConfig.port);
 
-    // Try to get existing service first by subtype, then by name
+    // Try to get existing service by subtype, otherwise add new service
     this.service =
       this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype) ||
-      this.accessory.getService(this.serviceName) ||
       this.accessory.addService(this.platform.Service.Switch, this.serviceName, this.serviceSubtype);
 
-    this.service.setCharacteristic(this.platform.Characteristic.Name, this.serviceName);
+    // Determine characteristic constructions for Name and On
+    this.nameChar = this.platform.Characteristic.Name;
+    this.onChar = this.platform.Characteristic.On;
+
+    // Set the service name characteristic
+    this.service.setCharacteristic(this.nameChar, this.serviceName);
 
     // Register handlers for the On characteristic
-    this.service.getCharacteristic(this.platform.Characteristic.On)
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
+    const onCharacteristic = this.service.getCharacteristic(this.onChar)!; // assert non-null
+    onCharacteristic.on('get', this.handleGet.bind(this));
+    onCharacteristic.on('set', this.handleSet.bind(this));
 
     this.startPolling();
     this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);
@@ -58,8 +73,8 @@ export abstract class BaseSwitchAccessory {
    * Starts the polling mechanism to update the accessory state periodically.
    */
   startPolling() {
-    if (this.pollingInterval) {
-      this.platform.log.debug(`Polling already started for ${this.logPrefix} on ${this.accessory.displayName}.`);
+    if (this.pollingInterval || this.initialDelayTimer) {
+      this.platform.log.debug(`Polling or initial delay already active for ${this.logPrefix} on ${this.accessory.displayName}.`);
       return;
     }
     const intervalSeconds = this.deviceConfig.updateInterval || 30;
@@ -73,7 +88,8 @@ export abstract class BaseSwitchAccessory {
     );
 
     // Initial update after random delay
-    const initialDelayTimer = setTimeout(() => {
+    this.initialDelayTimer = setTimeout(() => {
+      this.initialDelayTimer = null; // Clear the handle once executed
       this.updateCachedStatus();
       // Then set up regular interval
       this.pollingInterval = setInterval(() => {
@@ -85,26 +101,30 @@ export abstract class BaseSwitchAccessory {
       }
     }, randomDelay);
     // Ensure initial delay timer does not keep node process alive
-    if (initialDelayTimer.unref) {
-      initialDelayTimer.unref();
+    if (this.initialDelayTimer.unref) {
+      this.initialDelayTimer.unref();
     }
   }
 
   /**
-   * Stops the polling mechanism.
+   * Stops the polling mechanism and cleans up resources.
    */
   stopPolling() {
+    if (this.initialDelayTimer) {
+      this.platform.log.debug(`Clearing initial polling delay for ${this.logPrefix} on ${this.accessory.displayName}.`);
+      clearTimeout(this.initialDelayTimer);
+      this.initialDelayTimer = null;
+    }
     if (this.pollingInterval) {
-      this.platform.log.debug(`Stopping polling for ${this.logPrefix} on ${this.accessory.displayName}.`);
+      this.platform.log.debug(`Stopping polling interval for ${this.logPrefix} on ${this.accessory.displayName}.`);
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
     } else {
-      this.platform.log.debug(`Polling already stopped for ${this.logPrefix} on ${this.accessory.displayName}.`);
+      this.platform.log.debug(`Polling interval already stopped for ${this.logPrefix} on ${this.accessory.displayName}.`);
     }
-    // Clean up the API connection if necessary
-    if (this.deviceAPI && typeof this.deviceAPI.cleanup === 'function') {
-      this.deviceAPI.cleanup();
-    }
+    // Call cleanup on the cache manager
+    this.cacheManager.cleanup();
+    this.platform.log.debug(`Called cleanup for ${this.logPrefix} on ${this.accessory.displayName}.`);
   }
 
   /**
@@ -122,22 +142,15 @@ export abstract class BaseSwitchAccessory {
     this.cacheManager.clear();
     try {
       const status = await this.cacheManager.getStatus();
-      this.platform.log.debug(`Received ${this.logPrefix} status for ${this.accessory.displayName}:`, status[this.statusKey]);
-      const oldStatus = this.cachedStatus ? this.cachedStatus[this.statusKey] : undefined;
+      const oldIsOn = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
       this.cachedStatus = status;
-      const newStatus = this.cachedStatus[this.statusKey];
+      const newIsOn = this.getStatusValue(this.cachedStatus);
 
-      if (newStatus !== undefined && newStatus !== oldStatus) {
-        const isOn = newStatus === 'on';
-        this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${isOn}`);
-        this.service.updateCharacteristic(this.platform.Characteristic.On, isOn);
-      } else if (newStatus === undefined) {
-        // Only log warning if the key is expected but missing
-        if (this.statusKey in status) {
-          this.platform.log.warn(`Status key '${this.statusKey}' has undefined value in API response for ${this.logPrefix} on ${this.accessory.displayName}.`);
-        } else {
-          this.platform.log.debug(`Status key '${this.statusKey}' not present in API response for ${this.logPrefix} on ${this.accessory.displayName}.`);
-        }
+      this.platform.log.debug(`Received ${this.logPrefix} status for ${this.accessory.displayName}. Old: ${oldIsOn}, New: ${newIsOn}`);
+
+      if (newIsOn !== oldIsOn) {
+        this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${newIsOn}`);
+        this.service.updateCharacteristic(this.onChar, newIsOn);
       }
     } catch (error) {
       const displayName = this.accessory.displayName;
@@ -154,8 +167,8 @@ export abstract class BaseSwitchAccessory {
    * Handle requests to get the current value of the "On" characteristic.
    */
   protected handleGet(callback: CharacteristicGetCallback) {
-    const currentValue = this.cachedStatus ? this.cachedStatus[this.statusKey] === 'on' : false;
-    this.platform.log.debug(`Get ${this.logPrefix}: Returning ${currentValue} (Cached: ${this.cachedStatus ? this.cachedStatus[this.statusKey] : 'null'})`);
+    const currentValue = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
+    this.platform.log.debug(`Get ${this.logPrefix}: Returning ${currentValue} (Cached: ${JSON.stringify(this.cachedStatus ?? null)})`);
     callback(null, currentValue);
   }
 
@@ -163,36 +176,18 @@ export abstract class BaseSwitchAccessory {
    * Handle requests to set the "On" characteristic.
    */
   protected async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback) {
-    const requestedState = value as boolean ? 'on' : 'off';
-    this.platform.log.info(`Set ${this.logPrefix}: Received request to turn ${requestedState} for ${this.accessory.displayName}`);
-
-    // Avoid redundant calls if state is already correct (optional)
-    // if (this.cachedStatus && this.cachedStatus[this.statusKey] === requestedState) {
-    //   this.platform.log.debug(`${this.logPrefix} is already ${requestedState}. Skipping API call.`);
-    //   callback(null);
-    //   return;
-    // }
+    const requestedState = value as boolean;
+    this.platform.log.info(`Set ${this.logPrefix}: Received request to turn ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
 
     try {
-      await this.apiSetMethod(requestedState);
+      await this.setApiState(requestedState);
       this.cacheManager.clear();
-      this.platform.log.info(`${this.logPrefix} successfully set to ${requestedState} for ${this.accessory.displayName}`);
-      // Optimistically update cache and characteristic
-      if (this.cachedStatus) {
-        // Assert that the property corresponding to statusKey accepts 'on' | 'off'
-        (this.cachedStatus as { [k in typeof this.statusKey]?: 'on' | 'off' })[this.statusKey] = requestedState;
-      }
-      this.service.updateCharacteristic(this.platform.Characteristic.On, value as boolean);
+      this.platform.log.info(`${this.logPrefix} successfully set to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
+      this.service.updateCharacteristic(this.onChar, requestedState);
       callback(null);
-
-      // Optionally trigger a status update soon after setting
-      // setTimeout(() => this.updateCachedStatus(), 1000);
-
     } catch (error) {
-      this.platform.log.error(`Error setting ${this.logPrefix} to ${requestedState} for ${this.accessory.displayName}:`, error);
+      this.platform.log.error(`Error setting ${this.logPrefix} to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}:`, error);
       callback(error as Error);
-      // Revert optimistic update on error
-      // this.service.updateCharacteristic(this.platform.Characteristic.On, !value);
     }
   }
 }

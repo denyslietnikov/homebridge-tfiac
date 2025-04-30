@@ -18,6 +18,7 @@ const config: JestConfigWithTsJest = {
   testPathIgnorePatterns: [
     '/node_modules/',
     '/dist/',
+    'src/__tests__/testUtils.ts',
   ],
 };
 

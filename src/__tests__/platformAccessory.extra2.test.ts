@@ -8,21 +8,28 @@ import {
 import { TfiacPlatform } from '../platform.js';
 import { TfiacPlatformAccessory } from '../platformAccessory.js';
 import {
-  hapIdentifiers,
-  hapConstants,
+  createMockPlatformAccessory,
+  createMockService,
+  createMockApiActions,
   getHandlerByIdentifier,
-  mockPlatform,
   initialStatusFahrenheit,
-  mockApiActions,
-} from './platformAccessory.core.test';
+  createMockAPI,
+} from './testUtils.js';
 import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
-import { celsiusToFahrenheit, fahrenheitToCelsius } from '../utils';
+import { celsiusToFahrenheit, fahrenheitToCelsius } from '../utils.js';
 
 // Import AirConditionerAPI to mock it
-import AirConditionerAPI from '../AirConditionerAPI';
+import AirConditionerAPI from '../AirConditionerAPI.js';
+
+// Create mock API actions
+const mockApiActions = createMockApiActions(initialStatusFahrenheit);
 
 // Mock AirConditionerAPI constructor to return shared mockApiActions
 jest.mock('../AirConditionerAPI', () => jest.fn().mockImplementation(() => mockApiActions));
+
+// Get API constants
+const mockAPI = createMockAPI();
+const hapConstants = mockAPI.hap;
 
 describe('TfiacPlatformAccessory - Extended Coverage', () => {
   let mockService: any;
@@ -44,34 +51,26 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
     });
     
     // Create a mock service
-    mockService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnValue({
-        on: jest.fn().mockReturnThis(),
-        setProps: jest.fn().mockReturnThis(),
-        updateValue: jest.fn().mockReturnThis(),
-      }),
-      characteristics: new Map(),
-    };
+    mockService = createMockService();
     
     // Define device config
     deviceConfig = { name: 'Ext AC', ip: '1.2.3.4', port: 7777, updateInterval: 10 };
     
     // Create a mock accessory
-    mockAccessory = {
-      context: { deviceConfig },
-      displayName: deviceConfig.name,
-      UUID: 'ext-uuid',
-      category: Categories.AIR_CONDITIONER,
-      getService: jest.fn().mockReturnValue(mockService),
-      addService: jest.fn().mockReturnValue(mockService),
-      services: [mockService],
-      on: jest.fn(),
-      emit: jest.fn(),
-      removeService: jest.fn(),
-      getServiceById: jest.fn(),
-    } as unknown as PlatformAccessory;
+    mockAccessory = createMockPlatformAccessory(deviceConfig.name, 'ext-uuid', deviceConfig, mockService);
+    
+    // Mock platform for testing
+    const mockPlatform = {
+      log: { debug: jest.fn(), error: jest.fn() },
+      Characteristic: hapConstants.Characteristic,
+      Service: hapConstants.Service, // <-- add this line
+      api: {
+        hap: {
+          Characteristic: hapConstants.Characteristic,
+          Service: hapConstants.Service, // mirror in nested hap for completeness
+        },
+      },
+    };
     
     // Set up API mock with all required methods
     mockApi = {
@@ -111,15 +110,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
     };
     
     // Set up the platform reference needed for characteristic constants
-    (accessory as any).platform = {
-      log: { debug: jest.fn(), error: jest.fn() },
-      Characteristic: hapConstants.Characteristic,
-      api: {
-        hap: {
-          Characteristic: hapConstants.Characteristic
-        }
-      }
-    };
+    (accessory as any).platform = mockPlatform;
   });
 
   afterEach(() => {
@@ -133,7 +124,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
   describe('Active characteristic handlers', () => {
     it('handleActiveGet returns ACTIVE when cache on', done => {
       (accessory as any).cachedStatus.is_on = 'on';
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.Active, 'get');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'get');
       
       handler((err, value) => {
         expect(err).toBeNull();
@@ -146,7 +137,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
       (accessory as any).cachedStatus = null;
       mockService.getCharacteristic().value = hapConstants.Characteristic.Active.INACTIVE;
       
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.Active, 'get');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'get');
       
       handler((err, value) => {
         expect(err).toBeNull();
@@ -159,7 +150,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
       mockApi.turnOn.mockResolvedValue(undefined);
       jest.spyOn(accessory as any, 'updateCachedStatus').mockResolvedValue(undefined);
       
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.Active, 'set');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'set');
       
       handler(hapConstants.Characteristic.Active.ACTIVE, (err) => {
         expect(err).toBeNull();
@@ -171,7 +162,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
     it('handleActiveSet calls turnOff and propagates error', done => {
       mockApi.turnOff.mockRejectedValueOnce(new Error('fail'));      
       
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.Active, 'set');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'set');
       
       handler(hapConstants.Characteristic.Active.INACTIVE, (err) => {
         expect(err).toBeInstanceOf(Error);
@@ -187,7 +178,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
       (accessory as any).cachedStatus = null;
       mockService.getCharacteristic().value = hapConstants.Characteristic.CurrentHeaterCoolerState.IDLE;
       
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.CurrentHeaterCoolerState, 'get');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.CurrentHeaterCoolerState, 'get');
       
       handler((err, value) => {
         expect(err).toBeNull();
@@ -200,7 +191,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
       (accessory as any).cachedStatus = null;
       mockService.getCharacteristic().value = hapConstants.Characteristic.TargetHeaterCoolerState.AUTO;
       
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.TargetHeaterCoolerState, 'get');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.TargetHeaterCoolerState, 'get');
       
       handler((err, value) => {
         expect(err).toBeNull();
@@ -213,7 +204,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
       mockApi.setAirConditionerState.mockResolvedValue(undefined);
       jest.spyOn(accessory as any, 'updateCachedStatus').mockResolvedValue(undefined);
       
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.TargetHeaterCoolerState, 'set');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.TargetHeaterCoolerState, 'set');
       
       handler(hapConstants.Characteristic.TargetHeaterCoolerState.HEAT, (err) => {
         expect(err).toBeNull();
@@ -226,7 +217,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
       const error = new Error('oops');
       mockApi.setAirConditionerState.mockRejectedValueOnce(error);
       
-      const handler = getHandlerByIdentifier(accessory, hapIdentifiers.Characteristic.TargetHeaterCoolerState, 'set');
+      const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.TargetHeaterCoolerState, 'set');
       
       handler(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO, (err) => {
         expect(err).toBe(error);

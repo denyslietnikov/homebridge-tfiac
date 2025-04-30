@@ -15,11 +15,9 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       serviceName, // Service Name
       'turbo', // Service Subtype
-      'opt_super', // Status Key
-      deviceAPI.setTurboState.bind(deviceAPI), // API Set Method
+      (status) => status.opt_super === 'on', // getStatusValue
+      async (value) => deviceAPI.setTurboState(value ? 'on' : 'off'), // setApiState
       'Turbo', // Log Prefix
     );
-    this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
-    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 }

@@ -3,12 +3,12 @@
 import {
   PlatformAccessory,
   Service,
-  Characteristic,
-  WithUUID,
   CharacteristicValue,
   CharacteristicSetCallback,
   CharacteristicGetCallback,
 } from 'homebridge';
+// Import Characteristic as a type only
+import type { Characteristic, WithUUID } from 'homebridge';
 import type { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
@@ -23,6 +23,7 @@ export interface CharacteristicHandlers {
 }
 
 export class TfiacPlatformAccessory {
+  private readonly platform: TfiacPlatform;
   private service: Service;
   private deviceAPI: AirConditionerAPI;
   private cachedStatus: AirConditionerStatus | null = null; // Explicitly typed
@@ -37,9 +38,18 @@ export class TfiacPlatformAccessory {
   private characteristicHandlers: Map<string, CharacteristicHandlers> = new Map();
 
   constructor(
-    private readonly platform: TfiacPlatform,
+    platformArg: TfiacPlatform | (() => TfiacPlatform),
     private readonly accessory: PlatformAccessory,
   ) {
+    // Normalize platform: if a factory function is passed, call it
+    const platform = typeof platformArg === 'function' ? platformArg() : platformArg;
+    this.platform = platform;
+
+    // Determine Characteristic type (use only platform's Characteristic implementation)
+    const CharacteristicType = this.platform.Characteristic ?? this.platform.api?.hap?.Characteristic;
+    // Use platform-provided service constructors
+    const heaterServiceType = this.platform.Service.HeaterCooler;
+    const tempSensorServiceType: string = 'TemperatureSensor';
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
 
     const ip = deviceConfig.ip;
@@ -52,17 +62,17 @@ export class TfiacPlatformAccessory {
       : 30000;
 
     this.service =
-      this.accessory.getService(this.platform.Service.HeaterCooler) ||
-      this.accessory.addService(this.platform.Service.HeaterCooler, deviceConfig.name);
+      this.accessory.getService(heaterServiceType) ||
+      this.accessory.addService(heaterServiceType, deviceConfig.name);
 
     if (typeof this.service.setCharacteristic === 'function') {
       this.service.setCharacteristic(
-        this.platform.Characteristic.Name,
+        CharacteristicType.Name,
         deviceConfig.name ?? 'Unnamed AC',
       );
     } else if (typeof this.service.updateCharacteristic === 'function') {
       this.service.updateCharacteristic(
-        this.platform.Characteristic.Name,
+        CharacteristicType.Name,
         deviceConfig.name ?? 'Unnamed AC',
       );
     }
@@ -82,12 +92,12 @@ export class TfiacPlatformAccessory {
       );
     } else {
       this.platform.log.info(`Temperature sensors are disabled for ${deviceConfig.name}`);
-      const indoorService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, 'indoor_temperature');
+      const indoorService = this.accessory.getServiceById(tempSensorServiceType, 'indoor_temperature');
       if (indoorService) {
         this.accessory.removeService(indoorService);
         this.platform.log.debug('Removed existing indoor temperature sensor service.');
       }
-      const outdoorService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, 'outdoor_temperature');
+      const outdoorService = this.accessory.getServiceById(tempSensorServiceType, 'outdoor_temperature');
       if (outdoorService) {
         this.accessory.removeService(outdoorService);
         this.platform.log.debug('Removed existing outdoor temperature sensor service.');
@@ -101,47 +111,47 @@ export class TfiacPlatformAccessory {
 
   private setupCharacteristicHandlers(): void {
     this.setupCharacteristic(
-      this.platform.Characteristic.Active, 
+      'Active', 
       this.handleActiveGet.bind(this),
       this.handleActiveSet.bind(this),
     );
 
     this.setupCharacteristic(
-      this.platform.Characteristic.CurrentHeaterCoolerState,
+      'CurrentHeaterCoolerState',
       this.handleCurrentHeaterCoolerStateGet.bind(this),
     );
 
     this.setupCharacteristic(
-      this.platform.Characteristic.TargetHeaterCoolerState,
+      'TargetHeaterCoolerState',
       this.handleTargetHeaterCoolerStateGet.bind(this),
       this.handleTargetHeaterCoolerStateSet.bind(this),
     );
 
     this.setupCharacteristic(
-      this.platform.Characteristic.CurrentTemperature,
+      'CurrentTemperature',
       this.handleCurrentTemperatureGet.bind(this),
     );
 
     this.setupCharacteristic(
-      this.platform.Characteristic.CoolingThresholdTemperature,
+      'CoolingThresholdTemperature',
       this.handleThresholdTemperatureGet.bind(this),
       this.handleThresholdTemperatureSet.bind(this),
     );
 
     this.setupCharacteristic(
-      this.platform.Characteristic.HeatingThresholdTemperature,
+      'HeatingThresholdTemperature',
       this.handleThresholdTemperatureGet.bind(this),
       this.handleThresholdTemperatureSet.bind(this),
     );
 
     this.setupCharacteristic(
-      this.platform.Characteristic.RotationSpeed,
+      'RotationSpeed',
       this.handleRotationSpeedGet.bind(this),
       this.handleRotationSpeedSet.bind(this),
     );
 
     this.setupCharacteristic(
-      this.platform.Characteristic.SwingMode,
+      'SwingMode',
       this.handleSwingModeGet.bind(this),
       this.handleSwingModeSet.bind(this),
     );
@@ -330,7 +340,7 @@ export class TfiacPlatformAccessory {
       return;
     }
     
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.Active).value;
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.Active)!.value;
     callback(null, currentValue ?? this.platform.Characteristic.Active.INACTIVE);
   }
 
@@ -368,7 +378,7 @@ export class TfiacPlatformAccessory {
       return;
     }
     
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState).value;
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState)!.value;
     callback(null, currentValue ?? this.platform.Characteristic.CurrentHeaterCoolerState.IDLE);
   }
 
@@ -386,7 +396,7 @@ export class TfiacPlatformAccessory {
       return;
     }
     
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState).value;
+    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState)!.value;
     callback(null, currentValue ?? this.platform.Characteristic.TargetHeaterCoolerState.AUTO);
   }
 
@@ -421,7 +431,7 @@ export class TfiacPlatformAccessory {
       return;
     }
     
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.CurrentTemperature).value;
+    const currentValue = this.service.getCharacteristic('CurrentTemperature')!.value;
     callback(null, currentValue ?? 20);
   }
 
@@ -439,7 +449,7 @@ export class TfiacPlatformAccessory {
       return;
     }
     
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.CoolingThresholdTemperature).value;
+    const currentValue = this.service.getCharacteristic('CoolingThresholdTemperature')!.value;
     callback(null, currentValue ?? 22);
   }
 
@@ -448,18 +458,16 @@ export class TfiacPlatformAccessory {
     callback: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET ThresholdTemperature:', value);
+    const temperatureFahrenheit = celsiusToFahrenheit(value as number);
     try {
-      const temperatureFahrenheit = celsiusToFahrenheit(value as number);
       await this.deviceAPI.setAirConditionerState('target_temp', temperatureFahrenheit.toString());
       this.cacheManager.clear();
-      await this.updateCachedStatus();
+      await this.updateCachedStatus(); // Refresh status after successful set
       callback(null);
     } catch (error) {
-      this.platform.log.error('Error setting threshold temperature:', error);
-      // Refresh status even on error to keep cache in sync
-      this.updateCachedStatus().catch(err => {
-        this.platform.log.error('Error refreshing status after set failure:', err);
-      });
+      this.platform.log.error('Error setting ThresholdTemperature:', error);
+      // Optionally refresh status even on failure, depending on desired behavior
+      // await this.updateCachedStatus().catch(err => this.platform.log.error('Error refreshing status after failed set threshold:', err));
       callback(error as Error);
     }
   }
@@ -473,7 +481,7 @@ export class TfiacPlatformAccessory {
       return;
     }
     
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).value;
+    const currentValue = this.service.getCharacteristic('RotationSpeed')!.value;
     callback(null, currentValue ?? 50);
   }
 
@@ -482,14 +490,16 @@ export class TfiacPlatformAccessory {
     callback: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET RotationSpeed:', value);
+    const fanMode = this.mapRotationSpeedToFanMode(value as number);
     try {
-      const fanMode = this.mapRotationSpeedToFanMode(value as number);
       await this.deviceAPI.setFanSpeed(fanMode);
       this.cacheManager.clear();
-      await this.updateCachedStatus();
+      await this.updateCachedStatus(); // Refresh status after successful set
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting fan speed:', error);
+      // Optionally refresh status even on failure
+      // await this.updateCachedStatus().catch(err => this.platform.log.error('Error refreshing status after failed set fan:', err));
       callback(error as Error);
     }
   }
@@ -503,7 +513,7 @@ export class TfiacPlatformAccessory {
       return;
     }
     
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.SwingMode).value;
+    const currentValue = this.service.getCharacteristic('SwingMode')!.value;
     callback(null, currentValue ?? 0);
   }
 
@@ -512,14 +522,16 @@ export class TfiacPlatformAccessory {
     callback: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET SwingMode:', value);
+    const mode = value === this.platform.api.hap.Characteristic.SwingMode.SWING_ENABLED ? 'Both' : 'Off'; // Use platform.api.hap instance
     try {
-      const mode = value ? 'Both' : 'Off';
       await this.deviceAPI.setSwingMode(mode);
       this.cacheManager.clear();
-      await this.updateCachedStatus();
+      await this.updateCachedStatus(); // Refresh status after successful set
       callback(null);
     } catch (error) {
       this.platform.log.error('Error setting swing mode:', error);
+      // Optionally refresh status even on failure
+      // await this.updateCachedStatus().catch(err => this.platform.log.error('Error refreshing status after failed set swing:', err));
       callback(error as Error);
     }
   }

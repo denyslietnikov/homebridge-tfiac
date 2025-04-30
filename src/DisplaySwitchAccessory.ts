@@ -15,11 +15,10 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       accessory,
       serviceName, // Service Name
       'display', // Service Subtype
-      'opt_display', // Status Key
-      deviceAPI.setDisplayState.bind(deviceAPI), // API Set Method
+      (status) => status.opt_display === 'on', // getStatusValue
+      async (value) => deviceAPI.setDisplayState(value ? 'on' : 'off'), // setApiState
       'Display', // Log Prefix
     );
     this.service.updateCharacteristic(platform.Characteristic.Name, serviceName);
-    this.service.updateCharacteristic(platform.Characteristic.ConfiguredName, serviceName);
   }
 }

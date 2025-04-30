@@ -1,107 +1,134 @@
 import { HorizontalSwingSwitchAccessory } from '../HorizontalSwingSwitchAccessory.js';
 import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
+import { 
+  setupTestPlatform, 
+  createMockPlatformAccessory, 
+  createMockService
+} from './testUtils.js';
+
+// Define mocks at the top level
+const updateStateMock = jest.fn();
+const setSwingModeMock = jest.fn();
+const cleanupMock = jest.fn(); // Shared cleanup mock
+
+jest.mock('../AirConditionerAPI.js', () => {
+  return jest.fn().mockImplementation(() => ({
+    updateState: updateStateMock,
+    setSwingMode: setSwingModeMock,
+    cleanup: cleanupMock, // Use shared mock
+  }));
+});
 
 describe('HorizontalSwingSwitchAccessory', () => {
-  const mockService: any = {
-    setCharacteristic: jest.fn().mockReturnThis(),
-    getCharacteristic: jest.fn().mockReturnValue({ on: jest.fn().mockReturnThis() }),
-    updateCharacteristic: jest.fn(),
-    on: jest.fn().mockReturnThis(),
-    emit: jest.fn(),
-    displayName: 'MockService',
-    UUID: 'mock-uuid',
-    iid: 1,
-  };
-
-  const makeAccessory = (): PlatformAccessory =>
-    ({
-      context: { deviceConfig: { name: 'AC', ip: '1.2.3.4', updateInterval: 1 } },
-      getService: jest.fn().mockReturnValue(null),
-      addService: jest.fn().mockReturnValue(mockService),
-      getServiceById: jest.fn(),
-    } as unknown as PlatformAccessory);
-
-  const mockPlatform = (): TfiacPlatform =>
-    ({
-      Service: { Switch: jest.fn() },
-      Characteristic: { Name: 'Name', On: 'On' },
-      log: { debug: jest.fn(), error: jest.fn(), info: jest.fn() },
-    } as unknown as TfiacPlatform);
-
   let platform: TfiacPlatform;
   let accessory: PlatformAccessory;
   let service: Service;
-  let deviceAPI: any;
-  let log: any;
+  let inst: HorizontalSwingSwitchAccessory; // Instance tracker
 
   beforeEach(() => {
-    log = { debug: jest.fn(), error: jest.fn(), info: jest.fn() };
-    platform = mockPlatform();
-    service = mockService;
-    accessory = makeAccessory();
-    deviceAPI = {
-      updateState: jest.fn().mockResolvedValue({ swing_mode: 'Horizontal' }),
-      setSwingMode: jest.fn().mockResolvedValue(undefined),
-      cleanup: jest.fn(),
-    };
-    jest.spyOn(require('../AirConditionerAPI'), 'default').mockImplementation(() => deviceAPI);
+    jest.clearAllMocks(); // Clear all mocks
+    platform = setupTestPlatform();
+    service = createMockService();
+
+    // Always return the same mock service for addService/getService
+    accessory = createMockPlatformAccessory();
+    (accessory.getService as jest.Mock).mockReturnValue(service);
+    (accessory.addService as jest.Mock).mockReturnValue(service);
+    // By default, getServiceById returns undefined to allow addService to be called
+    (accessory.getServiceById as jest.Mock).mockReturnValue(undefined);
+
+    // Set default mock responses
+    updateStateMock.mockResolvedValue({ swing_mode: 'Horizontal' });
+    setSwingModeMock.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
-    jest.clearAllMocks();
+    if (inst) {
+      inst.stopPolling(); // Ensure polling stops
+    }
   });
 
+  const createAccessory = () => {
+    inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    return inst;
+  };
+
   it('should construct and set up polling and handlers', () => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Horizontal Swing', 'horizontalswing');
-    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Horizontal Swing');
+    createAccessory();
+    expect(accessory.addService).toHaveBeenCalledWith(expect.anything(), 'Horizontal Swing', 'horizontalswing');
+    expect(service.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Horizontal Swing');
     expect(service.getCharacteristic).toHaveBeenCalledWith('On');
+    const mockCharacteristic = service.getCharacteristic('On');
+    expect(mockCharacteristic?.on).toHaveBeenCalledWith('get', expect.any(Function));
+    expect(mockCharacteristic?.on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   it('should stop polling and cleanup', () => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
-    (inst as any).pollingInterval = setInterval(() => {}, 1000);
+    createAccessory();
+    // Ensure cacheManager and api exist
+    expect((inst as any).cacheManager).toBeDefined();
+    expect((inst as any).cacheManager.api).toBeDefined();
     inst.stopPolling();
-    expect(deviceAPI.cleanup).toHaveBeenCalled();
+    // Assert the shared cleanupMock
+    expect(cleanupMock).toHaveBeenCalled();
   });
 
   it('should update cached status and update characteristic for Horizontal mode', async () => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
+    const mockCacheManager = (inst as any).cacheManager;
+    mockCacheManager.getStatus = jest.fn().mockResolvedValue({ swing_mode: 'Horizontal' });
+    (service.updateCharacteristic as jest.Mock).mockClear();
     await (inst as any).updateCachedStatus();
+    expect(mockCacheManager.getStatus).toHaveBeenCalled();
     expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('should update cached status and update characteristic for Both mode', async () => {
-    deviceAPI.updateState.mockResolvedValueOnce({ swing_mode: 'Both' });
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
+    const mockCacheManager = (inst as any).cacheManager;
+    mockCacheManager.getStatus = jest.fn().mockResolvedValue({ swing_mode: 'Both' });
+    (service.updateCharacteristic as jest.Mock).mockClear();
     await (inst as any).updateCachedStatus();
+    expect(mockCacheManager.getStatus).toHaveBeenCalled();
     expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('should update cached status and update characteristic for Off mode', async () => {
-    deviceAPI.updateState.mockResolvedValueOnce({ swing_mode: 'Off' });
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
+    const mockCacheManager = (inst as any).cacheManager;
+    mockCacheManager.getStatus = jest.fn().mockResolvedValue({ swing_mode: 'Off' });
+    (service.updateCharacteristic as jest.Mock).mockClear();
     await (inst as any).updateCachedStatus();
+    expect(mockCacheManager.getStatus).toHaveBeenCalled();
     expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
   });
 
   it('should update cached status and update characteristic for Vertical mode', async () => {
-    deviceAPI.updateState.mockResolvedValueOnce({ swing_mode: 'Vertical' });
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
+    const mockCacheManager = (inst as any).cacheManager;
+    mockCacheManager.getStatus = jest.fn().mockResolvedValue({ swing_mode: 'Vertical' });
+    (service.updateCharacteristic as jest.Mock).mockClear();
     await (inst as any).updateCachedStatus();
+    expect(mockCacheManager.getStatus).toHaveBeenCalled();
     expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
   });
 
   it('should handle error during update cached status', async () => {
-    deviceAPI.updateState.mockRejectedValueOnce(new Error('Network error'));
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
+    const mockCacheManager = (inst as any).cacheManager;
+    const error = new Error('Network error');
+    mockCacheManager.getStatus = jest.fn().mockRejectedValue(error);
+    (platform.log.error as jest.Mock).mockClear();
     await (inst as any).updateCachedStatus();
+    expect(platform.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Error updating Horizontal Swing status for'),
+      error
+    );
   });
 
   it('should handle get with cached status for Horizontal mode', done => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Horizontal' };
     (inst as any).handleGet((err: any, val: any) => {
       expect(err).toBeNull();
@@ -111,7 +138,7 @@ describe('HorizontalSwingSwitchAccessory', () => {
   });
 
   it('should handle get with cached status for Both mode', done => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Both' };
     (inst as any).handleGet((err: any, val: any) => {
       expect(err).toBeNull();
@@ -121,7 +148,7 @@ describe('HorizontalSwingSwitchAccessory', () => {
   });
 
   it('should handle get with cached status for Off mode', done => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Off' };
     (inst as any).handleGet((err: any, val: any) => {
       expect(err).toBeNull();
@@ -131,7 +158,7 @@ describe('HorizontalSwingSwitchAccessory', () => {
   });
 
   it('should handle get with cached status for Vertical mode', done => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Vertical' };
     (inst as any).handleGet((err: any, val: any) => {
       expect(err).toBeNull();
@@ -141,10 +168,9 @@ describe('HorizontalSwingSwitchAccessory', () => {
   });
 
   it('should handle get with no cached status', done => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = null;
     (inst as any).handleGet((err: any, val: any) => {
-      // Now expecting default value (false) instead of error
       expect(err).toBeNull();
       expect(val).toBe(false);
       done();
@@ -152,46 +178,55 @@ describe('HorizontalSwingSwitchAccessory', () => {
   });
 
   it('should handle set ON when vertical is OFF', async () => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Off' };
     const cb = jest.fn();
+    updateStateMock.mockResolvedValueOnce({ swing_mode: 'Horizontal' });
     await (inst as any).handleSet(true, cb);
-    expect(deviceAPI.setSwingMode).toHaveBeenCalledWith('Horizontal');
+    expect(setSwingModeMock).toHaveBeenCalledWith('Horizontal');
     expect(cb).toHaveBeenCalledWith(null);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('should handle set ON when vertical is ON', async () => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Vertical' };
     const cb = jest.fn();
+    updateStateMock.mockResolvedValueOnce({ swing_mode: 'Both' });
     await (inst as any).handleSet(true, cb);
-    expect(deviceAPI.setSwingMode).toHaveBeenCalledWith('Both');
+    expect(setSwingModeMock).toHaveBeenCalledWith('Both');
     expect(cb).toHaveBeenCalledWith(null);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
   it('should handle set OFF when both are ON', async () => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Both' };
     const cb = jest.fn();
+    updateStateMock.mockResolvedValueOnce({ swing_mode: 'Vertical' });
     await (inst as any).handleSet(false, cb);
-    expect(deviceAPI.setSwingMode).toHaveBeenCalledWith('Vertical');
+    expect(setSwingModeMock).toHaveBeenCalledWith('Vertical');
     expect(cb).toHaveBeenCalledWith(null);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
   });
 
   it('should handle set OFF when only horizontal is ON', async () => {
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
     (inst as any).cachedStatus = { swing_mode: 'Horizontal' };
     const cb = jest.fn();
+    updateStateMock.mockResolvedValueOnce({ swing_mode: 'Off' });
     await (inst as any).handleSet(false, cb);
-    expect(deviceAPI.setSwingMode).toHaveBeenCalledWith('Off');
+    expect(setSwingModeMock).toHaveBeenCalledWith('Off');
     expect(cb).toHaveBeenCalledWith(null);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
   });
 
   it('should handle set error', async () => {
-    deviceAPI.setSwingMode.mockRejectedValueOnce(new Error('fail'));
-    const inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+    createAccessory();
+    const error = new Error('Network error');
+    setSwingModeMock.mockRejectedValueOnce(error);
     const cb = jest.fn();
     await (inst as any).handleSet(true, cb);
-    expect(cb).toHaveBeenCalledWith(expect.any(Error));
+    expect(cb).toHaveBeenCalledWith(error);
   });
 });

@@ -3,7 +3,7 @@ import { TfiacDeviceConfig } from './settings.js';
 
 export class CacheManager {
   private static instances = new Map<string, CacheManager>();
-  private api: AirConditionerAPI;
+  public api: AirConditionerAPI; // Changed from private to public
   private cache: AirConditionerStatus | null = null;
   private lastFetch = 0;
   private ttl: number;
@@ -32,8 +32,21 @@ export class CacheManager {
     return status;
   }
 
+  /**
+   * Clears the cached status, forcing a refresh on the next getStatus call.
+   */
   clear(): void {
     this.cache = null;
+    this.lastFetch = 0;
+  }
+
+  /**
+   * Cleans up resources used by the underlying API instance.
+   */
+  cleanup(): void {
+    if (this.api && typeof this.api.cleanup === 'function') {
+      this.api.cleanup();
+    }
   }
 }
 
