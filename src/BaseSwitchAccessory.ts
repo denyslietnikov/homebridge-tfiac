@@ -48,29 +48,9 @@ export abstract class BaseSwitchAccessory {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManager.getInstance(this.deviceConfig);
 
-    // Remove duplicate service with the same UUID and subtype before adding
-    const services = Array.isArray(this.accessory.services) ? this.accessory.services : [];
-    const duplicate = services.find(
-      s => s.subtype === this.serviceSubtype &&
-        (
-          s.UUID === this.platform.Service.Switch.UUID ||
-          s.UUID === this.platform.Service.Fanv2?.UUID ||
-          s.UUID === this.platform.Service.TemperatureSensor?.UUID ||
-          s.UUID === this.platform.Service.HumiditySensor?.UUID
-        ),
-    );
-    if (duplicate) {
-      this.platform.log.warn(
-        `Duplicate service with UUID ${duplicate.UUID} and subtype ${duplicate.subtype} found, removing before re-adding.`,
-      );
-      this.accessory.removeService(duplicate);
-    }
-
+    // Use existing service if present, otherwise add a new one
     this.service =
       this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype) ||
-      (this.platform.Service.Fanv2 && this.accessory.getServiceById(this.platform.Service.Fanv2.UUID, this.serviceSubtype)) ||
-      (this.platform.Service.TemperatureSensor && this.accessory.getServiceById(this.platform.Service.TemperatureSensor.UUID, this.serviceSubtype)) ||
-      (this.platform.Service.HumiditySensor && this.accessory.getServiceById(this.platform.Service.HumiditySensor.UUID, this.serviceSubtype)) ||
       this.accessory.addService(this.platform.Service.Switch, this.serviceName, this.serviceSubtype);
 
     // Determine characteristic constructions for Name and On
@@ -169,7 +149,6 @@ export abstract class BaseSwitchAccessory {
       const newIsOn = this.getStatusValue(this.cachedStatus);
 
       this.platform.log.debug(`Received ${this.logPrefix} status for ${this.accessory.displayName}. Old: ${oldIsOn}, New: ${newIsOn}`);
-
       if (newIsOn !== oldIsOn) {
         this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${newIsOn}`);
         this.service.updateCharacteristic(this.onChar, newIsOn);
