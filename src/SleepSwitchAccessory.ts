@@ -1,23 +1,24 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import AirConditionerAPI from './AirConditionerAPI.js';
+import { SleepModeState } from './enums.js';
 
 export class SleepSwitchAccessory extends BaseSwitchAccessory {
   constructor(
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
   ) {
-    const serviceName = 'Sleep';
-    const deviceAPI = new AirConditionerAPI(accessory.context.deviceConfig.ip, accessory.context.deviceConfig.port);
     super(
       platform,
       accessory,
-      serviceName, // Service Name
-      'sleep', // Service Subtype
-      (status) => status.opt_sleepMode !== 'off', // getStatusValue
-      async (value) => deviceAPI.setSleepState(value ? 'on' : 'off'), // setApiState
-      'Sleep', // Log Prefix
+      'Sleep',
+      'sleep',
+      (status) => status.opt_sleepMode !== SleepModeState.Off,
+      async (value) => {
+        const state = value ? SleepModeState.On : SleepModeState.Off;
+        await this.cacheManager.api.setSleepState(state);
+      },
+      'Sleep',
     );
   }
 }

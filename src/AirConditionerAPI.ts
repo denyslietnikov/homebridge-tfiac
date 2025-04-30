@@ -3,24 +3,22 @@
 import { EventEmitter } from 'events';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
+import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from './enums.js';
 
-interface AirConditionerStatusInternal {
-  current_temp: number;
+export interface AirConditionerStatus {
+  is_on: PowerState;
+  operation_mode: OperationMode | string; // Allow string for potential unknown modes
   target_temp: number;
-  operation_mode: string;
-  fan_mode: string;
-  is_on: string;
-  swing_mode: string;
-  opt_display?: string; // Display state (on/off), optional
-  opt_super?: string; // Turbo state (on/off), optional
-  opt_sleepMode?: string; // Sleep mode state (string, e.g. 'sleepMode1:0:0:0:...'), optional
-  outdoor_temp?: number; // Outdoor temperature, optional
-  opt_beep?: string; // Beep state (on/off), optional
-  opt_eco?: string; // Eco state (on/off), optional
-  opt_turbo?: string; // Optional turbo state (on/off)
+  current_temp: number;
+  fan_mode: FanSpeed | string; // Allow string for potential unknown modes
+  swing_mode: SwingMode | string; // Allow string for potential unknown modes
+  opt_turbo?: PowerState;
+  opt_eco?: PowerState;
+  opt_display?: PowerState;
+  opt_beep?: PowerState;
+  opt_sleepMode?: SleepModeState | string; // Allow string for potential unknown modes
+  outdoor_temp?: number;
 }
-
-export type AirConditionerStatus = AirConditionerStatusInternal;
 
 interface StatusUpdateMsg {
   IndoorTemp: string[];
@@ -35,8 +33,6 @@ interface StatusUpdateMsg {
   Opt_sleepMode?: string[]; // Optional sleep mode state
   OutdoorTemp?: string[]; // Optional outdoor temperature
 }
-
-type AirConditionerMode = keyof AirConditionerStatusInternal;
 
 export class AirConditionerAPI extends EventEmitter {
   private readonly ip: string;
@@ -69,8 +65,9 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   private get seq(): string {
-    // Return a sequence number (in this case we can use timestamp)
-    return (Date.now() % 10000000).toString();
+    // Return a sequence number that increments on each call to ensure uniqueness
+    this.lastSeq = (this.lastSeq + 1) % 100000000;
+    return this.lastSeq.toString();
   }
 
   private async sendCommandWithRetry(command: string, timeoutMs: number = 10000, retryCount: number = 0): Promise<string> {
@@ -88,8 +85,13 @@ export class AirConditionerAPI extends EventEmitter {
         const nextRetry = retryCount + 1;
         this.emit('debug', `Command timed out, retry attempt ${nextRetry}/${this.maxRetries}`);
         
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, this.retryDelay));
+        // Wait before retrying without blocking the event loop
+        await new Promise(resolve => {
+          const t = setTimeout(resolve, this.retryDelay);
+          if (t.unref) {
+            t.unref();
+          }
+        });
         
         // Try again with incremented retry count
         return this.sendCommandWithRetry(command, timeoutMs, nextRetry);
@@ -143,6 +145,10 @@ export class AirConditionerAPI extends EventEmitter {
           reject(new Error('Command timed out'));
         }
       }, timeoutMs);
+      // Prevent timer from keeping the process alive
+      if (timeoutId.unref) {
+        timeoutId.unref();
+      }
       this.activeTimeouts.push(timeoutId);
 
       client.on('message', (data) => {
@@ -184,15 +190,11 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   async turnOn(): Promise<void> {
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage><TurnOn>on</TurnOn></SetMessage></msg>`;
-    await this.sendCommandWithRetry(command);
+    await this.setAirConditionerState('is_on', PowerState.On);
   }
 
   async turnOff(): Promise<void> {
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage><TurnOn>off</TurnOn></SetMessage></msg>`;
-    await this.sendCommandWithRetry(command);
+    await this.setAirConditionerState('is_on', PowerState.Off);
   }
 
   private mapWindDirectionToSwingMode(status: StatusUpdateMsg): string {
@@ -221,14 +223,15 @@ export class AirConditionerAPI extends EventEmitter {
       const status: AirConditionerStatus = {
         current_temp: parseFloat(statusUpdateMsg.IndoorTemp[0]),
         target_temp: parseFloat(statusUpdateMsg.SetTemp[0]),
-        operation_mode: statusUpdateMsg.BaseMode[0],
-        fan_mode: statusUpdateMsg.WindSpeed[0],
-        is_on: statusUpdateMsg.TurnOn[0],
-        swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg),
-        opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] : undefined,
-        opt_super: statusUpdateMsg.Opt_super ? statusUpdateMsg.Opt_super[0] : undefined,
-        opt_sleepMode: statusUpdateMsg.Opt_sleepMode ? statusUpdateMsg.Opt_sleepMode[0] : undefined,
+        operation_mode: statusUpdateMsg.BaseMode[0] as OperationMode, // Assume API sends valid OperationMode strings
+        fan_mode: statusUpdateMsg.WindSpeed[0] as FanSpeed, // Assume API sends valid FanSpeed strings
+        is_on: statusUpdateMsg.TurnOn[0] as PowerState, // Cast string 'on'/'off' to PowerState
+        swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg) as SwingMode, // mapWindDirection returns string matching SwingMode
+        opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] as PowerState : undefined, // Cast 'on'/'off'
+        opt_turbo: statusUpdateMsg.Opt_super ? statusUpdateMsg.Opt_super[0] as PowerState : undefined, // Cast 'on'/'off', assuming Opt_super maps to opt_turbo
+        opt_sleepMode: statusUpdateMsg.Opt_sleepMode ? statusUpdateMsg.Opt_sleepMode[0] : undefined, // Keep as string | undefined for now
         outdoor_temp: statusUpdateMsg.OutdoorTemp && statusUpdateMsg.OutdoorTemp[0] !== undefined ? parseFloat(statusUpdateMsg.OutdoorTemp[0]) : undefined,
+        // opt_eco and opt_beep might need similar handling if present in statusUpdateMsg
       };
       this.emit('debug', `Parsed status: ${JSON.stringify(status)}`);
       return status;
@@ -238,38 +241,53 @@ export class AirConditionerAPI extends EventEmitter {
     }
   }
 
-  async setAirConditionerState(mode: AirConditionerMode, value: string): Promise<void> {
+  async setAirConditionerState(
+    parameter: keyof AirConditionerStatus, 
+    value: string | number | PowerState | OperationMode | FanSpeed | SwingMode | SleepModeState,
+  ): Promise<void> {
     const status = await this.updateState();
-    if (mode === 'current_temp' || mode === 'target_temp') {
-      (status[mode] as number) = parseFloat(value);
-    } else {
-      (status[mode] as string) = value;
+
+    // Use type guards or explicit checks for each parameter type
+    if (parameter === 'current_temp' || parameter === 'target_temp') {
+      // These are numbers
+      status[parameter] = parseFloat(value as string);
+    } else if (parameter === 'is_on' || parameter === 'opt_turbo' || parameter === 'opt_eco' || parameter === 'opt_display' || parameter === 'opt_beep') {
+      // These are PowerState
+      status[parameter] = value as PowerState;
+    } else if (parameter === 'operation_mode') {
+      // This is OperationMode | string
+      status[parameter] = value as OperationMode | string;
+      // Also turn on the device when changing mode
+      status.is_on = PowerState.On;
+    } else if (parameter === 'fan_mode') {
+      // This is FanSpeed | string
+      status[parameter] = value as FanSpeed | string;
+    } else if (parameter === 'swing_mode') {
+      // This is SwingMode | string
+      status[parameter] = value as SwingMode | string;
+    } else if (parameter === 'opt_sleepMode') {
+      // This is SleepModeState | string
+      status[parameter] = value as SleepModeState | string;
+    } else if (parameter === 'outdoor_temp') {
+      // This is number | undefined, likely read-only from HomeKit perspective
+      this.emit('warn', `Attempted to set read-only parameter: ${parameter}`);
+      return; // Do not attempt to set read-only values
     }
-    if (mode === 'operation_mode') {
-      status.is_on = 'on';
-    }
+    // No 'else' block needed, covering all mutable properties explicitly avoids the 'never' type issue.
+
     const updateMessage = this.createUpdateMessage(status);
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage>${updateMessage}</SetMessage></msg>`;
+    // Disable max-len for this specific line as formatting attempts failed
+     
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">\n  <SetMessage>${updateMessage}</SetMessage>\n</msg>`;
     await this.sendCommandWithRetry(command);
   }
 
-  async setSwingMode(value: string): Promise<void> {
-    const SET_SWING: Record<'Off' | 'Vertical' | 'Horizontal' | 'Both', string> = {
-      Off: '<WindDirection_H>off</WindDirection_H><WindDirection_V>off</WindDirection_V>',
-      Vertical: '<WindDirection_H>off</WindDirection_H><WindDirection_V>on</WindDirection_V>',
-      Horizontal: '<WindDirection_H>on</WindDirection_H><WindDirection_V>off</WindDirection_V>',
-      Both: '<WindDirection_H>on</WindDirection_H><WindDirection_V>on</WindDirection_V>',
-    };
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage>${SET_SWING[value as keyof typeof SET_SWING]}</SetMessage></msg>`;
-    await this.sendCommandWithRetry(command);
+  async setSwingMode(mode: SwingMode | string): Promise<void> {
+    await this.setAirConditionerState('swing_mode', mode);
   }
 
-  async setFanSpeed(value: string): Promise<void> {
-    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-                      <SetMessage><WindSpeed>${value}</WindSpeed></SetMessage></msg>`;
-    await this.sendCommandWithRetry(command);
+  async setFanSpeed(speed: FanSpeed | string): Promise<void> {
+    await this.setAirConditionerState('fan_mode', speed);
   }
 
   /**
@@ -284,40 +302,37 @@ export class AirConditionerAPI extends EventEmitter {
   /**
    * Set the display state (on/off) for the air conditioner.
    */
-  async setDisplayState(value: 'on' | 'off'): Promise<void> {
-    return this.setOptionState('Opt_display', value);
+  async setDisplayState(state: PowerState): Promise<void> {
+    await this.setAirConditionerState('opt_display', state);
   }
 
   /**
    * Set the Turbo (Opt_super) state (on/off) for the air conditioner.
    */
-  async setTurboState(value: 'on' | 'off'): Promise<void> {
-    return this.setOptionState('Opt_super', value);
+  async setTurboState(state: PowerState): Promise<void> {
+    await this.setAirConditionerState('opt_turbo', state);
   }
 
   /**
    * Set the Sleep (Opt_sleepMode) state (on/off) for the air conditioner.
    * For 'on', sends 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0', for 'off' sends 'off'.
    */
-  async setSleepState(value: 'on' | 'off'): Promise<void> {
-    const sleepValue = value === 'on'
-      ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
-      : 'off';
-    return this.setOptionState('Opt_sleepMode', sleepValue);
+  async setSleepState(state: SleepModeState | string): Promise<void> {
+    await this.setAirConditionerState('opt_sleepMode', state);
   }
 
   /**
    * Set the Eco (opt_eco) state (on/off) for the air conditioner.
    */
-  async setEcoState(value: 'on' | 'off'): Promise<void> {
-    return this.setOptionState('opt_eco', value);
+  async setEcoState(state: PowerState): Promise<void> {
+    await this.setAirConditionerState('opt_eco', state);
   }
 
   /**
    * Set the Beep (Opt_beep) state (on/off) for the air conditioner.
    */
-  async setBeepState(value: 'on' | 'off'): Promise<void> {
-    return this.setOptionState('Opt_beep', value);
+  async setBeepState(state: PowerState): Promise<void> {
+    await this.setAirConditionerState('opt_beep', state);
   }
 }
 
