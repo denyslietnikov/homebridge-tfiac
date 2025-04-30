@@ -116,6 +116,11 @@
               "title": "Enable Fan Speed Control",
               "type": "boolean",
               "required": false
+            },
+            "temperatureCorrection": {
+              "type": "number",
+              "title": "Temperature Correction",
+              "description": "Correction factor (in Celsius) to be added to the measured indoor temperature. Use negative value to decrease reported temperature."
             }
           }
         }
