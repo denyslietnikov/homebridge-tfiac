@@ -44,14 +44,15 @@ export class OutdoorTemperatureSensorAccessory {
     if (enableTemperature && hasValidOutdoorTemp) {
       if (!this.service) {
         const serviceName = 'Outdoor Temperature';
+        const subtype = 'outdoor_temperature';
         this.platform.log.debug('[OutdoorTemperatureSensor] Adding service.');
-        // Look for existing service first (by name or subtype if defined)
+        // Use getServiceById for consistent service lookup with the subtype
         this.service =
-          this.accessory.getService(serviceName) ||
+          this.accessory.getServiceById(this.platform.Service.TemperatureSensor, subtype) ||
           this.accessory.addService(
             this.platform.Service.TemperatureSensor,
             serviceName,
-            'outdoor_temperature', // Add subtype for uniqueness
+            subtype,
           );
         
         // Add check before calling setCharacteristic

@@ -35,8 +35,8 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     // Create a mock accessory using the utility function
     accessory = createMockPlatformAccessory('Test Device', 'test-uuid', deviceConfig);
     
-    // Override the getService mock for this specific test context
-    accessory.getService = jest.fn().mockReturnValue(null);
+    // Override the getServiceById mock for this specific test context
+    accessory.getServiceById = jest.fn().mockReturnValue(null);
     accessory.addService = jest.fn().mockReturnValue(mockService);
 
     // Create the accessory
@@ -48,7 +48,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
   });
 
   it('should not create service in constructor', () => {
-    expect(accessory.getService).not.toHaveBeenCalled();
+    expect(accessory.getServiceById).not.toHaveBeenCalled();
     expect(accessory.addService).not.toHaveBeenCalled();
   });
 
@@ -65,7 +65,10 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     
     sensorAccessory.updateStatus(status);
     
-    expect(accessory.getService).toHaveBeenCalledWith('Outdoor Temperature');
+    expect(accessory.getServiceById).toHaveBeenCalledWith(
+      platform.Service.TemperatureSensor,
+      'outdoor_temperature'
+    );
     expect(accessory.addService).toHaveBeenCalledWith(
       platform.Service.TemperatureSensor,
       'Outdoor Temperature',
@@ -86,7 +89,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
 
   it('should use existing service if available', () => {
     // Setup existing service
-    (accessory.getService as jest.Mock).mockReturnValue(mockService);
+    (accessory.getServiceById as jest.Mock).mockReturnValue(mockService);
     
     const status = {
       current_temp: 77,
@@ -100,7 +103,10 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     
     sensorAccessory.updateStatus(status);
     
-    expect(accessory.getService).toHaveBeenCalledWith('Outdoor Temperature');
+    expect(accessory.getServiceById).toHaveBeenCalledWith(
+      platform.Service.TemperatureSensor,
+      'outdoor_temperature'
+    );
     expect(accessory.addService).not.toHaveBeenCalled();
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic.CurrentTemperature,
@@ -121,7 +127,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     
     sensorAccessory.updateStatus(status);
     
-    expect(accessory.getService).not.toHaveBeenCalled();
+    expect(accessory.getServiceById).not.toHaveBeenCalled();
   });
 
   it('should not create service when outdoor_temp is NaN', () => {
@@ -137,7 +143,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     
     sensorAccessory.updateStatus(status);
     
-    expect(accessory.getService).not.toHaveBeenCalled();
+    expect(accessory.getServiceById).not.toHaveBeenCalled();
   });
 
   it('should not create service when enableTemperature is false', () => {
@@ -155,7 +161,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     
     sensorAccessory.updateStatus(status);
     
-    expect(accessory.getService).not.toHaveBeenCalled();
+    expect(accessory.getServiceById).not.toHaveBeenCalled();
   });
 
   it('should remove service when removeService is called', () => {
@@ -202,7 +208,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       // outdoor_temp missing
     };
     sensorAccessory.updateStatus(status as any);
-    expect(accessory.getService).not.toHaveBeenCalled();
+    expect(accessory.getServiceById).not.toHaveBeenCalled();
     expect(accessory.addService).not.toHaveBeenCalled();
   });
 
@@ -217,7 +223,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       outdoor_temp: "notanumber",
     };
     sensorAccessory.updateStatus(status as any);
-    expect(accessory.getService).not.toHaveBeenCalled();
+    expect(accessory.getServiceById).not.toHaveBeenCalled();
     expect(accessory.addService).not.toHaveBeenCalled();
   });
 
