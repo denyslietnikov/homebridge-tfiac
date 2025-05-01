@@ -17,6 +17,11 @@ const mockApiActions: MockApiActions = createMockApiActions({
   opt_display: 'on',
 });
 
+// Update the setDisplayState mock to correctly call setAirConditionerState
+mockApiActions.setDisplayState.mockImplementation(function(state) {
+  return mockApiActions.setAirConditionerState('opt_display', state);
+});
+
 jest.mock('../AirConditionerAPI.js', () => {
   return jest.fn().mockImplementation(() => mockApiActions);
 });
