@@ -319,6 +319,24 @@ export function getHandlerByIdentifier(
   charIdentifier: any,
   eventType: 'get' | 'set',
 ): ((callback: CharacteristicGetCallback) => void) | ((value: CharacteristicValue, callback: CharacteristicSetCallback) => void) {
+  // Get the accessory from the service if it's available
+  const accessory = service.accessory;
+  
+  // If we can access the TfiacPlatformAccessory instance
+  if (accessory && accessory.getCharacteristicHandler) {
+    // Extract the characteristic name or UUID
+    const charId = typeof charIdentifier === 'string' 
+      ? charIdentifier 
+      : charIdentifier.UUID || charIdentifier;
+    
+    // Try to get handler from the accessory's handler system
+    const handler = accessory.getCharacteristicHandler(charId, eventType);
+    if (handler) {
+      return handler;
+    }
+  }
+  
+  // Fall back to the old approach
   const char = service.getCharacteristic(charIdentifier);
   return eventType === 'get' ? char.getHandler : char.setHandler;
 }

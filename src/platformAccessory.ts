@@ -196,7 +196,11 @@ export class TfiacPlatformAccessory {
     this.characteristicHandlers.set(charId, handlers);
 
     try {
-      const char = this.service.getCharacteristic(characteristic);
+      // Resolve characteristic type if a string key was passed
+      const characteristicType = typeof characteristic === 'string'
+        ? (this.platform.Characteristic as unknown as Record<string, WithUUID<new () => Characteristic>>)[characteristic]
+        : characteristic;
+      const char = this.service.getCharacteristic(characteristicType);
       
       if (char) {
         if (getHandler && typeof char.on === 'function') {
