@@ -303,7 +303,12 @@ export class AirConditionerAPI extends EventEmitter {
    * Set the display state (on/off) for the air conditioner.
    */
   async setDisplayState(state: PowerState): Promise<void> {
-    await this.setAirConditionerState('opt_display', state);
+    // The display on/off flag corresponds to the `<Opt_display>` element
+    // in the device’s XML protocol, so we need to send it explicitly
+    // using the generic option setter instead of the high‑level
+    // `setAirConditionerState` helper (which doesn’t include this flag
+    // in the aggregated message).
+    await this.setOptionState('Opt_display', state);
   }
 
   /**
