@@ -66,7 +66,7 @@ export class TfiacPlatformAccessory {
       : 30000;
 
     this.service =
-      this.accessory.getServiceById(heaterServiceType.UUID, deviceConfig.name) ||
+      this.accessory.getService(heaterServiceType) ||
       this.accessory.addService(heaterServiceType, deviceConfig.name);
 
     if (typeof this.service.setCharacteristic === 'function') {
