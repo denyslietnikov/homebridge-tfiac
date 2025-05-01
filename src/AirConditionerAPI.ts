@@ -312,32 +312,35 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   /**
-   * Set the Turbo (Opt_super) state (on/off) for the air conditioner.
+   * Set the Turbo state (on/off) for the air conditioner.
+   * Uses the generic <Opt_super> tag in the device's XML protocol.
    */
   async setTurboState(state: PowerState): Promise<void> {
-    await this.setAirConditionerState('opt_turbo', state);
+    await this.setOptionState('Opt_super', state);
   }
 
   /**
-   * Set the Sleep (Opt_sleepMode) state (on/off) for the air conditioner.
+   * Set the Sleep state (on/off) for the air conditioner.
+   * Uses the generic <Opt_sleepMode> tag in the device's XML protocol.
    * For 'on', sends 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0', for 'off' sends 'off'.
    */
   async setSleepState(state: SleepModeState | string): Promise<void> {
-    await this.setAirConditionerState('opt_sleepMode', state);
+    await this.setOptionState('Opt_sleepMode', state);
   }
 
   /**
-   * Set the Eco (opt_eco) state (on/off) for the air conditioner.
+   * Set the Eco state (on/off) for the air conditioner.
+   * Uses the generic <Opt_eco> tag in the device's XML protocol.
    */
   async setEcoState(state: PowerState): Promise<void> {
-    await this.setAirConditionerState('opt_eco', state);
+    await this.setOptionState('Opt_eco', state);
   }
 
   /**
    * Set the Beep (Opt_beep) state (on/off) for the air conditioner.
    */
   async setBeepState(state: PowerState): Promise<void> {
-    await this.setAirConditionerState('opt_beep', state);
+    await this.setOptionState('Opt_beep', state);
   }
 }
 
