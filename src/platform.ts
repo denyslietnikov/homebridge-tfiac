@@ -452,14 +452,14 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
     const servicesToRemove: ServiceRemovalConfig[] = [
       { configFlag: 'enableDisplay', serviceName: 'Display', logMessage: 'Display Switch' },
-      { configFlag: 'enableSleep', serviceName: 'Sleep Mode', logMessage: 'Sleep Switch' },
+      { configFlag: 'enableSleep', serviceName: 'Sleep', logMessage: 'Sleep Switch' },
       { configFlag: 'enableFanSpeed', serviceName: 'Fan Speed', logMessage: 'Fan Speed' },
-      { configFlag: 'enableDry', serviceName: 'Dry Mode', logMessage: 'Dry Mode' },
-      { configFlag: 'enableFanOnly', serviceName: 'Fan Only Mode', logMessage: 'Fan Only Mode' },
+      { configFlag: 'enableDry', serviceName: 'Dry', logMessage: 'Dry Mode' },
+      { configFlag: 'enableFanOnly', serviceName: 'Fan Only', logMessage: 'Fan Only Mode' },
       { configFlag: 'enableStandaloneFan', serviceName: 'Standalone Fan', logMessage: 'Standalone Fan' },
       { configFlag: 'enableHorizontalSwing', serviceName: 'Horizontal Swing', logMessage: 'Horizontal Swing' },
       { configFlag: 'enableTurbo', serviceName: 'Turbo', logMessage: 'Turbo' },
-      { configFlag: 'enableEco', serviceName: 'ECO Mode', logMessage: 'Eco' },
+      { configFlag: 'enableEco', serviceName: 'Eco', logMessage: 'Eco' },
       { configFlag: 'enableBeep', serviceName: 'Beep', logMessage: 'Beep' },
     ];
 
