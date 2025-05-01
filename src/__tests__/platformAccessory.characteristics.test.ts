@@ -82,6 +82,9 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     // This prevents the tests from timing‑out while waiting for the callback.
     (accessory as any).deviceAPI = mockApiActions;
 
+    // Add a reference to the accessory in the service for handler retrieval
+    mockServiceInstance.accessory = accessory;
+
     const testContext = accessory as unknown as TestAccessoryContext;
     if (testContext.pollingInterval) {
       clearInterval(testContext.pollingInterval);
