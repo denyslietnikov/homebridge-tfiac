@@ -215,13 +215,16 @@ describe('FanSpeedAccessory', () => {
   });
 
   it('should reuse existing Fan service if present', () => {
-    accessory.getService = jest.fn().mockReturnValue(service) as unknown as PlatformAccessory['getService'];
+    const service = createMockService();
+    // Use proper type assertions to fix TypeScript errors
+    accessory.getServiceById = jest.fn().mockReturnValue(service) as unknown as PlatformAccessory['getServiceById'];
+    accessory.addService = jest.fn() as unknown as PlatformAccessory['addService'];
+    
     const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
     
     expect(accessory.addService).not.toHaveBeenCalled();
-    expect(accessory.getService).toHaveBeenCalled();
+    expect(accessory.getServiceById).toHaveBeenCalled();
   });
 
   it('should handle startPolling and stopPolling', () => {

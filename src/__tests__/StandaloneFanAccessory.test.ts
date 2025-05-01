@@ -48,7 +48,10 @@ describe('StandaloneFanAccessory', () => {
   });
 
   it('should use existing service if available', () => {
-    (accessory.getService as jest.Mock).mockReturnValue(service);
+    const service = createMockService();
+    // Replace getService with getServiceById to match implementation
+    accessory.getServiceById = jest.fn().mockReturnValue(service);
+    accessory.addService = jest.fn();
     const inst = new StandaloneFanAccessory(platform, accessory);
     expect(accessory.addService).not.toHaveBeenCalled();
     // ConfiguredName is set now instead of Name

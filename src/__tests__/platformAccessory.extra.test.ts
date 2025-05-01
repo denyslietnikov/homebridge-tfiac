@@ -95,9 +95,17 @@ describe('TfiacPlatformAccessory extra tests', () => {
   it('should remove sensors when disable temperature', () => {
     accessory.context!.deviceConfig.enableTemperature = false;
     // Provide existing sensor services
-    accessory.getServiceById = jest.fn()
-      .mockReturnValueOnce({}) // indoor
-      .mockReturnValueOnce({}); // outdoor
+    const indoorService = {};
+    const outdoorService = {};
+    (accessory.getServiceById as jest.Mock)
+      .mockImplementation((serviceType, id) => {
+        if (serviceType === 'TemperatureSensor' && id === 'indoor_temperature') {
+          return indoorService;
+        } else if (serviceType === 'TemperatureSensor' && id === 'outdoor_temperature') {
+          return outdoorService;
+        }
+        return null;
+      });
 
     new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
     expect(platform.log!.info).toHaveBeenCalledWith('Temperature sensors are disabled for AC');
