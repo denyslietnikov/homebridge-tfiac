@@ -48,8 +48,10 @@ export abstract class BaseSwitchAccessory {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManager.getInstance(this.deviceConfig);
 
-    // First, try to get an existing service by ID
-    this.service = this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype);
+    // 1) Try by UUID + subtype, 2) fall back to service name
+    this.service =
+      this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype) ||
+      this.accessory.getService(this.serviceName);
 
     // If service doesn't exist, check if there's a conflict before adding a new one
     if (!this.service) {
@@ -58,20 +60,12 @@ export abstract class BaseSwitchAccessory {
       } catch (error) {
         // If we encounter an error adding the service, try to recover
         this.platform.log.warn(
-          `Error adding ${this.serviceName} service with subtype '${this.serviceSubtype}' to ${this.accessory.displayName}: ${error}`,
+          `Error adding ${this.serviceName} service (subtype '${this.serviceSubtype}') to ${this.accessory.displayName}: ${error}`,
         );
-
-        // Try to find service by name as a fallback
-        const existingService = this.accessory.getService(this.serviceName);
-        if (existingService) {
-          this.platform.log.debug(`Found existing service by name '${this.serviceName}', using it instead`);
-          this.service = existingService;
-        } else {
-          // Last resort: Generate a unique subtype and try again
-          const uniqueSubtype = `${this.serviceSubtype}_${Date.now()}`;
-          this.platform.log.debug(`Trying to add service with unique subtype: ${uniqueSubtype}`);
-          this.service = this.accessory.addService(this.platform.Service.Switch, this.serviceName, uniqueSubtype);
-        }
+        // Last resort: Generate a unique subtype and try again
+        const uniqueSubtype = `${this.serviceSubtype}_${Date.now()}`;
+        this.platform.log.debug(`Trying to add service with unique subtype: ${uniqueSubtype}`);
+        this.service = this.accessory.addService(this.platform.Service.Switch, this.serviceName, uniqueSubtype);
       }
     }
 
