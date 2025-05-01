@@ -52,7 +52,6 @@ export class TfiacPlatformAccessory {
     const CharacteristicType = this.platform.Characteristic ?? this.platform.api?.hap?.Characteristic;
     // Use platform-provided service constructors
     const heaterServiceType = this.platform.Service.HeaterCooler;
-    const tempSensorServiceType: string = 'TemperatureSensor';
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
     this.deviceConfig = deviceConfig;
 
@@ -100,17 +99,35 @@ export class TfiacPlatformAccessory {
         deviceConfig,
       );
     } else {
-      this.platform.log.info(`Temperature sensors are disabled for ${deviceConfig.name}`);
-      const indoorService = this.accessory.getServiceById(tempSensorServiceType, 'indoor_temperature');
-      if (indoorService) {
-        this.accessory.removeService(indoorService);
-        this.platform.log.debug('Removed existing indoor temperature sensor service.');
-      }
-      const outdoorService = this.accessory.getServiceById(tempSensorServiceType, 'outdoor_temperature');
-      if (outdoorService) {
-        this.accessory.removeService(outdoorService);
-        this.platform.log.debug('Removed existing outdoor temperature sensor service.');
-      }
+      // Temperature services are disabled in the user‑config
+      this.platform.log.info(
+        `Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`,
+      );
+
+      const tempSensorType = this.platform.Service.TemperatureSensor;
+
+      /** Helper that removes *all* TemperatureSensor services matching the supplied predicate */
+      const removeMatchingTempServices = (predicate: (s: Service) => boolean, description: string): void => {
+        this.accessory.services
+          .filter(s => s.UUID === tempSensorType.UUID && predicate(s))
+          .forEach(s => {
+            this.accessory.removeService(s);
+            this.platform.log.debug(`Removed existing ${description} temperature sensor service.`);
+          });
+      };
+
+      // ── Indoor ──────────────────────────────────────────────────────────────────────
+      // Remove by explicit subtype *or* no subtype (legacy versions didn't set one).
+      removeMatchingTempServices(
+        s => s.subtype === 'indoor_temperature' || s.subtype === undefined,
+        'indoor',
+      );
+
+      // ── Outdoor ─────────────────────────────────────────────────────────────────────
+      removeMatchingTempServices(
+        s => s.subtype === 'outdoor_temperature',
+        'outdoor',
+      );
     }
 
     this.startPolling();
