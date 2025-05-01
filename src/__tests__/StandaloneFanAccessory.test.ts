@@ -49,6 +49,7 @@ describe('StandaloneFanAccessory', () => {
 
   it('should use existing service if available', () => {
     const service = createMockService();
+    (accessory.getService as jest.Mock).mockReturnValue(null); // ensure path uses getServiceById
     // Replace getService with getServiceById to match implementation
     accessory.getServiceById = jest.fn().mockReturnValue(service);
     accessory.addService = jest.fn();
