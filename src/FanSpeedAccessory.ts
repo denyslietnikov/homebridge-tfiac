@@ -29,7 +29,7 @@ export class FanSpeedAccessory {
 
     // Create or retrieve the Fan service
     this.service =
-      this.accessory.getServiceById(this.platform.Service.Fanv2.UUID, 'fan_speed') ||
+      this.accessory.getServiceById(this.platform.Service.Fanv2, 'fan_speed') ||
       this.accessory.addService(this.platform.Service.Fanv2, serviceName, 'fan_speed');
     
     this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);

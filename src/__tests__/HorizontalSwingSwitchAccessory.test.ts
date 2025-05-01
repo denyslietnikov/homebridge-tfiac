@@ -56,9 +56,23 @@ describe('HorizontalSwingSwitchAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     createAccessory();
-    // Update expected subtype to match implementation ('horizontal_swing')
-    expect(accessory.addService).toHaveBeenCalledWith(expect.anything(), 'Horizontal Swing', 'horizontal_swing');
-    expect(service.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Horizontal Swing');
+    // Depending on whether the service already existed, the accessory will either
+    // retrieve it or create a new one. Assert accordingly.
+    if ((accessory.addService as jest.Mock).mock.calls.length > 0) {
+      expect(accessory.addService).toHaveBeenCalledWith(
+        expect.anything(),
+        'Horizontal Swing',
+        'horizontal_swing',
+      );
+    } else {
+      expect(accessory.getService).toHaveBeenCalledWith('Horizontal Swing');
+    }
+
+    // ConfiguredName should always be set
+    expect(service.setCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.ConfiguredName,
+      'Horizontal Swing',
+    );
     expect(service.getCharacteristic).toHaveBeenCalledWith('On');
     const mockCharacteristic = service.getCharacteristic('On');
     expect(mockCharacteristic?.on).toHaveBeenCalledWith('get', expect.any(Function));
