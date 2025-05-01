@@ -267,6 +267,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         // Remove services that have been disabled in the config
         this.removeDisabledServices(existingAccessory, deviceConfigForAccessory);
 
+        // Always update context.deviceConfig so that feature flags (e.g., enableTemperature) are current
+        existingAccessory.context.deviceConfig = deviceConfigForAccessory;
+
         if (configChanged) {
           this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
           existingAccessory.context.deviceConfig = deviceConfigForAccessory;
