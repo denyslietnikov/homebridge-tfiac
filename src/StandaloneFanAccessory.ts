@@ -25,7 +25,7 @@ export class StandaloneFanAccessory {
     this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
 
     this.service =
-      this.accessory.getService(serviceName) ||
+      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalone_fan') ||
       this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalone_fan');
     
     this.service.updateCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);

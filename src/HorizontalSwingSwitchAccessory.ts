@@ -76,7 +76,11 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       if (this.cachedStatus) {
         this.cachedStatus.swing_mode = newMode;
       }
-      this.service.updateCharacteristic('On', requestedState);
+      if (this.service) {
+        this.service.updateCharacteristic('On', requestedState);
+      } else {
+        this.platform.log.warn(`Service not found for ${this.accessory.displayName} during set operation.`);
+      }
       callback(null);
 
     } catch (error) {
@@ -101,7 +105,11 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       if (newMode !== oldMode) {
         const newIsOn = newMode === SwingMode.Horizontal || newMode === SwingMode.Both;
         this.platform.log.info(`Updating Horizontal Swing characteristic for ${this.accessory.displayName} to ${newIsOn}`);
-        this.service.updateCharacteristic('On', newIsOn);
+        if (this.service) {
+          this.service.updateCharacteristic('On', newIsOn);
+        } else {
+          this.platform.log.warn(`Service not found for ${this.accessory.displayName} during status update.`);
+        }
       }
     } catch (error) {
       this.platform.log.error(`Error updating Horizontal Swing status for ${this.accessory.displayName}:`, error);

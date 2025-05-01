@@ -26,7 +26,7 @@ type SetApiStateFn = (value: boolean) => Promise<void>;
  * Handles common initialization, polling, and basic get/set handlers.
  */
 export abstract class BaseSwitchAccessory {
-  protected readonly service: Service;
+  protected readonly service: Service | undefined;
   private readonly nameChar: WithUUID<new () => Characteristic>;
   private readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
@@ -48,27 +48,53 @@ export abstract class BaseSwitchAccessory {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManager.getInstance(this.deviceConfig);
 
-    // Use existing service if present, otherwise add a new one
-    this.service =
-      this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype) ||
-      this.accessory.addService(this.platform.Service.Switch, this.serviceName, this.serviceSubtype);
+    // First, try to get an existing service by ID
+    this.service = this.accessory.getServiceById(this.platform.Service.Switch.UUID, this.serviceSubtype);
+
+    // If service doesn't exist, check if there's a conflict before adding a new one
+    if (!this.service) {
+      try {
+        this.service = this.accessory.addService(this.platform.Service.Switch, this.serviceName, this.serviceSubtype);
+      } catch (error) {
+        // If we encounter an error adding the service, try to recover
+        this.platform.log.warn(
+          `Error adding ${this.serviceName} service with subtype '${this.serviceSubtype}' to ${this.accessory.displayName}: ${error}`,
+        );
+
+        // Try to find service by name as a fallback
+        const existingService = this.accessory.getService(this.serviceName);
+        if (existingService) {
+          this.platform.log.debug(`Found existing service by name '${this.serviceName}', using it instead`);
+          this.service = existingService;
+        } else {
+          // Last resort: Generate a unique subtype and try again
+          const uniqueSubtype = `${this.serviceSubtype}_${Date.now()}`;
+          this.platform.log.debug(`Trying to add service with unique subtype: ${uniqueSubtype}`);
+          this.service = this.accessory.addService(this.platform.Service.Switch, this.serviceName, uniqueSubtype);
+        }
+      }
+    }
 
     // Determine characteristic constructions for Name and On
     this.nameChar = this.platform.Characteristic.Name;
     this.onChar = this.platform.Characteristic.On;
 
     // Set the service name characteristic
-    this.service.setCharacteristic(this.nameChar, this.serviceName);
-    // ALSO set the configured name characteristic for better display in Home app
-    this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, this.serviceName);
+    if (this.service) {
+      this.service.setCharacteristic(this.nameChar, this.serviceName);
+      // ALSO set the configured name characteristic for better display in Home app
+      this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, this.serviceName);
 
-    // Register handlers for the On characteristic
-    const onCharacteristic = this.service.getCharacteristic(this.onChar)!; // assert non-null
-    onCharacteristic.on('get', this.handleGet.bind(this));
-    onCharacteristic.on('set', this.handleSet.bind(this));
+      // Register handlers for the On characteristic
+      const onCharacteristic = this.service.getCharacteristic(this.onChar)!; // assert non-null
+      onCharacteristic.on('get', this.handleGet.bind(this));
+      onCharacteristic.on('set', this.handleSet.bind(this));
 
-    this.startPolling();
-    this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);
+      this.startPolling();
+      this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);
+    } else {
+      this.platform.log.error(`Failed to initialize ${this.logPrefix} accessory for ${this.accessory.displayName}: no service available`);
+    }
   }
 
   /**
@@ -149,7 +175,7 @@ export abstract class BaseSwitchAccessory {
       const newIsOn = this.getStatusValue(this.cachedStatus);
 
       this.platform.log.debug(`Received ${this.logPrefix} status for ${this.accessory.displayName}. Old: ${oldIsOn}, New: ${newIsOn}`);
-      if (newIsOn !== oldIsOn) {
+      if (newIsOn !== oldIsOn && this.service) {
         this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${newIsOn}`);
         this.service.updateCharacteristic(this.onChar, newIsOn);
       }
@@ -184,7 +210,9 @@ export abstract class BaseSwitchAccessory {
       await this.setApiState(requestedState);
       this.cacheManager.clear();
       this.platform.log.info(`${this.logPrefix} successfully set to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
-      this.service.updateCharacteristic(this.onChar, requestedState);
+      if (this.service) {
+        this.service.updateCharacteristic(this.onChar, requestedState);
+      }
       callback(null);
     } catch (error) {
       this.platform.log.error(`Error setting ${this.logPrefix} to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}:`, error);
