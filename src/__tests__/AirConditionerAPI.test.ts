@@ -636,29 +636,29 @@ describe('AirConditionerAPI', () => {
     });
 
     it('should call setTurboState for on and off', async () => {
-      // Directly mock setAirConditionerState instead of sendCommand
-      const spy = jest.spyOn(api, 'setAirConditionerState').mockResolvedValue();
+      // Mock setOptionState instead of setAirConditionerState
+      const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
       
       await api.setTurboState(PowerState.On);
       await api.setTurboState(PowerState.Off);
       
       // Now we should have exactly 2 calls
       expect(spy).toHaveBeenCalledTimes(2);
-      expect(spy).toHaveBeenNthCalledWith(1, 'opt_turbo', PowerState.On);
-      expect(spy).toHaveBeenNthCalledWith(2, 'opt_turbo', PowerState.Off);
+      expect(spy).toHaveBeenNthCalledWith(1, 'Opt_super', PowerState.On);
+      expect(spy).toHaveBeenNthCalledWith(2, 'Opt_super', PowerState.Off);
     });
 
     it('should set sleep state using setSleepState', async () => {
-      // Directly mock setAirConditionerState instead of sendCommand
-      const spy = jest.spyOn(api, 'setAirConditionerState').mockResolvedValue();
+      // Mock setOptionState instead of setAirConditionerState
+      const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
       
       await api.setSleepState(PowerState.On);
       await api.setSleepState(PowerState.Off);
       
       // Now we should have exactly 2 calls
       expect(spy).toHaveBeenCalledTimes(2);
-      expect(spy).toHaveBeenNthCalledWith(1, 'opt_sleepMode', PowerState.On);
-      expect(spy).toHaveBeenNthCalledWith(2, 'opt_sleepMode', PowerState.Off);
+      expect(spy).toHaveBeenNthCalledWith(1, 'Opt_sleepMode', PowerState.On);
+      expect(spy).toHaveBeenNthCalledWith(2, 'Opt_sleepMode', PowerState.Off);
     });
   });
 });
@@ -756,29 +756,29 @@ describe('AirConditionerAPI extra coverage', () => {
   });
 
   it('should call setTurboState for on and off', async () => {
-    // Directly mock setAirConditionerState instead of sendCommand
-    const spy = jest.spyOn(api, 'setAirConditionerState').mockResolvedValue();
+    // Mock setOptionState instead of setAirConditionerState
+    const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
     
     await api.setTurboState(PowerState.On);
     await api.setTurboState(PowerState.Off);
     
     // Now we should have exactly 2 calls
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy).toHaveBeenNthCalledWith(1, 'opt_turbo', PowerState.On);
-    expect(spy).toHaveBeenNthCalledWith(2, 'opt_turbo', PowerState.Off);
+    expect(spy).toHaveBeenNthCalledWith(1, 'Opt_super', PowerState.On);
+    expect(spy).toHaveBeenNthCalledWith(2, 'Opt_super', PowerState.Off);
   });
 
   it('should call setSleepState for on and off', async () => {
-    // Directly mock setAirConditionerState instead of sendCommand
-    const spy = jest.spyOn(api, 'setAirConditionerState').mockResolvedValue();
+    // Mock setOptionState instead of setAirConditionerState
+    const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
     
     await api.setSleepState(PowerState.On);
     await api.setSleepState(PowerState.Off);
     
     // Now we should have exactly 2 calls
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy).toHaveBeenNthCalledWith(1, 'opt_sleepMode', PowerState.On);
-    expect(spy).toHaveBeenNthCalledWith(2, 'opt_sleepMode', PowerState.Off);
+    expect(spy).toHaveBeenNthCalledWith(1, 'Opt_sleepMode', PowerState.On);
+    expect(spy).toHaveBeenNthCalledWith(2, 'Opt_sleepMode', PowerState.Off);
   });
 
   it('should cleanup all timeouts', () => {
