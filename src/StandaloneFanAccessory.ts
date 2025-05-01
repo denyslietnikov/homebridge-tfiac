@@ -24,8 +24,13 @@ export class StandaloneFanAccessory {
     this.deviceAPI = new AirConditionerAPI(deviceConfig.ip, deviceConfig.port ?? 7777);
     this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
 
+    const existingService =
+      this.accessory.getService(serviceName) || // search by display name first
+      this.accessory.getServiceById(this.platform.Service.Fan, 'standalone_fan') || // by class + subtype
+      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalone_fan'); // by UUID + subtype
+
     this.service =
-      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalone_fan') ||
+      existingService ||
       this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalone_fan');
     
     this.service.updateCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);

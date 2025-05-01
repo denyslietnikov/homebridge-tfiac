@@ -476,6 +476,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           // Assume Switch service for these optional accessories
           service = accessory.getServiceById(this.Service.Switch.UUID, subtype);
           // Add specific checks if other service types are used (e.g., Fanv2 for FanSpeed)
+          if (!service && serviceName === 'Standalone Fan') {
+            service = accessory.getServiceById(this.Service.Fan.UUID, 'standalone_fan');
+          }
           if (!service && serviceName === 'Fan Speed') {
             service = accessory.getServiceById(this.Service.Fanv2.UUID, 'fanspeed');
           }
