@@ -348,14 +348,17 @@ export class AirConditionerAPI extends EventEmitter {
   /**
    * Set the Sleep state (on/off) for the air conditioner.
    * Uses the generic <Opt_sleepMode> tag in the device's XML protocol.
-   * For 'on', sends 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0', for 'off' sends 'off'.
+   * For 'on', sends the detailed sleep string; for 'off', sends 'off'.
    */
   async setSleepState(state: SleepModeState | string): Promise<void> {
-    // AC expects a detailed string for sleep mode "on" and 'off' otherwise
-    const sleepValue =
-      state === SleepModeState.On
-        ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
-        : 'off';
+    const isOn = 
+      (typeof state === 'string' && state.toLowerCase() !== 'off') ||
+      state === SleepModeState.On;
+
+    const sleepValue = isOn
+      ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
+      : 'off';
+
     await this.setOptionState('Opt_sleepMode', sleepValue);
   }
 
