@@ -553,7 +553,7 @@ export class TfiacPlatformAccessory {
     callback: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET SwingMode:', value);
-    const mode = value === this.platform.api.hap.Characteristic.SwingMode.SWING_ENABLED ? SwingMode.Both : SwingMode.Off; // Use Enum
+    const mode = value === this.platform.api.hap.Characteristic.SwingMode.SWING_ENABLED ? SwingMode.Vertical : SwingMode.Off; // Use Vertical instead of Both
     try {
       await this.deviceAPI.setSwingMode(mode);
       this.cacheManager.clear();
