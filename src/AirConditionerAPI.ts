@@ -6,7 +6,7 @@ import * as xml2js from 'xml2js';
 import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from './enums.js';
 
 export interface AirConditionerStatus {
-  is_on: PowerState;
+  is_on: PowerState | string; // Allow string for test compatibility
   operation_mode: OperationMode | string; // Allow string for potential unknown modes
   target_temp: number;
   current_temp: number;

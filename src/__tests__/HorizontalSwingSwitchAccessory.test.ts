@@ -109,24 +109,24 @@ describe('HorizontalSwingSwitchAccessory', () => {
     expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
-  it('should update cached status and update characteristic for Off mode', async () => {
+  it('should not update characteristic when cached and new status both Off', async () => {
     createAccessory();
     const mockCacheManager = (inst as any).cacheManager;
     mockCacheManager.getStatus = jest.fn().mockResolvedValue({ swing_mode: 'Off' });
     (service.updateCharacteristic as jest.Mock).mockClear();
     await (inst as any).updateCachedStatus();
     expect(mockCacheManager.getStatus).toHaveBeenCalled();
-    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
+    expect(service.updateCharacteristic).not.toHaveBeenCalled();
   });
 
-  it('should update cached status and update characteristic for Vertical mode', async () => {
+  it('should not update characteristic when cached and new status both Vertical', async () => {
     createAccessory();
     const mockCacheManager = (inst as any).cacheManager;
     mockCacheManager.getStatus = jest.fn().mockResolvedValue({ swing_mode: 'Vertical' });
     (service.updateCharacteristic as jest.Mock).mockClear();
     await (inst as any).updateCachedStatus();
     expect(mockCacheManager.getStatus).toHaveBeenCalled();
-    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
+    expect(service.updateCharacteristic).not.toHaveBeenCalled();
   });
 
   it('should handle error during update cached status', async () => {

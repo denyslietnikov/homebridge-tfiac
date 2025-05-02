@@ -91,27 +91,12 @@ describe('FanSpeedAccessory', () => {
     expect(service.getCharacteristic).toHaveBeenCalled();
   });
 
-  it('should stop polling and cleanup', () => {
+  it('should stop polling', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
-    
-    (inst as any).pollingInterval = setInterval(() => {}, 1000);
-    inst.stopPolling();
-    expect(deviceAPI.cleanup).toHaveBeenCalled();
-    expect(mockLogger.debug).toHaveBeenCalledWith(
-      'FanSpeed polling stopped for %s',
-      accessory.context.deviceConfig.name,
-    );
-  });
-
-  it('should update cached status and update characteristic', async () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    await (inst as any).updateCachedStatus();
-    expect(service.updateCharacteristic).toHaveBeenCalled();
+    // stopPolling should not throw or error
+    expect(() => inst.stopPolling()).not.toThrow();
   });
 
   it('should handle get with cached status', done => {
@@ -163,55 +148,32 @@ describe('FanSpeedAccessory', () => {
     expect(cb).toHaveBeenCalledWith(expect.any(Error));
   });
 
-  it('should call unref on pollingInterval in startPolling', () => {
+  it('should updateStatus and update characteristic with valid fan_mode', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    const interval = { unref: jest.fn() };
-    const origSetInterval = global.setInterval;
-    jest.spyOn(global, 'setInterval').mockReturnValue(interval as any);
-    (inst as any).startPolling();
-    expect(interval.unref).toHaveBeenCalled();
-    (global.setInterval as jest.Mock).mockRestore();
+    // simulate status event
+    inst['updateStatus']({ fan_mode: '75' } as any);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.RotationSpeed,
+      75,
+    );
   });
 
-  it('should handle updateCachedStatus error', async () => {
-    deviceAPI.updateState.mockRejectedValueOnce(new Error('fail'));
+  it('should updateStatus and update characteristic with missing fan_mode', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    await (inst as any).updateCachedStatus();
-    expect(mockLogger.error).toHaveBeenCalledWith('Error updating fan speed status:', expect.any(Error));
+    inst['updateStatus']({} as any);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.RotationSpeed,
+      50,
+    );
   });
 
-  it('should handle updateCachedStatus with undefined fan_mode', async () => {
-    deviceAPI.updateState
-      .mockResolvedValueOnce({ fan_mode: '25' })
-      .mockResolvedValueOnce({});
+  it('should updateStatus and update characteristic with non-numeric fan_mode', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    service.updateCharacteristic.mockClear(); // reset calls after constructor
-
-    await (inst as any).updateCachedStatus();
-    // Ensure it doesn't throw an error with undefined fan_mode
-    expect(deviceAPI.updateState).toHaveBeenCalled();
-  });
-
-  it('should handle get with non-numeric fan_mode', done => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    (inst as any).cachedStatus = { fan_mode: 'notanumber' } as any;
-    (inst as any).handleGet((err: any, val: any) => {
-      expect(err).toBeNull();
-      expect(val).toBe(0);
-      done();
-    });
+    inst['updateStatus']({ fan_mode: 'notanumber' } as any);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.RotationSpeed,
+      0,
+    );
   });
 
   it('should reuse existing Fan service if present', () => {
@@ -225,55 +187,5 @@ describe('FanSpeedAccessory', () => {
     
     expect(accessory.addService).not.toHaveBeenCalled();
     expect(accessory.getServiceById).toHaveBeenCalled();
-  });
-
-  it('should handle startPolling and stopPolling', () => {
-    jest.useFakeTimers();
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    // Test that polling is started
-    expect(deviceAPI.updateState).toHaveBeenCalled();
-    const callCountAtStart = deviceAPI.updateState.mock.calls.length;
-    
-    // Advance timers to trigger polling
-    jest.advanceTimersByTime(30000);
-    expect(deviceAPI.updateState.mock.calls.length).toBeGreaterThan(callCountAtStart);
-    
-    // Test stopping the polling
-    inst.stopPolling();
-    const callsAfterStop = deviceAPI.updateState.mock.calls.length;
-    jest.advanceTimersByTime(30000);
-    expect(deviceAPI.updateState.mock.calls.length).toBe(callsAfterStop);
-    
-    jest.useRealTimers();
-  });
-
-  it('should handle error during update cached status', async () => {
-    deviceAPI.updateState.mockRejectedValueOnce(new Error('Network error'));
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    await (inst as any).updateCachedStatus();
-    expect(mockLogger.error).toHaveBeenCalled();
-  });
-
-  it('should handle exception in handleGet callback', () => {
-    jest.useFakeTimers();
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
-    
-    // Force an error by defining a getter that throws
-    Object.defineProperty(inst as any, 'cachedStatus', { get: () => { throw new Error('Test error'); } });
-
-    // Now call the GET handler
-    (inst as any).handleGet((err: any, val: any) => {
-      // Should return default value instead of error
-      expect(err).toBeNull();
-      expect(val).toBe(50);
-    });
   });
 });

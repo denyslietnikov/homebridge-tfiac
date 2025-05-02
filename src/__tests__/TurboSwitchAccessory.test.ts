@@ -33,6 +33,9 @@ describe('TurboSwitchAccessory', () => {
     
     // Mock the CacheManager constructor to return our mock
     (CacheManager as unknown as jest.Mock).mockImplementation(() => mockCacheManager);
+    // Ensure BaseSwitchAccessory uses our mockCacheManager via getInstance
+    /** @ts-ignore */
+    (CacheManager as unknown as any).getInstance = (_config: any) => mockCacheManager;
 
     // Create platform mock
     platform = {
@@ -177,8 +180,17 @@ describe('TurboSwitchAccessory', () => {
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
+  it('should updateStatus and update On characteristic when turbo state changes', () => {
+    inst = new TurboSwitchAccessory(platform, accessory);
+    // simulate status event
+    inst['updateStatus']({ opt_turbo: PowerState.On } as any);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+      'On',
+      true,
+    );
+  });
+
   it('stops polling and cleans up api', () => {
-    (inst as any).pollingInterval = setInterval(() => {}, 1000);
     inst.stopPolling();
     expect(mockCacheManager.cleanup).toHaveBeenCalled();
   });

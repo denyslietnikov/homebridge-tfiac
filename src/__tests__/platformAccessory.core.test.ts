@@ -130,7 +130,7 @@ describe('TfiacPlatformAccessory - Core', () => {
       mockApiActions.cleanup.mockClear();
     }
     jest.clearAllTimers();
-    Object.values(mockApiActions).forEach(mockFn => mockFn.mockClear());
+    jest.clearAllMocks();
   });
 
   // --- Test Cases ---
