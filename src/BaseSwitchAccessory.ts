@@ -47,6 +47,13 @@ export abstract class BaseSwitchAccessory {
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManager.getInstance(this.deviceConfig);
+    // Subscribe to API debug events when plugin debug mode is enabled
+    if (this.platform.config?.debug && this.cacheManager.api && typeof this.cacheManager.api.on === 'function') {
+      this.cacheManager.api.on('debug', (msg: string) => {
+        // Always log API debug messages at info level when plugin debug is enabled
+        this.platform.log.info(`${this.logPrefix} API: ${msg}`);
+      });
+    }
 
     // 1) Try by UUID + subtype, 2) fall back to service name
     this.service =

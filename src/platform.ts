@@ -118,7 +118,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         accessoryClass: SleepSwitchAccessory,
         accessoryMap: this.sleepAccessories,
         displayName: 'Sleep Switch',
-        defaultValue: false,
+        defaultValue: true, // Changed default to true to enable sleep by default
       },
       {
         configFlag: 'enableFanSpeed',

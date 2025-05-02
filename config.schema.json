@@ -124,6 +124,13 @@
             }
           }
         }
+      },
+      "debug": {
+        "title": "Debug Logging",
+        "description": "Enable plugin-specific debug logging",
+        "type": "boolean",
+        "required": false,
+        "default": false
       }
     }
   },
