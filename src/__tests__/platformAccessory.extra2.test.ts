@@ -274,7 +274,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
       handler(hapConstants.Characteristic.SwingMode.SWING_ENABLED, (err) => {
         try {
           expect(err).toBeNull();
-          expect(mockApi.setSwingMode).toHaveBeenCalledWith('Both');
+          expect(mockApi.setSwingMode).toHaveBeenCalledWith('Vertical');
           done();
         } catch (e) {
           done(e);

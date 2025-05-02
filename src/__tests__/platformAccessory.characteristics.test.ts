@@ -349,7 +349,7 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     });
     
     it('should get SWING_ENABLED based on cache', (done) => {
-      (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, swing_mode: 'Both' };
+      (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, swing_mode: 'Vertical' };
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
       const callback: CharacteristicGetCallback = (error, value) => {
         expect(error).toBeNull();
@@ -359,7 +359,7 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       handler(callback);
     });
 
-    it('should set swing mode to Both (ENABLED)', async () => {
+    it('should set swing mode to Vertical (ENABLED)', async () => {
       mockApiActions.setSwingMode.mockResolvedValueOnce(undefined);
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
       const value = hapConstants.Characteristic.SwingMode.SWING_ENABLED;
@@ -369,7 +369,7 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
           clearTimeout(timer);
           try {
             expect(error).toBeNull();
-            expect(mockApiActions.setSwingMode).toHaveBeenCalledWith('Both');
+            expect(mockApiActions.setSwingMode).toHaveBeenCalledWith('Vertical');
             resolve();
           } catch (e) {
             reject(e);
