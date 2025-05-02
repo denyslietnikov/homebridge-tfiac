@@ -58,10 +58,10 @@ jobs:
       - name: 📦 Deprecate old npm versions
         if: success()
         run: |
+          set +e
           PACKAGE_NAME=$(node -p "require('./package.json').name")
           echo "Fetching published versions for $PACKAGE_NAME..."
           VERSIONS_JSON=$(npm view "$PACKAGE_NAME" versions --json)
-          # Deprecate all but the latest 10 versions
           OLD_VERSIONS=$(echo "$VERSIONS_JSON" | jq -r '.[0:-10][]')
           if [ -z "$OLD_VERSIONS" ]; then
             echo "No older versions to deprecate."
@@ -69,7 +69,8 @@ jobs:
           fi
           for VERSION in $OLD_VERSIONS; do
             echo "Deprecating $PACKAGE_NAME@$VERSION"
-            npm deprecate "$PACKAGE_NAME@$VERSION" "Deprecated in favor of newer releases"
+            npm deprecate "$PACKAGE_NAME@$VERSION" "Deprecated in favor of newer releases" \
+              || echo "Skipping $PACKAGE_NAME@$VERSION (already deprecated or not found)"
           done
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

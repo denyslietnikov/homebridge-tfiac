@@ -570,9 +570,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     for (const config of this.optionalAccessoryConfigs) {
       const instance = config.accessoryMap.get(uuid);
       if (instance) {
-        if (typeof instance.stopPolling === 'function') {
-          instance.stopPolling();
-        }
+        // Call stopPolling if defined on the instance
+        (instance as { stopPolling?: () => void }).stopPolling?.();
         config.accessoryMap.delete(uuid);
       }
     }

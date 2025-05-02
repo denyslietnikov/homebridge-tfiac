@@ -55,10 +55,9 @@ export class TfiacPlatformAccessory {
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
     this.deviceConfig = deviceConfig;
 
-    const ip = deviceConfig.ip;
-    const port = deviceConfig.port ?? 7777;
-    this.deviceAPI = new AirConditionerAPI(ip, port);
     this.cacheManager = CacheManager.getInstance(deviceConfig);
+    // Shared API instance for all accessory services
+    this.deviceAPI = this.cacheManager.api;
 
     this.pollInterval = deviceConfig.updateInterval
       ? deviceConfig.updateInterval * 1000
@@ -313,12 +312,16 @@ export class TfiacPlatformAccessory {
 
       this.indoorTemperatureSensorAccessory?.updateStatus(status);
       this.outdoorTemperatureSensorAccessory?.updateStatus(status);
+      // Emit centralized status to subscribers
+      this.cacheManager.api.emit('status', status);
 
     } catch (error) {
       this.platform.log.error('Error updating cached status:', error);
       this.updateHeaterCoolerCharacteristics(null);
       this.indoorTemperatureSensorAccessory?.updateStatus(null);
       this.outdoorTemperatureSensorAccessory?.updateStatus(null);
+      // Notify subscribers of null status on error
+      this.cacheManager.api.emit('status', null);
     }
   }
 

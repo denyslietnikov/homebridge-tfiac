@@ -31,10 +31,12 @@ export abstract class BaseSwitchAccessory {
   private readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
   protected cachedStatus: Partial<AirConditionerStatus> | null = null;
-  protected pollingInterval: NodeJS.Timeout | null = null;
-  protected initialDelayTimer: NodeJS.Timeout | null = null;
+
   protected isPolling = false; // Flag to prevent concurrent polling updates
   protected cacheManager: CacheManager;
+
+  // Listener for centralized status updates
+  private statusListener!: (status: import('./AirConditionerAPI').AirConditionerStatus | null) => void;
 
   constructor(
     protected readonly platform: TfiacPlatform,
@@ -91,69 +93,25 @@ export abstract class BaseSwitchAccessory {
       onCharacteristic.on('get', this.handleGet.bind(this));
       onCharacteristic.on('set', this.handleSet.bind(this));
 
-      this.startPolling();
       this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);
+      // Subscribe to centralized status updates instead of individual polling
+      this.statusListener = this.updateStatus.bind(this);
+      if (typeof this.cacheManager.api.on === 'function') {
+        this.cacheManager.api.on('status', this.statusListener);
+      }
     } else {
       this.platform.log.error(`Failed to initialize ${this.logPrefix} accessory for ${this.accessory.displayName}: no service available`);
     }
   }
 
-  /**
-   * Starts the polling mechanism to update the accessory state periodically.
-   */
-  startPolling() {
-    if (this.pollingInterval || this.initialDelayTimer) {
-      this.platform.log.debug(`Polling or initial delay already active for ${this.logPrefix} on ${this.accessory.displayName}.`);
-      return;
-    }
-    const intervalSeconds = this.deviceConfig.updateInterval || 30;
-    const intervalMillis = intervalSeconds * 1000;
-    // Add random delay up to intervalMillis to stagger API calls
-    const randomDelay = Math.random() * intervalMillis;
-
-    this.platform.log.debug(
-      `Starting polling for ${this.logPrefix} on ${this.accessory.displayName} with interval ${intervalSeconds}s after ` +
-      `${Math.round(randomDelay / 1000)}s delay.`,
-    );
-
-    // Initial update after random delay
-    this.initialDelayTimer = setTimeout(() => {
-      this.initialDelayTimer = null; // Clear the handle once executed
-      this.updateCachedStatus();
-      // Then set up regular interval
-      this.pollingInterval = setInterval(() => {
-        this.updateCachedStatus();
-      }, intervalMillis);
-      // Ensure timer does not keep node process alive
-      if (this.pollingInterval.unref) {
-        this.pollingInterval.unref();
-      }
-    }, randomDelay);
-    // Ensure initial delay timer does not keep node process alive
-    if (this.initialDelayTimer.unref) {
-      this.initialDelayTimer.unref();
-    }
-  }
-
-  /**
-   * Stops the polling mechanism and cleans up resources.
-   */
-  stopPolling() {
-    if (this.initialDelayTimer) {
-      this.platform.log.debug(`Clearing initial polling delay for ${this.logPrefix} on ${this.accessory.displayName}.`);
-      clearTimeout(this.initialDelayTimer);
-      this.initialDelayTimer = null;
-    }
-    if (this.pollingInterval) {
-      this.platform.log.debug(`Stopping polling interval for ${this.logPrefix} on ${this.accessory.displayName}.`);
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-    } else {
-      this.platform.log.debug(`Polling interval already stopped for ${this.logPrefix} on ${this.accessory.displayName}.`);
-    }
-    // Call cleanup on the cache manager
+  /** Unsubscribe from centralized status updates */
+  public stopPolling(): void {
+    // Cleanup cache and API
     this.cacheManager.cleanup();
-    this.platform.log.debug(`Called cleanup for ${this.logPrefix} on ${this.accessory.displayName}.`);
+    // Unsubscribe listeners if supported
+    if (typeof this.cacheManager.api.off === 'function') {
+      this.cacheManager.api.off('status', this.statusListener!);
+    }
   }
 
   /**
@@ -171,23 +129,29 @@ export abstract class BaseSwitchAccessory {
     this.cacheManager.clear();
     try {
       const status = await this.cacheManager.getStatus();
-      const oldIsOn = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
+      const oldValue = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
       this.cachedStatus = status;
-      const newIsOn = this.getStatusValue(this.cachedStatus);
-
-      this.platform.log.debug(`Received ${this.logPrefix} status for ${this.accessory.displayName}. Old: ${oldIsOn}, New: ${newIsOn}`);
-      if (newIsOn !== oldIsOn && this.service) {
-        this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${newIsOn}`);
-        this.service.updateCharacteristic(this.onChar, newIsOn);
+      const newValue = this.getStatusValue(status as Partial<import('./AirConditionerAPI').AirConditionerStatus>);
+      if (newValue !== oldValue && this.service) {
+        this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${newValue}`);
+        this.service.updateCharacteristic(this.onChar, newValue);
       }
     } catch (error) {
-      const displayName = this.accessory.displayName;
-      this.platform.log.error(`Error updating ${this.logPrefix} status for ${displayName}:`, error);
-      // Optionally reset cached status or handle error state
-      // this.cachedStatus = null;
-      // this.service.updateCharacteristic(this.platform.Characteristic.On, new Error('Polling failed'));
+      this.platform.log.error(`Error updating ${this.logPrefix} status for ${this.accessory.displayName}:`, error);
     } finally {
       this.isPolling = false;
+    }
+  }
+
+  /**
+   * Update this switch based on centralized status.
+   */
+  public updateStatus(status: import('./AirConditionerAPI').AirConditionerStatus | null): void {
+    // Update cached status and characteristic
+    this.cachedStatus = status;
+    const newValue = status ? this.getStatusValue(status) : false;
+    if (this.service) {
+      this.service.updateCharacteristic(this.onChar, newValue);
     }
   }
 

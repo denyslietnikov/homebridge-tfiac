@@ -7,13 +7,12 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import { PowerState, FanSpeed } from './enums.js';
+import CacheManager from './CacheManager.js';
 
 export class StandaloneFanAccessory {
   private service: Service;
   private deviceAPI: AirConditionerAPI;
-  private cachedStatus: AirConditionerStatus | null = null;
-  private pollInterval: number;
-  private pollingInterval: NodeJS.Timeout | null = null;
+  private cacheManager: CacheManager;
 
   constructor(
     private readonly platform: TfiacPlatform,
@@ -21,20 +20,21 @@ export class StandaloneFanAccessory {
   ) {
     const serviceName = 'Standalone Fan';
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
-    this.deviceAPI = new AirConditionerAPI(deviceConfig.ip, deviceConfig.port ?? 7777);
-    this.pollInterval = deviceConfig.updateInterval ? deviceConfig.updateInterval * 1000 : 30000;
+    this.cacheManager = CacheManager.getInstance(deviceConfig);
+    this.deviceAPI = this.cacheManager.api;
 
     const existingService =
-      this.accessory.getService(serviceName) || // search by display name first
-      this.accessory.getServiceById(this.platform.Service.Fan, 'standalone_fan') || // by class + subtype
-      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalone_fan'); // by UUID + subtype
+      this.accessory.getService(serviceName) ||
+      this.accessory.getServiceById(this.platform.Service.Fan, 'standalone_fan') ||
+      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalone_fan');
 
     this.service =
       existingService ||
       this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalone_fan');
-    
     this.service.updateCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
-    
+
+    // Subscribe to centralized status updates
+    this.cacheManager.api.on('status', this.updateStatus.bind(this));
     this.service
       .getCharacteristic(this.platform.Characteristic.On)
       .on('get', this.handleGet.bind(this))
@@ -43,58 +43,25 @@ export class StandaloneFanAccessory {
       .getCharacteristic(this.platform.Characteristic.RotationSpeed)
       .on('get', this.handleRotationSpeedGet.bind(this))
       .on('set', this.handleRotationSpeedSet.bind(this));
-
-    this.startPolling();
   }
 
+  /** No-op stub for stopPolling; cleanup handled by platform */
   public stopPolling(): void {
-    if (this.pollingInterval) {
-      clearInterval(this.pollingInterval);
-      this.pollingInterval = null;
-    }
-    this.deviceAPI.cleanup();
+    // nothing to clear
   }
 
-  private startPolling(): void {
-    this.updateCachedStatus();
-    
-    // Immediately warm up the cache
-    this.updateCachedStatus().catch(err => {
-      this.platform.log.error('Initial fan state fetch failed:', err);
-    });
-    
-    this.pollingInterval = setInterval(() => {
-      this.updateCachedStatus();
-    }, this.pollInterval);
-    this.pollingInterval.unref();
-  }
-
-  private async updateCachedStatus(): Promise<void> {
-    try {
-      const status = await this.deviceAPI.updateState();
-      const oldIsOn = this.cachedStatus?.is_on === PowerState.On;
-      this.cachedStatus = status;
-      if (this.service && status) {
-        const newIsOn = this.cachedStatus.is_on === PowerState.On;
-        if (newIsOn !== oldIsOn) {
-          this.platform.log.info(`Updating On characteristic for ${this.accessory.displayName} to ${newIsOn}`);
-          this.service.updateCharacteristic(this.platform.Characteristic.On, newIsOn);
-        }
-
-        const newRotationSpeed = this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode as FanSpeed);
-        this.service.updateCharacteristic(
-          this.platform.Characteristic.RotationSpeed,
-          newRotationSpeed,
-        );
-      }
-    } catch (error) {
-      this.platform.log.error('Error updating fan status:', error);
-    }
+  private updateStatus(status: Partial<AirConditionerStatus> | null): void {
+    const isOn = status && status.is_on ? status.is_on === PowerState.On : false;
+    this.service.updateCharacteristic(this.platform.Characteristic.On, isOn);
+    const speed = status && typeof status.fan_mode === 'string'
+      ? this.mapFanModeToRotationSpeed(status.fan_mode as FanSpeed)
+      : 50;
+    this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, speed);
   }
 
   private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
-    const currentValue = this.cachedStatus ? this.cachedStatus.is_on === PowerState.On : false;
-    callback(null, currentValue);
+    const value = this.service.getCharacteristic(this.platform.Characteristic.On).value as boolean;
+    callback(null, value ?? false);
   }
 
   private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
@@ -105,7 +72,7 @@ export class StandaloneFanAccessory {
         } else {
           await this.deviceAPI.turnOff();
         }
-        this.updateCachedStatus();
+        this.cacheManager.clear();
         callback(null);
       } catch (err) {
         callback(err as Error);
@@ -114,16 +81,15 @@ export class StandaloneFanAccessory {
   }
 
   private handleRotationSpeedGet(callback: (err: Error | null, value?: number) => void): void {
-    const currentValue = this.cachedStatus ? this.mapFanModeToRotationSpeed(this.cachedStatus.fan_mode as FanSpeed) : 50;
-    callback(null, currentValue);
+    const value = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).value as number;
+    callback(null, value ?? 50);
   }
 
   private async handleRotationSpeedSet(value: CharacteristicValue, callback: (err?: Error | null) => void): Promise<void> {
     (async () => {
       try {
-        const fanMode = this.mapRotationSpeedToFanMode(value as number);
-        await this.deviceAPI.setFanSpeed(fanMode);
-        this.updateCachedStatus();
+        await this.deviceAPI.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
+        this.cacheManager.clear();
         callback(null);
       } catch (err) {
         callback(err as Error);

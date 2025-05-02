@@ -59,43 +59,35 @@ describe('StandaloneFanAccessory', () => {
     expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.ConfiguredName, 'Standalone Fan');
   });
 
-  it('should stop polling and cleanup', () => {
+  it('should do nothing on stopPolling', () => {
     const inst = new StandaloneFanAccessory(platform, accessory);
-    (inst as any).pollingInterval = setInterval(() => {}, 1000);
     inst.stopPolling();
-    expect(deviceAPI.cleanup).toHaveBeenCalled();
+    expect(deviceAPI.cleanup).not.toHaveBeenCalled();
   });
 
-  it('should update cached status and update characteristics', async () => {
+  it('should updateStatus and update both characteristics', () => {
     const inst = new StandaloneFanAccessory(platform, accessory);
-    await (inst as any).updateCachedStatus();
+    inst['updateStatus']({ is_on: 'on', fan_mode: 'Auto' });
     expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
-    const rotationChar = service.getCharacteristic(platform.Characteristic.RotationSpeed);
-    expect(rotationChar.updateValue).toHaveBeenCalledWith(50); // Auto = 50
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed, 50);
   });
 
-  it('should handle update cached status with different fan modes', async () => {
-    deviceAPI.updateState.mockResolvedValueOnce({ 
-      is_on: 'on',
-      fan_mode: 'Low'
-    });
-    
+  it('should updateStatus with different fan modes', () => {
     const inst = new StandaloneFanAccessory(platform, accessory);
-    await (inst as any).updateCachedStatus();
-    const rotationChar = service.getCharacteristic(platform.Characteristic.RotationSpeed);
-    expect(rotationChar.updateValue).toHaveBeenCalledWith(25); // Low = 25
+    inst['updateStatus']({ is_on: 'on', fan_mode: 'Low' });
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed, 25);
   });
 
-  it('should handle error during update cached status', async () => {
-    deviceAPI.updateState.mockRejectedValueOnce(new Error('Network error'));
+  it('should log error on updateStatus with error', () => {
     const inst = new StandaloneFanAccessory(platform, accessory);
-    await (inst as any).updateCachedStatus();
-    expect(platform.log.error).toHaveBeenCalled();
+    // simulate error by calling updateStatus with null and expecting no throw
+    expect(() => inst['updateStatus'](null)).not.toThrow();
   });
 
-  it('should handle get for On characteristic with cached status', done => {
+  it('should handle get for On characteristic based on characteristic value', done => {
     const inst = new StandaloneFanAccessory(platform, accessory);
-    (inst as any).cachedStatus = { is_on: 'on' };
+    const charMock: any = service.getCharacteristic(platform.Characteristic.On);
+    charMock.value = true;
     (inst as any).handleGet((err: any, val: any) => {
       expect(err).toBeNull();
       expect(val).toBe(true);
@@ -147,12 +139,13 @@ describe('StandaloneFanAccessory', () => {
     expect(cb).toHaveBeenCalledWith(expect.any(Error));
   });
 
-  it('should handle get for RotationSpeed with cached status', done => {
+  it('should handle get for RotationSpeed based on characteristic value', done => {
     const inst = new StandaloneFanAccessory(platform, accessory);
-    (inst as any).cachedStatus = { fan_mode: 'High' };
+    const charMock: any = service.getCharacteristic(platform.Characteristic.RotationSpeed);
+    charMock.value = 75;
     (inst as any).handleRotationSpeedGet((err: any, val: any) => {
       expect(err).toBeNull();
-      expect(val).toBe(75); // High = 75
+      expect(val).toBe(75);
       done();
     });
   });

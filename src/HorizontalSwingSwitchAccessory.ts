@@ -88,31 +88,4 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       callback(error as Error);
     }
   }
-
-  // Override updateCachedStatus to update based on swing_mode
-  protected async updateCachedStatus(): Promise<void> {
-    this.platform.log.debug(`Updating Horizontal Swing status for ${this.accessory.displayName}...`);
-    try {
-      const status = await this.cacheManager.getStatus();
-      if (!status) {
-        this.platform.log.warn(`Received null status for ${this.logPrefix} on ${this.accessory.displayName}. Skipping update.`);
-        return;
-      }
-      const oldMode = this.cachedStatus?.swing_mode;
-      this.cachedStatus = status;
-      const newMode = status?.swing_mode;
-
-      if (newMode !== oldMode) {
-        const newIsOn = newMode === SwingMode.Horizontal || newMode === SwingMode.Both;
-        this.platform.log.info(`Updating Horizontal Swing characteristic for ${this.accessory.displayName} to ${newIsOn}`);
-        if (this.service) {
-          this.service.updateCharacteristic('On', newIsOn);
-        } else {
-          this.platform.log.warn(`Service not found for ${this.accessory.displayName} during status update.`);
-        }
-      }
-    } catch (error) {
-      this.platform.log.error(`Error updating Horizontal Swing status for ${this.accessory.displayName}:`, error);
-    }
-  }
 }

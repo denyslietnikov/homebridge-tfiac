@@ -2,7 +2,7 @@ import { PlatformAccessory } from 'homebridge';
 import { FanOnlySwitchAccessory } from '../FanOnlySwitchAccessory.js';
 import { TfiacPlatform } from '../platform.js';
 
-jest.useFakeTimers();
+// No timers - event-driven
 
 // ---------- mocks ---------------------------------------------------
 const updateStateMock = jest.fn();
@@ -64,14 +64,9 @@ describe('FanOnlySwitchAccessory – unit', () => {
     }
   });
 
-  it('polls and updates characteristic', async () => {
-    (accessory.getService as jest.Mock).mockReturnValue(undefined);
+  it('should updateStatus and update On characteristic based on status', () => {
     inst = new FanOnlySwitchAccessory(platform, accessory);
-    updateStateMock.mockResolvedValueOnce({ operation_mode: 'fan_only' });
-    jest.advanceTimersByTime(1500);
-    await Promise.resolve();
-    await jest.runOnlyPendingTimersAsync();
-
+    inst['updateStatus']({ operation_mode: 'fan_only' } as any);
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
