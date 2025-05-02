@@ -320,6 +320,8 @@ export class AirConditionerAPI extends EventEmitter {
    * Generic method to set option state for the air conditioner
    */
   private async setOptionState(option: string, value: string): Promise<void> {
+    // Emit debug event so BaseSwitchAccessory can log when commands are sent
+    this.emit('debug', `setOptionState: <${option}>${value}</${option}>`);
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><${option}>${value}</${option}></SetMessage></msg>`;
     await this.sendCommandWithRetry(command);

@@ -61,11 +61,12 @@ jobs:
           PACKAGE_NAME=$(node -p "require('./package.json').name")
           echo "Fetching published versions for $PACKAGE_NAME..."
           VERSIONS_JSON=$(npm view "$PACKAGE_NAME" versions --json)
-          # Find the 10th-from-last version as cutoff
-          CUTOFF=$(echo "$VERSIONS_JSON" | jq -r '.[-10]')
-          echo "Cutoff version (10th from end): $CUTOFF"
-          # Select versions strictly older than the cutoff
-          OLD_VERSIONS=$(echo "$VERSIONS_JSON" | jq -r --arg c "$CUTOFF" 'map(select(. < $c))[]')
+          # Deprecate all but the latest 10 versions
+          OLD_VERSIONS=$(echo "$VERSIONS_JSON" | jq -r '.[0:-10][]')
+          if [ -z "$OLD_VERSIONS" ]; then
+            echo "No older versions to deprecate."
+            exit 0
+          fi
           for VERSION in $OLD_VERSIONS; do
             echo "Deprecating $PACKAGE_NAME@$VERSION"
             npm deprecate "$PACKAGE_NAME@$VERSION" "Deprecated in favor of newer releases"
