@@ -152,26 +152,21 @@ describe('AirConditionerAPI', () => {
       }
     });
     
-    // When setting swing mode to Both, the API should use setAirConditionerState
-    // which first calls updateState() and then sends an XML with the updated swing_mode
+    // When setting swing mode to Both, the API should use setSwingMode which sends one UDP message
     await api.setSwingMode(SwingMode.Both);
     
     // Let's verify that the correct XML command is being sent
     expect(mockSocket.send).toHaveBeenCalled();
     
-    // Now check that one of the commands included the right XML structure
     const calls = mockSocket.send.mock.calls;
-    
-    // First call should be for updateState
-    expect(calls.length).toBeGreaterThan(1);
-    expect(calls[0][0]).toContain('<SyncStatusReq>');
-    
-    // Second call should be for setting the swing mode
-    expect(calls[1][0]).toContain('<SetMessage>');
-    
-    // Port and IP should be correct
-    expect(calls[1][1]).toBe(7777);
-    expect(calls[1][2]).toBe('192.168.1.100');
+    // Only one UDP send is expected for setSwingMode now
+    expect(calls.length).toBe(1);
+    expect(calls[0][0]).toContain('<SetMessage>');
+    // Verify that both horizontal and vertical tags are present for "Both"
+    expect(calls[0][0]).toContain('<WindDirection_H>on</WindDirection_H>');
+    expect(calls[0][0]).toContain('<WindDirection_V>on</WindDirection_V>');
+    expect(calls[0][1]).toBe(7777);
+    expect(calls[0][2]).toBe('192.168.1.100');
   }, 15000);
 
   it('should set fan speed correctly', async () => {
@@ -554,9 +549,9 @@ describe('AirConditionerAPI', () => {
       await api.setFanSpeed(FanSpeed.High);
       await api.setSwingMode(SwingMode.Both);
     
-      // Check that we got unique sequence numbers (the test expects 8 because each command 
-      // calls updateState first, then sends the actual command)
-      expect(seqs.size).toBe(8);
+    // Check that we got unique sequence numbers (the test expects 7 because each command 
+    // calls updateState first, then sends the actual command, except setSwingMode which sends only one)
+    expect(seqs.size).toBe(7);
     }, 15000);
   });
 
