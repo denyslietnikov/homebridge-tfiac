@@ -34,6 +34,10 @@ interface StatusUpdateMsg {
   OutdoorTemp?: string[]; // Optional outdoor temperature
 }
 
+// Throttle intervals in milliseconds
+const SHORT_WAIT = 500;
+const LONG_WAIT = 3000;
+
 export class AirConditionerAPI extends EventEmitter {
   private readonly ip: string;
   private readonly port: number;
@@ -42,6 +46,11 @@ export class AirConditionerAPI extends EventEmitter {
   private activeTimeouts: NodeJS.Timeout[] = [];
   private maxRetries: number = 3; // Maximum number of retries for a command
   private retryDelay: number = 1000; // Delay between retries in milliseconds
+
+  // Last time updateState actually sent a request
+  private lastSyncTime: number = 0;
+  // Cached last-status for throttling
+  private lastStatus: AirConditionerStatus | null = null;
 
   constructor(ip: string, port: number = 7777, maxRetries: number = 3, retryDelay: number = 1000) {
     super();
@@ -211,7 +220,15 @@ export class AirConditionerAPI extends EventEmitter {
            `<WindSpeed>${status.fan_mode}</WindSpeed>`;
   }
 
-  async updateState(): Promise<AirConditionerStatus> {
+  async updateState(force: boolean = false): Promise<AirConditionerStatus> {
+    const now = Date.now();
+    if (!force && this.lastSyncTime > 0) {
+      const wait = this.lastSeq === 0 ? SHORT_WAIT : LONG_WAIT;
+      if (now - this.lastSyncTime < wait && this.lastStatus) {
+        this.emit('debug', `Throttling updateState: returning cached status. Elapsed ${now - this.lastSyncTime}ms < ${wait}ms`);
+        return this.lastStatus;
+      }
+    }
     const command = `<msg msgid="SyncStatusReq" type="Control" seq="${this.seq}">
                       <SyncStatusReq></SyncStatusReq></msg>`;
     this.emit('debug', `Sending updateState command: ${command}`);
@@ -234,6 +251,8 @@ export class AirConditionerAPI extends EventEmitter {
         // opt_eco and opt_beep might need similar handling if present in statusUpdateMsg
       };
       this.emit('debug', `Parsed status: ${JSON.stringify(status)}`);
+      this.lastSyncTime = Date.now();
+      this.lastStatus = status;
       return status;
     } catch (error) {
       this.emit('error', `Error parsing response: ${error}`);
@@ -332,7 +351,12 @@ export class AirConditionerAPI extends EventEmitter {
    * For 'on', sends 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0', for 'off' sends 'off'.
    */
   async setSleepState(state: SleepModeState | string): Promise<void> {
-    await this.setOptionState('Opt_sleepMode', state);
+    // AC expects a detailed string for sleep mode "on" and 'off' otherwise
+    const sleepValue =
+      state === SleepModeState.On
+        ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
+        : 'off';
+    await this.setOptionState('Opt_sleepMode', sleepValue);
   }
 
   /**

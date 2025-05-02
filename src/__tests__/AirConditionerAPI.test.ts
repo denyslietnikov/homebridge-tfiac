@@ -3,7 +3,7 @@
 import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI.js';
 import dgram from 'dgram';
 import { jest, describe, beforeEach, it, expect, afterEach } from '@jest/globals';
-import { PowerState, OperationMode, FanSpeed, SwingMode } from '../enums.js'; // Import enums
+import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from '../enums.js'; // Import enums
 
 jest.mock('dgram');
 
@@ -479,11 +479,11 @@ describe('AirConditionerAPI', () => {
     // Increase timeout to 10 seconds
     it('should handle all wind direction combinations', async () => {
       const testCases = [
-        { input: { WindDirection_H: ['off'], WindDirection_V: ['off'] }, expected: SwingMode.Off },
-        { input: { WindDirection_H: ['on'], WindDirection_V: ['off'] }, expected: SwingMode.Horizontal },
-        { input: { WindDirection_H: ['off'], WindDirection_V: ['on'] }, expected: SwingMode.Vertical },
-        { input: { WindDirection_H: ['on'], WindDirection_V: ['on'] }, expected: SwingMode.Both },
-        { input: { WindDirection_H: ['invalid'], WindDirection_V: ['invalid'] }, expected: SwingMode.Off },
+        { input: { WindDirection_H: ['off'], WindDirection_V: ['off'] }, expected: 'Off' },
+        { input: { WindDirection_H: ['on'], WindDirection_V: ['off'] }, expected: 'Horizontal' },
+        { input: { WindDirection_H: ['off'], WindDirection_V: ['on'] }, expected: 'Vertical' },
+        { input: { WindDirection_H: ['on'], WindDirection_V: ['on'] }, expected: 'Both' },
+        { input: { WindDirection_H: ['invalid'], WindDirection_V: ['invalid'] }, expected: 'Off' },
       ];
 
       for (const testCase of testCases) {
@@ -506,7 +506,8 @@ describe('AirConditionerAPI', () => {
             `, 10);
           }
         });
-        const promise = api.updateState();
+        // Pass true to force bypassing throttle
+        const promise = api.updateState(true);
         jest.advanceTimersByTime(50);
         const status = await promise;
         expect(status.swing_mode).toBe(testCase.expected);
@@ -549,9 +550,9 @@ describe('AirConditionerAPI', () => {
       await api.setFanSpeed(FanSpeed.High);
       await api.setSwingMode(SwingMode.Both);
     
-    // Check that we got unique sequence numbers (the test expects 7 because each command 
+    // Check that we got unique sequence numbers (the test expects 5 because each command 
     // calls updateState first, then sends the actual command, except setSwingMode which sends only one)
-    expect(seqs.size).toBe(7);
+    expect(seqs.size).toBe(5);
     }, 15000);
   });
 
@@ -647,13 +648,17 @@ describe('AirConditionerAPI', () => {
       // Mock setOptionState instead of setAirConditionerState
       const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
       
-      await api.setSleepState(PowerState.On);
-      await api.setSleepState(PowerState.Off);
+      await api.setSleepState(SleepModeState.On);
+      await api.setSleepState(SleepModeState.Off);
       
       // Now we should have exactly 2 calls
       expect(spy).toHaveBeenCalledTimes(2);
-      expect(spy).toHaveBeenNthCalledWith(1, 'Opt_sleepMode', PowerState.On);
-      expect(spy).toHaveBeenNthCalledWith(2, 'Opt_sleepMode', PowerState.Off);
+      expect(spy).toHaveBeenNthCalledWith(
+        1,
+        'Opt_sleepMode',
+        expect.stringMatching(/^sleepMode1:/),
+      );
+      expect(spy).toHaveBeenNthCalledWith(2, 'Opt_sleepMode', 'off');
     });
   });
 });
@@ -767,13 +772,17 @@ describe('AirConditionerAPI extra coverage', () => {
     // Mock setOptionState instead of setAirConditionerState
     const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
     
-    await api.setSleepState(PowerState.On);
-    await api.setSleepState(PowerState.Off);
+    await api.setSleepState(SleepModeState.On);
+    await api.setSleepState(SleepModeState.Off);
     
     // Now we should have exactly 2 calls
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(spy).toHaveBeenNthCalledWith(1, 'Opt_sleepMode', PowerState.On);
-    expect(spy).toHaveBeenNthCalledWith(2, 'Opt_sleepMode', PowerState.Off);
+    expect(spy).toHaveBeenNthCalledWith(
+      1,
+      'Opt_sleepMode',
+      expect.stringMatching(/^sleepMode1:/),
+    );
+    expect(spy).toHaveBeenNthCalledWith(2, 'Opt_sleepMode', 'off');
   });
 
   it('should cleanup all timeouts', () => {
