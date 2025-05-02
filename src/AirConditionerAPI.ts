@@ -283,7 +283,14 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   async setSwingMode(mode: SwingMode | string): Promise<void> {
-    await this.setAirConditionerState('swing_mode', mode);
+    const SET_SWING: Record<'Off' | 'Vertical' | 'Horizontal' | 'Both', string> = {
+      Off: '<WindDirection_H>off</WindDirection_H><WindDirection_V>off</WindDirection_V>',
+      Vertical: '<WindDirection_H>off</WindDirection_H><WindDirection_V>on</WindDirection_V>',
+      Horizontal: '<WindDirection_H>on</WindDirection_H><WindDirection_V>off</WindDirection_V>',
+      Both: '<WindDirection_H>on</WindDirection_H><WindDirection_V>on</WindDirection_V>',
+    };
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}"><SetMessage>${SET_SWING[mode as keyof typeof SET_SWING]}</SetMessage></msg>`;
+    await this.sendCommandWithRetry(command);
   }
 
   async setFanSpeed(speed: FanSpeed | string): Promise<void> {
