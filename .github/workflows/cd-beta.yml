@@ -49,7 +49,7 @@ jobs:
         run: npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
 
       - name: 🚀 Run semantic-release for beta
-        run: npx semantic-release --no-ci --branch develop --prerelease beta
+        run: npx semantic-release --no-ci --force-release --branch develop --prerelease beta
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
