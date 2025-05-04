@@ -435,7 +435,7 @@ export class TfiacPlatformAccessory {
 
   private async handleActiveSet(
     value: CharacteristicValue,
-    callback: CharacteristicSetCallback,
+    callback?: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET Active:', value);
     try {
@@ -446,10 +446,14 @@ export class TfiacPlatformAccessory {
       }
       this.cacheManager.clear();
       await this.updateCachedStatus();
-      callback(null);
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
     } catch (error) {
       this.platform.log.error('Error setting Active state:', error);
-      callback(error as Error);
+      if (callback && typeof callback === 'function') {
+        callback(error as Error);
+      }
     }
   }
 
@@ -487,7 +491,7 @@ export class TfiacPlatformAccessory {
 
   private async handleTargetHeaterCoolerStateSet(
     value: CharacteristicValue,
-    callback: CharacteristicSetCallback,
+    callback?: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET TargetHeaterCoolerState:', value);
     try {
@@ -495,10 +499,14 @@ export class TfiacPlatformAccessory {
       await this.deviceAPI.setAirConditionerState('operation_mode', mode);
       this.cacheManager.clear();
       await this.updateCachedStatus();
-      callback(null);
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
     } catch (error) {
       this.platform.log.error('Error setting TargetHeaterCoolerState:', error);
-      callback(error as Error);
+      if (callback && typeof callback === 'function') {
+        callback(error as Error);
+      }
     }
   }
 
@@ -536,7 +544,7 @@ export class TfiacPlatformAccessory {
 
   private async handleThresholdTemperatureSet(
     value: CharacteristicValue,
-    callback: CharacteristicSetCallback,
+    callback?: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET ThresholdTemperature:', value);
     const temperatureFahrenheit = celsiusToFahrenheit(value as number);
@@ -544,12 +552,16 @@ export class TfiacPlatformAccessory {
       await this.deviceAPI.setAirConditionerState('target_temp', temperatureFahrenheit.toString());
       this.cacheManager.clear();
       await this.updateCachedStatus(); // Refresh status after successful set
-      callback(null);
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
     } catch (error) {
       this.platform.log.error('Error setting ThresholdTemperature:', error);
       // Optionally refresh status even on failure, depending on desired behavior
       // await this.updateCachedStatus().catch(err => this.platform.log.error('Error refreshing status after failed set threshold:', err));
-      callback(error as Error);
+      if (callback && typeof callback === 'function') {
+        callback(error as Error);
+      }
     }
   }
 
@@ -568,7 +580,7 @@ export class TfiacPlatformAccessory {
 
   private async handleRotationSpeedSet(
     value: CharacteristicValue,
-    callback: CharacteristicSetCallback,
+    callback?: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET RotationSpeed:', value);
     const fanMode = this.mapRotationSpeedToFanMode(value as number);
@@ -576,12 +588,16 @@ export class TfiacPlatformAccessory {
       await this.deviceAPI.setFanSpeed(fanMode);
       this.cacheManager.clear();
       await this.updateCachedStatus(); // Refresh status after successful set
-      callback(null);
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
     } catch (error) {
       this.platform.log.error('Error setting fan speed:', error);
       // Optionally refresh status even on failure
       // await this.updateCachedStatus().catch(err => this.platform.log.error('Error refreshing status after failed set fan:', err));
-      callback(error as Error);
+      if (callback && typeof callback === 'function') {
+        callback(error as Error);
+      }
     }
   }
 
@@ -600,7 +616,7 @@ export class TfiacPlatformAccessory {
 
   private async handleSwingModeSet(
     value: CharacteristicValue,
-    callback: CharacteristicSetCallback,
+    callback?: CharacteristicSetCallback,
   ): Promise<void> {
     this.platform.log.debug('Triggered SET SwingMode:', value);
     const mode = value === this.platform.api.hap.Characteristic.SwingMode.SWING_ENABLED ? SwingMode.Vertical : SwingMode.Off; // Use Vertical instead of Both
@@ -608,12 +624,16 @@ export class TfiacPlatformAccessory {
       await this.deviceAPI.setSwingMode(mode);
       this.cacheManager.clear();
       await this.updateCachedStatus(); // Refresh status after successful set
-      callback(null);
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
     } catch (error) {
       this.platform.log.error('Error setting swing mode:', error);
       // Optionally refresh status even on failure
       // await this.updateCachedStatus().catch(err => this.platform.log.error('Error refreshing status after failed set swing:', err));
-      callback(error as Error);
+      if (callback && typeof callback === 'function') {
+        callback(error as Error);
+      }
     }
   }
 

@@ -633,4 +633,133 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       });
     });
   });
+
+  // Tests for callback handling in Active and TargetHeaterCoolerState handlers
+  describe('Active state handlers', () => {
+    const charId = 'Active';
+
+    it('handleActiveGet should return INACTIVE when cache is null', async () => {
+      (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+      
+      // Set up the mock service characteristic to return undefined for value
+      mockServiceInstance.getCharacteristic = vi.fn().mockImplementation(() => ({
+        value: undefined
+      }));
+      
+      // Get the handler directly from the accessory instance
+      const handler = (accessory as any).handleActiveGet.bind(accessory);
+      
+      // Call the handler directly instead of using getHandlerByIdentifier
+      const result = await handler();
+      
+      // Check the result directly
+      expect(result).toBe(hapConstants.Characteristic.Active.INACTIVE);
+    });
+
+    it('handleActiveSet should handle missing callback parameter', async () => {
+      // Access the handler directly
+      const handler = (accessory as any).handleActiveSet.bind(accessory);
+      
+      // Test with undefined callback
+      await expect(handler(hapConstants.Characteristic.Active.ACTIVE, undefined))
+        .resolves.not.toThrow();
+        
+      expect(mockApiActions.turnOn).toHaveBeenCalled();
+    });
+    
+    it('handleActiveSet should handle API errors with callback', async () => {
+      const error = new Error('API Error');
+      mockApiActions.turnOff.mockRejectedValueOnce(error);
+      
+      const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
+      
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(hapConstants.Characteristic.Active.INACTIVE, (err) => {
+          clearTimeout(timer);
+          try {
+            expect(err).toBe(error);
+            expect(mockApiActions.turnOff).toHaveBeenCalled();
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+    });
+  });
+
+  describe('TargetHeaterCoolerState handlers', () => {
+    const charId = 'TargetHeaterCoolerState';
+
+    it('handleTargetHeaterCoolerStateGet should return AUTO when cache is null', async () => {
+      (accessory as unknown as TestAccessoryContext).cachedStatus = null;
+      const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO);
+          resolve();
+        };
+        handler(callback);
+      });
+    });
+
+    it('handleTargetHeaterCoolerStateSet should handle missing callback parameter', async () => {
+      // Access the handler directly
+      const handler = (accessory as any).handleTargetHeaterCoolerStateSet.bind(accessory);
+      
+      // Test with undefined callback
+      await expect(handler(hapConstants.Characteristic.TargetHeaterCoolerState.COOL, undefined))
+        .resolves.not.toThrow();
+        
+      expect(mockApiActions.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'cool');
+    });
+    
+    it('handleTargetHeaterCoolerStateSet should handle API errors with callback', async () => {
+      const error = new Error('API Error');
+      mockApiActions.setAirConditionerState.mockRejectedValueOnce(error);
+      
+      const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'set');
+      
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('Callback not called in time')), 3000);
+        handler(hapConstants.Characteristic.TargetHeaterCoolerState.HEAT, (err) => {
+          clearTimeout(timer);
+          try {
+            expect(err).toBe(error);
+            expect(mockApiActions.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'heat');
+            resolve();
+          } catch (e) {
+            reject(e);
+          }
+        });
+      });
+    });
+  });
+
+  // Test handlers with null callback for all set methods
+  describe('Set handlers with null callbacks', () => {
+    it('all set handlers should handle undefined callbacks without throwing', async () => {
+      // Get all set handlers 
+      const setHandlers = [
+        { name: 'handleActiveSet', value: hapConstants.Characteristic.Active.ACTIVE },
+        { name: 'handleTargetHeaterCoolerStateSet', value: hapConstants.Characteristic.TargetHeaterCoolerState.AUTO },
+        { name: 'handleThresholdTemperatureSet', value: 22 },
+        { name: 'handleRotationSpeedSet', value: 50 },
+        { name: 'handleSwingModeSet', value: hapConstants.Characteristic.SwingMode.SWING_ENABLED }
+      ];
+      
+      // Test each handler with undefined callback
+      for (const { name, value } of setHandlers) {
+        const handler = (accessory as any)[name].bind(accessory);
+        
+        // Should not throw with undefined callback
+        await expect(handler(value, undefined)).resolves.not.toThrow();
+        
+        // Should not throw with null callback
+        await expect(handler(value, null)).resolves.not.toThrow();
+      }
+    });
+  });
 });
