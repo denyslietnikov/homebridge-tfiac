@@ -11,7 +11,7 @@ import {
 import { TfiacPlatform } from '../platform';
 import { TfiacPlatformAccessory } from '../platformAccessory.js';
 import { TfiacDeviceConfig } from '../settings.js';
-import { jest, describe, beforeEach, afterEach, it, expect, beforeAll } from '@jest/globals';
+import { vi, describe, beforeEach, afterEach, it, expect, beforeAll  } from 'vitest';
 import { 
   createMockCharacteristic,
   createMockService,
@@ -42,11 +42,17 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
   let mockApiActions;
 
   beforeAll(() => {
-    jest.setTimeout(10000);
+    // Removed vi.setTimeout(10000);
   });
 
   beforeEach(() => {
-    mockServiceInstance = createMockService();
+    mockServiceInstance = {
+      getCharacteristic: vi.fn(),
+      setCharacteristic: vi.fn(),
+      updateCharacteristic: vi.fn(),
+      characteristics: { clear: vi.fn() },
+      // ...other required Service methods as vi.fn()...
+    };
     mockApiActions = createMockApiActions();
 
     mockApiActions.updateState.mockResolvedValue({ ...initialStatusFahrenheit });
@@ -58,22 +64,24 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     mockApiActions.cleanup.mockResolvedValue(undefined);
 
     deviceConfig = { name: 'Test AC', ip: '192.168.1.99', port: 7777, updateInterval: 30 };
-    mockServiceInstance.getCharacteristic.mockClear();
-    mockServiceInstance.setCharacteristic.mockClear();
-    mockServiceInstance.characteristics.clear();
+    if (typeof mockServiceInstance.getCharacteristic.mockClear === 'function') {
+      mockServiceInstance.getCharacteristic.mockClear();
+    }
+    if (typeof mockServiceInstance.setCharacteristic.mockClear === 'function') {
+      mockServiceInstance.setCharacteristic.mockClear();
+    }
 
     mockAccessoryInstance = {
       context: { deviceConfig },
       displayName: deviceConfig.name,
       UUID: 'test-accessory-uuid',
-      category: Categories.AIR_CONDITIONER,
-      getService: jest.fn().mockReturnValue(mockServiceInstance) as any,
-      addService: jest.fn().mockReturnValue(mockServiceInstance) as any,
-      services: [mockServiceInstance as unknown],
-      on: jest.fn(),
-      emit: jest.fn(),
-      removeService: jest.fn(),
-      getServiceById: jest.fn(),
+      getService: vi.fn(),
+      getServiceById: vi.fn(),
+      addService: vi.fn(),
+      removeService: vi.fn(),
+      on: vi.fn(),
+      emit: vi.fn(),
+      services: [],
     } as unknown as PlatformAccessory;
 
     accessory = new TfiacPlatformAccessory(mockPlatform, mockAccessoryInstance);
@@ -81,6 +89,11 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     // characteristic setters resolve immediately and the callback is invoked.
     // This prevents the tests from timing‑out while waiting for the callback.
     (accessory as any).deviceAPI = mockApiActions;
+
+    // Override the platform accessory service to use our mockServiceInstance
+    (accessory as any).service = mockServiceInstance;
+    // Rebind characteristic handlers to the mock service
+    (accessory as any).setupCharacteristicHandlers();
 
     // Add a reference to the accessory in the service for handler retrieval
     mockServiceInstance.accessory = accessory;
@@ -98,34 +111,43 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     if (accessory && typeof testContext.stopPolling === 'function') {
       testContext.stopPolling();
     } else {
-      mockApiActions.cleanup.mockClear();
+      mockApiActions.cleanup.mockReset();
     }
-    jest.clearAllTimers();
-    Object.values(mockApiActions).forEach(mockFn => mockFn.mockClear());
+    vi.clearAllTimers();
+    // Using mockReset instead of mockClear for Vitest compatibility
+    Object.values(mockApiActions).forEach(mockFn => {
+      if (typeof mockFn.mockReset === 'function') {
+        mockFn.mockReset();
+      }
+    });
   });
 
   describe('CurrentTemperature', () => {
-    it('handleCurrentTemperatureGet should return celsius value from cache', (done) => {
+    it('handleCurrentTemperatureGet should return celsius value from cache', async () => {
       const tempF = 71.6;
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, current_temp: tempF };
       const handler = getHandlerByIdentifier(mockServiceInstance, hapIdentifiers.Characteristic.CurrentTemperature, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull(); 
-        expect(value).toBeCloseTo(22); 
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull(); 
+          expect(value).toBeCloseTo(22); 
+          resolve();
+        };
+        handler(callback);
+      });
     });
 
-    it('handleCurrentTemperatureGet should return default value if cache null', (done) => {
+    it('handleCurrentTemperatureGet should return default value if cache null', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = null;
       const handler = getHandlerByIdentifier(mockServiceInstance, hapIdentifiers.Characteristic.CurrentTemperature, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull(); 
-        expect(value).toBe(20); // Default value instead of error
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull(); 
+          expect(value).toBe(20); // Default value instead of error
+          resolve();
+        };
+        handler(callback);
+      });
     });
   });
 
@@ -133,16 +155,18 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     const coolingCharId = hapIdentifiers.Characteristic.CoolingThresholdTemperature;
     const heatingCharId = hapIdentifiers.Characteristic.HeatingThresholdTemperature;
 
-    it('handleThresholdTemperatureGet should return celsius target temp from cache', (done) => {
+    it('handleThresholdTemperatureGet should return celsius target temp from cache', async () => {
       const tempF = 68;
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, target_temp: tempF };
       const handler = getHandlerByIdentifier(mockServiceInstance, coolingCharId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull(); 
-        expect(value).toBeCloseTo(20); 
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull(); 
+          expect(value).toBeCloseTo(20); 
+          resolve();
+        };
+        handler(callback);
+      });
     });
 
     it('handleThresholdTemperatureSet should call API with Fahrenheit value', async () => {
@@ -187,63 +211,73 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       });
     });
 
-    it('handleThresholdTemperatureGet should return default value if cache null', (done) => {
+    it('handleThresholdTemperatureGet should return default value if cache null', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = null;
       const handler = getHandlerByIdentifier(mockServiceInstance, coolingCharId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(22); // Default value instead of error
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(22); // Default value instead of error
+          resolve();
+        };
+        handler(callback);
+      });
     });
   });
 
   describe('RotationSpeed', () => {
     const charId = hapIdentifiers.Characteristic.RotationSpeed;
 
-    it('should get speed percentage for High', (done) => {
+    it('should get speed percentage for High', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'High' };
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(75);
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(75);
+          resolve();
+        };
+        handler(callback);
+      });
     });
     
-    it('should get speed percentage for Middle', (done) => {
+    it('should get speed percentage for Middle', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'Middle' };
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(50);
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(50);
+          resolve();
+        };
+        handler(callback);
+      });
     });
     
-    it('should get speed percentage for Low', (done) => {
+    it('should get speed percentage for Low', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'Low' };
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(25);
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(25);
+          resolve();
+        };
+        handler(callback);
+      });
     });
     
-    it('should get speed percentage for Auto', (done) => {
+    it('should get speed percentage for Auto', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, fan_mode: 'Auto' };
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(50);
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(50);
+          resolve();
+        };
+        handler(callback);
+      });
     });
 
     it('should set fan mode to High based on percentage > 50', async () => {
@@ -322,41 +356,47 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       });
     });
 
-    it('should return default value (50) if cache is null', (done) => {
+    it('should return default value (50) if cache is null', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = null;
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(50); // Default medium fan speed
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(50); // Default medium fan speed
+          resolve();
+        };
+        handler(callback);
+      });
     });
   });
 
   describe('SwingMode', () => {
     const charId = hapIdentifiers.Characteristic.SwingMode;
 
-    it('should get SWING_DISABLED based on cache', (done) => {
+    it('should get SWING_DISABLED based on cache', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, swing_mode: 'Off' };
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(0);
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(0);
+          resolve();
+        };
+        handler(callback);
+      });
     });
     
-    it('should get SWING_ENABLED based on cache', (done) => {
+    it('should get SWING_ENABLED based on cache', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = { ...initialStatusFahrenheit, swing_mode: 'Vertical' };
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(1);
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(1);
+          resolve();
+        };
+        handler(callback);
+      });
     });
 
     it('should set swing mode to Vertical (ENABLED)', async () => {
@@ -397,35 +437,39 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       });
     });
 
-    it('should return default value (SWING_DISABLED) if cache is null', (done) => {
+    it('should return default value (SWING_DISABLED) if cache is null', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = null;
       const handler = getHandlerByIdentifier(mockServiceInstance, charId, 'get');
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(hapConstants.Characteristic.SwingMode.SWING_DISABLED);
-        done();
-      };
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(hapConstants.Characteristic.SwingMode.SWING_DISABLED);
+          resolve();
+        };
+        handler(callback);
+      });
     });
   });
 
   describe('OutdoorTemperatureSensor', () => {
-    it('should return default value when no cached status', done => {
+    it('should return default value when no cached status', async () => {
       (accessory as unknown as TestAccessoryContext).cachedStatus = null;
       const handler = (accessory as any)
         .handleOutdoorTemperatureSensorCurrentTemperatureGet
         .bind(accessory);
       
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBe(20); // Default value is 20°C
-        done();
-      };
-      
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBe(20); // Default value is 20°C
+          resolve();
+        };
+        
+        handler(callback);
+      });
     });
 
-    it('should return outdoor temperature when available', done => {
+    it('should return outdoor temperature when available', async () => {
       const status = { ...initialStatusFahrenheit, outdoor_temp: 77 }; // 77°F = 25°C
       (accessory as unknown as TestAccessoryContext).cachedStatus = status;
       
@@ -433,18 +477,20 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
         .handleOutdoorTemperatureSensorCurrentTemperatureGet
         .bind(accessory);
       
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBeCloseTo(25); // Should convert F to C
-        done();
-      };
-      
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBeCloseTo(25); // Should convert F to C
+          resolve();
+        };
+        
+        handler(callback);
+      });
     });
   });
 
   describe('Temperature Sensor Handlers', () => {
-    it('should handle outdoor temperature get with cached status', (done) => {
+    it('should handle outdoor temperature get with cached status', async () => {
       const outdoorTempF = 68;
       (accessory as unknown as TestAccessoryContext).cachedStatus = { 
         ...initialStatusFahrenheit, 
@@ -455,16 +501,18 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
         .handleOutdoorTemperatureSensorCurrentTemperatureGet
         .bind(accessory);
       
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBeCloseTo(20); // 68F = 20C
-        done();
-      };
-      
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBeCloseTo(20); // 68F = 20C
+          resolve();
+        };
+        
+        handler(callback);
+      });
     });
 
-    it('should handle indoor temperature get with cached status', (done) => {
+    it('should handle indoor temperature get with cached status', async () => {
       const indoorTempF = 68;
       (accessory as unknown as TestAccessoryContext).cachedStatus = { 
         ...initialStatusFahrenheit, 
@@ -475,13 +523,15 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
         .handleTemperatureSensorCurrentTemperatureGet
         .bind(accessory);
       
-      const callback: CharacteristicGetCallback = (error, value) => {
-        expect(error).toBeNull();
-        expect(value).toBeCloseTo(20); // 68F = 20C
-        done();
-      };
-      
-      handler(callback);
+      await new Promise<void>((resolve) => {
+        const callback: CharacteristicGetCallback = (error, value) => {
+          expect(error).toBeNull();
+          expect(value).toBeCloseTo(20); // 68F = 20C
+          resolve();
+        };
+        
+        handler(callback);
+      });
     });
   });
 

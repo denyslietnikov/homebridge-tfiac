@@ -1,4 +1,4 @@
-import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { BeepSwitchAccessory } from '../BeepSwitchAccessory.js';
 import { CharacteristicGetCallback, CharacteristicSetCallback, PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
@@ -15,40 +15,21 @@ const mockApiActions: MockApiActions = createMockApiActions({
   opt_beep: 'on',
 });
 
-jest.mock('../AirConditionerAPI.js', () => {
-  return jest.fn().mockImplementation(() => mockApiActions);
-});
+vi.mock('../AirConditionerAPI.js', () => ({
+  default: vi.fn(() => mockApiActions)
+}));
 
 describe('BeepSwitchAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: PlatformAccessory;
   let mockService: ReturnType<typeof createMockService>;
-  let mockOnCharacteristic: { onGet: jest.Mock; onSet: jest.Mock; on: jest.Mock; updateValue: jest.Mock };
   let inst: BeepSwitchAccessory;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
+    mockApiActions.updateState.mockResolvedValue({ opt_beep: 'on' });
 
     mockService = createMockService();
-    mockOnCharacteristic = {
-      onGet: jest.fn().mockReturnThis(),
-      onSet: jest.fn().mockReturnThis(),
-      on: jest.fn().mockReturnThis(), // Add the on method for legacy API compatibility
-      updateValue: jest.fn().mockReturnThis(), // Add updateValue method to fix test errors
-    };
-    mockService.getCharacteristic.mockImplementation((characteristic: any) => {
-      // Handle both the characteristic class/constructor and its potential string representation ('On')
-      if (characteristic === platform.Characteristic.On || characteristic === 'On') {
-        return mockOnCharacteristic;
-      }
-      // Return a generic mock for other characteristics like Name, ConfiguredName etc.
-      return {
-        onGet: jest.fn().mockReturnThis(),
-        onSet: jest.fn().mockReturnThis(),
-        on: jest.fn().mockReturnThis(), // Add the on method for legacy API compatibility
-        updateValue: jest.fn().mockReturnThis(),
-      };
-    });
 
     const mockAPI = createMockAPI();
     const mockLogger = createMockLogger();
@@ -73,9 +54,9 @@ describe('BeepSwitchAccessory', () => {
       mockService,
     );
 
-    accessory.getService = jest.fn<() => Service | undefined>().mockReturnValue(undefined);
-    accessory.getServiceById = jest.fn<() => Service | undefined>().mockReturnValue(undefined);
-    accessory.addService = jest.fn<() => Service>().mockReturnValue(mockService as unknown as Service);
+    accessory.getService = vi.fn().mockReturnValue(undefined);
+    accessory.getServiceById = vi.fn().mockReturnValue(undefined);
+    accessory.addService = vi.fn().mockReturnValue(mockService as unknown as Service);
   });
 
   afterEach(() => {
@@ -91,13 +72,12 @@ describe('BeepSwitchAccessory', () => {
 
   it('should construct and set up polling and handlers', () => {
     createAccessory();
-    // getService is called with "Beep" in BaseSwitchAccessory.constructor
     expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Beep', 'beep');
-    // Name is now set in BaseSwitchAccessory constructor only
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Beep');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
-    expect(mockOnCharacteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
-    expect(mockOnCharacteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
+    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
+    expect(onChar.onGet).toHaveBeenCalledWith(expect.any(Function));
+    expect(onChar.onSet).toHaveBeenCalledWith(expect.any(Function));
   });
 
   it('should stop polling and cleanup', () => {
@@ -108,74 +88,66 @@ describe('BeepSwitchAccessory', () => {
 
   it('should update cached status and update characteristic', async () => {
     inst = new BeepSwitchAccessory(platform, accessory);
-    // Clear mocks specifically for updateCharacteristic after constructor might have called it
     mockService.updateCharacteristic.mockClear();
-    (inst as any).cachedStatus = { opt_beep: 'off' }; // Set initial different state
+    (inst as any).cachedStatus = { opt_beep: 'off' };
 
     await (inst as any).updateCachedStatus();
     expect(mockApiActions.updateState).toHaveBeenCalled();
-    // Expect 'On' characteristic to be updated to 'true' because mockApiActions has opt_beep: 'on'
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
   });
 
-  it('should handle get with cached status (beep on)', done => {
+  // New get-handler tests using onGet API
+  it('should handle get with cached status (beep on)', async () => {
     createAccessory();
+    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
     (inst as any).cachedStatus = { opt_beep: 'on' };
-    (inst as any).handleGet((err: Error | null, val?: boolean) => {
-      expect(err).toBeNull();
-      expect(val).toBe(true);
-      done();
-    });
+    const handler = onChar.onGet.mock.calls[0][0] as () => boolean;
+    expect(await handler()).toBe(true);
   });
 
-  it('should handle get with cached status (beep off)', done => {
+  it('should handle get with cached status (beep off)', async () => {
     createAccessory();
+    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
     (inst as any).cachedStatus = { opt_beep: 'off' };
-    (inst as any).handleGet((err: Error | null, val?: boolean) => {
-      expect(err).toBeNull();
-      expect(val).toBe(false);
-      done();
-    });
+    const handler = onChar.onGet.mock.calls[0][0] as () => boolean;
+    expect(await handler()).toBe(false);
   });
 
-  it('should handle get with no cached status', done => {
+  it('should handle get with no cached status', async () => {
     createAccessory();
+    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
     (inst as any).cachedStatus = null;
-    (inst as any).handleGet((err: Error | null, val?: boolean) => {
-      expect(err).toBeNull();
-      expect(val).toBe(false);
-      done();
-    });
+    const handler = onChar.onGet.mock.calls[0][0] as () => boolean;
+    expect(await handler()).toBe(false);
   });
 
   it('should handle set (turn beep on) and update status', async () => {
     createAccessory();
-    const cb = jest.fn() as CharacteristicSetCallback;
+    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
     mockApiActions.setBeepState.mockResolvedValueOnce(undefined);
-    await (inst as any).handleSet(true, cb);
+    const handler = onChar.onSet.mock.calls[0][0] as (value: boolean) => Promise<void>;
+    await handler(true);
     expect(mockApiActions.setBeepState).toHaveBeenCalledWith('on');
-    expect(cb).toHaveBeenCalledWith(null);
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
   });
 
   it('should handle set (turn beep off) and update status', async () => {
     createAccessory();
-    const cb = jest.fn() as CharacteristicSetCallback;
+    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
     mockApiActions.setBeepState.mockResolvedValueOnce(undefined);
-    await (inst as any).handleSet(false, cb);
+    const handler = onChar.onSet.mock.calls[0][0] as (value: boolean) => Promise<void>;
+    await handler(false);
     expect(mockApiActions.setBeepState).toHaveBeenCalledWith('off');
-    expect(cb).toHaveBeenCalledWith(null);
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
   });
 
   it('should handle set error', async () => {
     createAccessory();
+    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
     const error = new Error('API Error');
     mockApiActions.setBeepState.mockRejectedValueOnce(error);
-    const cb = jest.fn() as CharacteristicSetCallback;
-    await (inst as any).handleSet(true, cb);
-    expect(mockApiActions.setBeepState).toHaveBeenCalledWith('on');
-    expect(cb).toHaveBeenCalledWith(error);
+    const handler = onChar.onSet.mock.calls[0][0] as (value: boolean) => Promise<void>;
+    await expect(handler(true)).rejects.toThrow(error);
     expect(mockService.updateCharacteristic).not.toHaveBeenCalledWith(platform.Characteristic.On, true);
   });
 });

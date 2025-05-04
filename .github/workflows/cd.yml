@@ -62,17 +62,45 @@ jobs:
           PACKAGE_NAME=$(node -p "require('./package.json').name")
           echo "Fetching published versions for $PACKAGE_NAME..."
           VERSIONS_JSON=$(npm view "$PACKAGE_NAME" versions --json)
-          OLD_VERSIONS=$(echo "$VERSIONS_JSON" | jq -r '.[0:-10][]')
-          if [ -z "$OLD_VERSIONS" ]; then
-            echo "No older versions to deprecate."
-            exit 0
-          fi
-          for VERSION in $OLD_VERSIONS; do
-            echo "Deprecating $PACKAGE_NAME@$VERSION"
-            npm deprecate "$PACKAGE_NAME@$VERSION" "Deprecated in favor of newer releases" \
-              || echo "Skipping $PACKAGE_NAME@$VERSION (already deprecated or not found)"
-          done
+          # Determine the cutoff version (10th from the end)
+          CUTOFF=$(echo "$VERSIONS_JSON" | jq -r '.[-10]')
+          echo "Deprecating all versions < $CUTOFF"
+          # Deprecate all versions less than the cutoff with a single range command
+          npm deprecate "$PACKAGE_NAME@<${CUTOFF}" "Deprecated in favor of newer releases"
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         shell: bash
+
+  beta-release:
+    name: 🚀 Beta Release to npm & GitHub
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/develop'
+    permissions:
+      contents: write
+      packages: write
+
+    steps:
+      - name: ⬇️ Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.x'
+          registry-url: https://registry.npmjs.org
+          always-auth: true
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔒 Authenticate npm registry
+        run: npm config set //registry.npmjs.org/:_authToken ${{ secrets.NPM_TOKEN }}
+
+      - name: 🚀 Run semantic-release for beta
+        run: npx semantic-release --no-ci --branch develop --tag beta
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,4 +1,4 @@
-import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
+import { vi, describe, beforeEach, afterEach, it, expect  } from 'vitest';
 import { FanSpeedAccessory } from '../FanSpeedAccessory.js';
 import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
@@ -12,13 +12,14 @@ import {
   createMockApiActions
 } from './testUtils.js';
 
-// Use type assertion to fix the jest.Mock compatibility issue
+// Use type assertion to fix the ReturnType<typeof vi.fn> compatibility issue
 import AirConditionerAPI from '../AirConditionerAPI.js';
 
 // Mock AirConditionerAPI at the module level
-jest.mock('../AirConditionerAPI.js', () => {
-  return jest.fn();
-}, { virtual: true });
+vi.mock('../AirConditionerAPI.js', () => ({
+  __esModule: true,
+  default: vi.fn(() => MockApiActions),
+}));
 
 describe('FanSpeedAccessory', () => {
   let platform: TfiacPlatform;
@@ -55,21 +56,21 @@ describe('FanSpeedAccessory', () => {
     deviceAPI.cleanup.mockResolvedValue(undefined);
     
     // Use type assertion to fix the compatibility issue
-    (AirConditionerAPI as unknown as jest.Mock).mockImplementation(() => deviceAPI);
+    (AirConditionerAPI as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => deviceAPI);
     
     // Mock service methods for characteristic handling
     service.getCharacteristic.mockImplementation(() => {
       return {
-        onGet: jest.fn().mockReturnThis(),
-        onSet: jest.fn().mockReturnThis(),
-        on: jest.fn().mockReturnThis(),
-        updateValue: jest.fn().mockReturnThis(),
+        onGet: vi.fn().mockReturnThis(),
+        onSet: vi.fn().mockReturnThis(),
+        on: vi.fn().mockReturnThis(),
+        updateValue: vi.fn().mockReturnThis(),
       };
     });
     
     // Fix type compatibility issues with proper type assertions
-    const getServiceMock = jest.fn().mockReturnValue(undefined);
-    const addServiceMock = jest.fn().mockReturnValue(service);
+    const getServiceMock = vi.fn().mockReturnValue(undefined);
+    const addServiceMock = vi.fn().mockReturnValue(service);
     
     // Type assertions to fix TypeScript errors
     accessory.getService = getServiceMock as unknown as PlatformAccessory['getService'];
@@ -77,8 +78,8 @@ describe('FanSpeedAccessory', () => {
   });
 
   afterEach(() => {
-    jest.restoreAllMocks();
-    jest.clearAllMocks();
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
   });
 
   it('should construct and set up polling and handlers', () => {
@@ -99,31 +100,35 @@ describe('FanSpeedAccessory', () => {
     expect(() => inst.stopPolling()).not.toThrow();
   });
 
-  it('should handle get with cached status', done => {
+  it('should handle get with cached status', async () => {
     const inst = new FanSpeedAccessory(platform, accessory);
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
     
     (inst as any).cachedStatus = { fan_mode: '50' } as any;
-    (inst as any).handleGet((err: any, val: any) => {
-      expect(err).toBeNull();
-      expect(val).toBe(50);
-      done();
-    });
+    const result = await new Promise((resolve) => {
+      (inst as any).handleGet((err: any, val: any) => {
+        resolve({ err, val });
+      });
+    }) as { err: any, val: any };
+    expect(result.err).toBeNull();
+    expect(result.val).toBe(50);
   });
 
-  it('should handle get with no cached status', done => {
+  it('should handle get with no cached status', async () => {
     const inst = new FanSpeedAccessory(platform, accessory);
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
     
     (inst as any).cachedStatus = null;
-    (inst as any).handleGet((err: any, val: any) => {
-      // Now expecting default value (50) instead of error
-      expect(err).toBeNull();
-      expect(val).toBe(50);
-      done();
-    });
+    const result = await new Promise((resolve) => {
+      (inst as any).handleGet((err: any, val: any) => {
+        resolve({ err, val });
+      });
+    }) as { err: any, val: any };
+    // Now expecting default value (50) instead of error
+    expect(result.err).toBeNull();
+    expect(result.val).toBe(50);
   });
 
   it('should handle set and update status', async () => {
@@ -131,7 +136,7 @@ describe('FanSpeedAccessory', () => {
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
     
-    const cb = jest.fn();
+    const cb = vi.fn();
     await (inst as any).handleSet(75, cb);
     expect(deviceAPI.setFanSpeed).toHaveBeenCalledWith('75');
     expect(cb).toHaveBeenCalledWith(null);
@@ -143,7 +148,7 @@ describe('FanSpeedAccessory', () => {
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
     
-    const cb = jest.fn();
+    const cb = vi.fn();
     await (inst as any).handleSet(30, cb);
     expect(cb).toHaveBeenCalledWith(expect.any(Error));
   });
@@ -179,8 +184,8 @@ describe('FanSpeedAccessory', () => {
   it('should reuse existing Fan service if present', () => {
     const service = createMockService();
     // Use proper type assertions to fix TypeScript errors
-    accessory.getServiceById = jest.fn().mockReturnValue(service) as unknown as PlatformAccessory['getServiceById'];
-    accessory.addService = jest.fn() as unknown as PlatformAccessory['addService'];
+    accessory.getServiceById = vi.fn().mockReturnValue(service) as unknown as PlatformAccessory['getServiceById'];
+    accessory.addService = vi.fn() as unknown as PlatformAccessory['addService'];
     
     const inst = new FanSpeedAccessory(platform, accessory);
     (inst as any).deviceAPI = deviceAPI;

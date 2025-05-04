@@ -1,13 +1,27 @@
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { PlatformAccessory, Service, Characteristic } from 'homebridge';
+import { TfiacDeviceConfig } from '../settings.js';
+import { AirConditionerStatus } from '../AirConditionerAPI.js';
+
+// Mock implementations before imports to avoid hoisting issues
+vi.mock('../AirConditionerAPI.js', () => {
+  return {
+    AirConditionerAPI: vi.fn(),
+  };
+}); 
+
+vi.mock('../CacheManager.js', () => {
+  return {
+    CacheManager: {
+      getInstance: vi.fn(),
+    }
+  };
+});
+
+// Import after mocks
 import { TfiacPlatform } from '../platform.js';
 import { BaseSwitchAccessory } from '../BaseSwitchAccessory.js';
-import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI.js';
-import CacheManager from '../CacheManager.js';
-import { TfiacDeviceConfig } from '../settings.js';
-
-// Mock implementations
-jest.mock('../AirConditionerAPI.js'); 
-jest.mock('../CacheManager.js');
+import { CacheManager } from '../CacheManager.js';
 
 // Concrete class for testing BaseSwitchAccessory
 class TestSwitchAccessory extends BaseSwitchAccessory {
@@ -28,10 +42,10 @@ class TestSwitchAccessory extends BaseSwitchAccessory {
     );
   }
   // Expose protected methods for testing
-  public testHandleGet(callback: jest.Mock) {
-    super.handleGet(callback);
+  public testHandleGet(callback: ReturnType<typeof vi.fn>) {
+    return super.handleGet(callback);
   }
-  public async testHandleSet(value: boolean, callback: jest.Mock) {
+  public async testHandleSet(value: boolean, callback: ReturnType<typeof vi.fn>) {
     await super.handleSet(value, callback);
   }
   public async testUpdateCachedStatus() {
@@ -44,33 +58,33 @@ describe('BaseSwitchAccessory', () => {
   let accessory: PlatformAccessory;
   let service: Service;
   let characteristic: Characteristic;
-  let mockGetStatusValue: jest.Mock;
-  let mockSetApiState: jest.Mock;
-  let mockCacheManager: jest.Mocked<CacheManager>;
+  let mockGetStatusValue: ReturnType<typeof vi.fn>;
+  let mockSetApiState: ReturnType<typeof vi.fn>;
+  let mockCacheManager: any;
   let inst: TestSwitchAccessory;
 
   beforeEach(() => {
     // Reset mocks before each test
-    jest.clearAllMocks();
+    vi.clearAllMocks();
 
     // Mock Characteristic
     characteristic = {
-      on: jest.fn().mockReturnThis(),
-      updateValue: jest.fn(),
+      on: vi.fn().mockReturnThis(),
+      updateValue: vi.fn(),
     } as unknown as Characteristic;
 
     // Mock Service
     service = {
-      getCharacteristic: jest.fn().mockReturnValue(characteristic),
-      setCharacteristic: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn(),
+      getCharacteristic: vi.fn().mockReturnValue(characteristic),
+      setCharacteristic: vi.fn().mockReturnThis(),
+      updateCharacteristic: vi.fn(),
     } as unknown as Service;
 
     // Mock Accessory
     accessory = {
-      getService: jest.fn().mockReturnValue(service),
-      getServiceById: jest.fn().mockReturnValue(service),
-      addService: jest.fn().mockReturnValue(service),
+      getService: vi.fn().mockReturnValue(service),
+      getServiceById: vi.fn().mockReturnValue(service),
+      addService: vi.fn().mockReturnValue(service),
       context: {
         deviceConfig: {
           ip: '192.168.1.100',
@@ -85,19 +99,19 @@ describe('BaseSwitchAccessory', () => {
     // Mock Platform
     platform = {
       log: {
-        debug: jest.fn(),
-        info: jest.fn(),
-        warn: jest.fn(),
-        error: jest.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
       },
       api: {
         hap: {
           Service: {
-            Switch: jest.fn(),
+            Switch: vi.fn(),
           },
           Characteristic: {
-            On: jest.fn(),
-            Name: jest.fn(),
+            On: vi.fn(),
+            Name: vi.fn(),
           },
         },
       },
@@ -106,30 +120,31 @@ describe('BaseSwitchAccessory', () => {
       },
       Characteristic: {
         On: characteristic, // Use the mocked characteristic instance
-        Name: jest.fn(),
+        Name: vi.fn(),
       },
     } as unknown as TfiacPlatform;
 
     // Mock CacheManager
     // Ensure getInstance returns a mock with the getStatus method and api event methods
     mockCacheManager = {
-      getStatus: jest.fn(),
-      clear: jest.fn(),
-      cleanup: jest.fn(),
-      api: { on: jest.fn(), off: jest.fn() },
-    } as unknown as jest.Mocked<CacheManager>;
-    (CacheManager.getInstance as jest.Mock).mockReturnValue(mockCacheManager);
+      getStatus: vi.fn(),
+      clear: vi.fn(),
+      cleanup: vi.fn(),
+      api: { on: vi.fn(), off: vi.fn() },
+    };
+    
+    (CacheManager.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockCacheManager);
 
     // Mock functions for the constructor
-    mockGetStatusValue = jest.fn().mockImplementation((status) => status.opt_test === 'on');
-    mockSetApiState = jest.fn().mockResolvedValue(undefined);
+    mockGetStatusValue = vi.fn().mockImplementation((status) => status.opt_test === 'on');
+    mockSetApiState = vi.fn().mockResolvedValue(undefined);
 
     // Create instance of the test class
     inst = new TestSwitchAccessory(
       platform,
       accessory,
-      mockGetStatusValue,
-      mockSetApiState,
+      mockGetStatusValue as (status: Partial<AirConditionerStatus>) => boolean,
+      mockSetApiState as (value: boolean) => Promise<void>,
     );
     // Prevent actual polling during tests
     inst.stopPolling();
@@ -146,34 +161,35 @@ describe('BaseSwitchAccessory', () => {
   });
 
   describe('handleGet', () => {
-    it('should return false when cachedStatus is null', () => {
-      const callback = jest.fn();
+    it('should return false when cachedStatus is null', async () => {
       (inst as any).cachedStatus = null;
-      inst.testHandleGet(callback);
+      const callback = vi.fn();
+      await inst.testHandleGet(callback);
       expect(mockGetStatusValue).not.toHaveBeenCalled();
       expect(callback).toHaveBeenCalledWith(null, false);
     });
 
-    it('should return value from getStatusValue when cachedStatus exists', () => {
-      const callback = jest.fn();
+    it('should return value from getStatusValue when cachedStatus exists', async () => {
       (inst as any).cachedStatus = { opt_test: 'on' };
-      mockGetStatusValue.mockReturnValue(true); // Explicitly set return for this test
-      inst.testHandleGet(callback);
+      mockGetStatusValue.mockReturnValue(true);
+      const callback = vi.fn();
+      await inst.testHandleGet(callback);
       expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'on' });
       expect(callback).toHaveBeenCalledWith(null, true);
 
-      jest.clearAllMocks(); // Clear mocks for next part
+      vi.clearAllMocks();
       (inst as any).cachedStatus = { opt_test: 'off' };
       mockGetStatusValue.mockReturnValue(false);
-      inst.testHandleGet(callback);
+      const callback2 = vi.fn();
+      await inst.testHandleGet(callback2);
       expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'off' });
-      expect(callback).toHaveBeenCalledWith(null, false);
+      expect(callback2).toHaveBeenCalledWith(null, false);
     });
   });
 
   describe('handleSet', () => {
     it('should call setApiState and update characteristic', async () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       await inst.testHandleSet(true, callback);
       expect(mockSetApiState).toHaveBeenCalledWith(true);
       expect(mockCacheManager.clear).toHaveBeenCalled();
@@ -183,7 +199,7 @@ describe('BaseSwitchAccessory', () => {
     });
 
     it('should handle errors from setApiState', async () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       const error = new Error('API Set Error');
       mockSetApiState.mockRejectedValue(error);
       await inst.testHandleSet(false, callback);
@@ -195,5 +211,24 @@ describe('BaseSwitchAccessory', () => {
     });
   });
 
-  // Skipping updateCachedStatus tests as method was refactored to updateStatus
+  // Tests for updateCachedStatus method
+  describe('updateCachedStatus', () => {
+    it('should update cachedStatus from CacheManager', async () => {
+      mockCacheManager.getStatus.mockResolvedValue({ opt_test: 'on', other_prop: 'value' });
+      await inst.testUpdateCachedStatus();
+      expect(mockCacheManager.getStatus).toHaveBeenCalled();
+      expect((inst as any).cachedStatus).toEqual({ opt_test: 'on', other_prop: 'value' });
+    });
+
+    it('should handle errors during status update', async () => {
+      const error = new Error('Failed to get status');
+      mockCacheManager.getStatus.mockRejectedValue(error);
+      await inst.testUpdateCachedStatus();
+      expect(platform.log.error).toHaveBeenCalledWith(
+        expect.stringContaining('Error updating TestSwitch status'),
+        error
+      );
+      expect((inst as any).cachedStatus).toBeNull();
+    });
+  });
 });

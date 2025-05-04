@@ -15,7 +15,7 @@ import {
   initialStatusFahrenheit,
   createMockAPI,
 } from './testUtils.js';
-import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
+import { vi, describe, beforeEach, afterEach, it, expect  } from 'vitest';
 import { celsiusToFahrenheit, fahrenheitToCelsius } from '../utils.js';
 
 // Import AirConditionerAPI to mock it
@@ -25,7 +25,9 @@ import AirConditionerAPI from '../AirConditionerAPI.js';
 const mockApiActions = createMockApiActions(initialStatusFahrenheit);
 
 // Mock AirConditionerAPI constructor to return shared mockApiActions
-jest.mock('../AirConditionerAPI', () => jest.fn().mockImplementation(() => mockApiActions));
+vi.mock('../AirConditionerAPI', () => ({
+  default: vi.fn(() => mockApiActions)
+}));
 
 // Get API constants
 const mockAPI = createMockAPI();
@@ -39,13 +41,13 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
   let mockApi: any;
 
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     
     // Reset all mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Mock startPolling to avoid setting timers
-    jest.spyOn(TfiacPlatformAccessory.prototype, 'startPolling').mockImplementation(function() {
+    vi.spyOn(TfiacPlatformAccessory.prototype, 'startPolling').mockImplementation(function() {
       // Empty mock implementation that doesn't set intervals and doesn't access this.log
       return;
     });
@@ -61,7 +63,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
     
     // Mock platform for testing
     const mockPlatform = {
-      log: { debug: jest.fn(), error: jest.fn() },
+      log: { debug: vi.fn(), error: vi.fn() },
       Characteristic: hapConstants.Characteristic,
       Service: hapConstants.Service, // <-- add this line
       api: {
@@ -74,7 +76,7 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
     
     // Set up API mock with all required methods
     mockApi = {
-      updateState: jest.fn().mockResolvedValue({
+      updateState: vi.fn().mockResolvedValue({
         is_on: 'off',
         current_temp: 68,
         target_temp: 68,
@@ -83,13 +85,13 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
         swing_mode: 'Off',
         outdoor_temp: 68,
       }),
-      cleanup: jest.fn().mockResolvedValue(undefined),
-      turnOn: jest.fn().mockResolvedValue(undefined),
-      turnOff: jest.fn().mockResolvedValue(undefined),
-      setAirConditionerState: jest.fn().mockResolvedValue(undefined),
-      setFanSpeed: jest.fn().mockResolvedValue(undefined),
-      setSwingMode: jest.fn().mockResolvedValue(undefined),
-      setTurboState: jest.fn().mockResolvedValue(undefined),
+      cleanup: vi.fn().mockResolvedValue(undefined),
+      turnOn: vi.fn().mockResolvedValue(undefined),
+      turnOff: vi.fn().mockResolvedValue(undefined),
+      setAirConditionerState: vi.fn().mockResolvedValue(undefined),
+      setFanSpeed: vi.fn().mockResolvedValue(undefined),
+      setSwingMode: vi.fn().mockResolvedValue(undefined),
+      setTurboState: vi.fn().mockResolvedValue(undefined),
     };
 
     // Create our accessory instance with the mock platform
@@ -122,164 +124,184 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
 
   // Active characteristic handler tests
   describe('Active characteristic handlers', () => {
-    it('handleActiveGet returns ACTIVE when cache on', done => {
+    it('handleActiveGet returns ACTIVE when cache on', async () => {
       (accessory as any).cachedStatus.is_on = 'on';
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'get');
       
-      handler((err, value) => {
-        expect(err).toBeNull();
-        expect(value).toBe(hapConstants.Characteristic.Active.ACTIVE);
-        done();
+      const value = await new Promise((resolve, reject) => {
+        handler((err, value) => {
+          if (err) reject(err);
+          else resolve(value);
+        });
       });
+
+      expect(value).toBe(hapConstants.Characteristic.Active.ACTIVE);
     });
 
-    it('handleActiveGet falls back to characteristic value when no cache', done => {
+    it('handleActiveGet falls back to characteristic value when no cache', async () => {
       (accessory as any).cachedStatus = null;
       mockService.getCharacteristic().value = hapConstants.Characteristic.Active.INACTIVE;
       
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'get');
       
-      handler((err, value) => {
-        expect(err).toBeNull();
-        expect(value).toBe(hapConstants.Characteristic.Active.INACTIVE);
-        done();
+      const value = await new Promise((resolve, reject) => {
+        handler((err, value) => {
+          if (err) reject(err);
+          else resolve(value);
+        });
       });
+
+      expect(value).toBe(hapConstants.Characteristic.Active.INACTIVE);
     });
 
-    it('handleActiveSet calls turnOn and updateCachedStatus', done => {
+    it('handleActiveSet calls turnOn and updateCachedStatus', async () => {
       mockApi.turnOn.mockResolvedValue(undefined);
-      jest.spyOn(accessory as any, 'updateCachedStatus').mockResolvedValue(undefined);
+      vi.spyOn(accessory as any, 'updateCachedStatus').mockResolvedValue(undefined);
       
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'set');
       
-      handler(hapConstants.Characteristic.Active.ACTIVE, (err) => {
-        expect(err).toBeNull();
-        expect(mockApi.turnOn).toHaveBeenCalled();
-        done();
+      await new Promise((resolve, reject) => {
+        handler(hapConstants.Characteristic.Active.ACTIVE, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
+
+      expect(mockApi.turnOn).toHaveBeenCalled();
     });
 
-    it('handleActiveSet calls turnOff and propagates error', done => {
+    it('handleActiveSet calls turnOff and propagates error', async () => {
       mockApi.turnOff.mockRejectedValueOnce(new Error('fail'));      
       
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.Active, 'set');
       
-      handler(hapConstants.Characteristic.Active.INACTIVE, (err) => {
-        expect(err).toBeInstanceOf(Error);
-        expect(mockApi.turnOff).toHaveBeenCalled();
-        done();
-      });
+      await expect(new Promise((resolve, reject) => {
+        handler(hapConstants.Characteristic.Active.INACTIVE, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      })).rejects.toThrow('fail');
+
+      expect(mockApi.turnOff).toHaveBeenCalled();
     });
   });
 
   // HeaterCooler State handler tests
   describe('HeaterCooler State handlers', () => {
-    it('handleCurrentHeaterCoolerStateGet returns INACTIVE without cache', done => {
+    it('handleCurrentHeaterCoolerStateGet returns INACTIVE without cache', async () => {
       (accessory as any).cachedStatus = null;
       mockService.getCharacteristic().value = hapConstants.Characteristic.CurrentHeaterCoolerState.IDLE;
       
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.CurrentHeaterCoolerState, 'get');
       
-      handler((err, value) => {
-        expect(err).toBeNull();
-        expect(value).toBe(hapConstants.Characteristic.CurrentHeaterCoolerState.IDLE);
-        done();
+      const value = await new Promise((resolve, reject) => {
+        handler((err, value) => {
+          if (err) reject(err);
+          else resolve(value);
+        });
       });
+
+      expect(value).toBe(hapConstants.Characteristic.CurrentHeaterCoolerState.IDLE);
     });
 
-    it('handleTargetHeaterCoolerStateGet returns AUTO without cache', done => {
+    it('handleTargetHeaterCoolerStateGet returns AUTO without cache', async () => {
       (accessory as any).cachedStatus = null;
       mockService.getCharacteristic().value = hapConstants.Characteristic.TargetHeaterCoolerState.AUTO;
       
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.TargetHeaterCoolerState, 'get');
       
-      handler((err, value) => {
-        expect(err).toBeNull();
-        expect(value).toBe(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO);
-        done();
+      const value = await new Promise((resolve, reject) => {
+        handler((err, value) => {
+          if (err) reject(err);
+          else resolve(value);
+        });
       });
+
+      expect(value).toBe(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO);
     });
 
-    it('handleTargetHeaterCoolerStateSet sets API and updates cache', done => {
+    it('handleTargetHeaterCoolerStateSet sets API and updates cache', async () => {
       mockApi.setAirConditionerState.mockResolvedValue(undefined);
-      jest.spyOn(accessory as any, 'updateCachedStatus').mockResolvedValue(undefined);
+      vi.spyOn(accessory as any, 'updateCachedStatus').mockResolvedValue(undefined);
       
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.TargetHeaterCoolerState, 'set');
       
-      handler(hapConstants.Characteristic.TargetHeaterCoolerState.HEAT, (err) => {
-        expect(err).toBeNull();
-        expect(mockApi.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'heat');
-        done();
+      await new Promise((resolve, reject) => {
+        handler(hapConstants.Characteristic.TargetHeaterCoolerState.HEAT, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
+
+      expect(mockApi.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'heat');
     });
 
-    it('handleTargetHeaterCoolerStateSet propagates error', done => {
+    it('handleTargetHeaterCoolerStateSet propagates error', async () => {
       const error = new Error('oops');
       mockApi.setAirConditionerState.mockRejectedValueOnce(error);
       
       const handler = getHandlerByIdentifier(mockService, hapConstants.Characteristic.TargetHeaterCoolerState, 'set');
       
-      handler(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO, (err) => {
-        expect(err).toBe(error);
-        expect(mockApi.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'auto');
-        done();
-      });
+      await expect(new Promise((resolve, reject) => {
+        handler(hapConstants.Characteristic.TargetHeaterCoolerState.AUTO, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      })).rejects.toThrow('oops');
+
+      expect(mockApi.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'auto');
     });
   });
 
   // Test for RotationSpeed and SwingMode handlers
   describe('RotationSpeed and SwingMode set handlers', () => {
-    it('handleRotationSpeedSet calls API', done => {
+    it('handleRotationSpeedSet calls API', async () => {
       // Mock the API call
       mockApi.setFanSpeed.mockResolvedValue(undefined);
       
       // Mock the updateCachedStatus method to resolve immediately
-      jest.spyOn(accessory as any, 'updateCachedStatus').mockImplementation(() => {
+      vi.spyOn(accessory as any, 'updateCachedStatus').mockImplementation(() => {
         return Promise.resolve();
       });
       
       // Also mock mapRotationSpeedToFanMode to return a predictable value
-      jest.spyOn(accessory as any, 'mapRotationSpeedToFanMode').mockImplementation(() => {
+      vi.spyOn(accessory as any, 'mapRotationSpeedToFanMode').mockImplementation(() => {
         return 'High';
       });
       
       // Use the handler directly from the accessory
       const handler = (accessory as any).handleRotationSpeedSet.bind(accessory);
       
-      // Call the handler with the rotation speed value
-      handler(80, (err) => {
-        try {
-          expect(err).toBeNull();
-          expect(mockApi.setFanSpeed).toHaveBeenCalledWith('High');
-          done();
-        } catch (e) {
-          done(e);
-        }
+      await new Promise((resolve, reject) => {
+        handler(80, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
+
+      expect(mockApi.setFanSpeed).toHaveBeenCalledWith('High');
     });
 
-    it('handleSwingModeSet calls API', done => {
+    it('handleSwingModeSet calls API', async () => {
       // Mock the API call
       mockApi.setSwingMode.mockResolvedValue(undefined);
       
       // Mock the updateCachedStatus method to resolve immediately
-      jest.spyOn(accessory as any, 'updateCachedStatus').mockImplementation(() => {
+      vi.spyOn(accessory as any, 'updateCachedStatus').mockImplementation(() => {
         return Promise.resolve();
       });
       // No need to mock mapSwingModeToSwingMode, mapping is inline in the method
       // Use the handler directly from the accessory
       const handler = (accessory as any).handleSwingModeSet.bind(accessory);
       
-      // Call the handler with the swing mode value
-      handler(hapConstants.Characteristic.SwingMode.SWING_ENABLED, (err) => {
-        try {
-          expect(err).toBeNull();
-          expect(mockApi.setSwingMode).toHaveBeenCalledWith('Vertical');
-          done();
-        } catch (e) {
-          done(e);
-        }
+      await new Promise((resolve, reject) => {
+        handler(hapConstants.Characteristic.SwingMode.SWING_ENABLED, (err) => {
+          if (err) reject(err);
+          else resolve();
+        });
       });
+
+      expect(mockApi.setSwingMode).toHaveBeenCalledWith('Vertical');
     });
   });
 
@@ -455,14 +477,14 @@ describe('TfiacPlatformAccessory extended coverage', () => {
     // Create a mock for testing
     const accessory = {
       platform: {
-        log: { debug: jest.fn() }
+        log: { debug: vi.fn() }
       },
       cachedStatus: {
         outdoor_temp: 75,
         current_temp: 72
       },
       service: {
-        updateCharacteristic: jest.fn()
+        updateCharacteristic: vi.fn()
       },
       handleOutdoorTemperatureSensorCurrentTemperatureGet: function(callback: any) {
         this.platform.log.debug('Triggered GET OutdoorTemperatureSensor.CurrentTemperature');

@@ -1,3 +1,4 @@
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
 import { OutdoorTemperatureSensorAccessory } from '../OutdoorTemperatureSensorAccessory.js';
@@ -36,8 +37,8 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     accessory = createMockPlatformAccessory('Test Device', 'test-uuid', deviceConfig);
     
     // Override the getServiceById mock for this specific test context
-    accessory.getServiceById = jest.fn().mockReturnValue(null);
-    accessory.addService = jest.fn().mockReturnValue(mockService);
+    accessory.getServiceById = vi.fn().mockReturnValue(null);
+    accessory.addService = vi.fn().mockReturnValue(mockService);
 
     // Create the accessory
     sensorAccessory = new OutdoorTemperatureSensorAccessory(platform, accessory, deviceConfig);
@@ -89,7 +90,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
 
   it('should use existing service if available', () => {
     // Setup existing service
-    (accessory.getServiceById as jest.Mock).mockReturnValue(mockService);
+    (accessory.getServiceById as ReturnType<typeof vi.fn>).mockReturnValue(mockService);
     
     const status = {
       current_temp: 77,
@@ -179,7 +180,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     sensorAccessory.updateStatus(status);
     
     // Reset mocks to clearly see the next calls
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     sensorAccessory.removeService();
     
@@ -228,7 +229,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
   });
 
   it('handleCurrentTemperatureGet returns default when no service exists', () => {
-    const cb = jest.fn();
+    const cb = vi.fn();
     // Invoke private method
     (sensorAccessory as any).handleCurrentTemperatureGet(cb);
     expect(cb).toHaveBeenCalledWith(null, 20);
@@ -247,8 +248,8 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     } as any;
     sensorAccessory.updateStatus(createStatus);
     // Mock getCharacteristic to return custom value
-    mockService.getCharacteristic.mockReturnValueOnce({ value: 25, on: jest.fn() });
-    const cb = jest.fn();
+    mockService.getCharacteristic.mockReturnValueOnce({ value: 25, on: vi.fn() });
+    const cb = vi.fn();
     (sensorAccessory as any).handleCurrentTemperatureGet(cb);
     expect(cb).toHaveBeenCalledWith(null, 25);
   });
@@ -265,7 +266,7 @@ describe('OutdoorTemperatureSensorAccessory', () => {
       outdoor_temp: 68,
     } as any;
     sensorAccessory.updateStatus(goodStatus);
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     // Now call updateStatus with null to trigger removal
     sensorAccessory.updateStatus(null);
     expect(platform.log.debug).toHaveBeenCalledWith('[OutdoorTemperatureSensor] Removing service.');

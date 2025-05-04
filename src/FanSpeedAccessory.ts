@@ -58,25 +58,34 @@ export class FanSpeedAccessory {
     );
   }
 
-  private handleGet(callback: (err: Error | null, value?: number) => void): void {
+  private handleGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
     // Read current characteristic value
     const current = this.service.getCharacteristic(
       this.platform.Characteristic.RotationSpeed,
     ).value as number;
-    callback(null, current ?? 50);
+    
+    if (callback && typeof callback === 'function') {
+      callback(null, current ?? 50);
+      return current ?? 50;
+    }
+    
+    return Promise.resolve(current ?? 50);
   }
 
-  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
-    // Set via centralized API and clear cache
-    (async () => {
-      try {
-        await this.deviceAPI.setFanSpeed(String(value as number));
-        this.cacheManager.clear();
+  private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
+    try {
+      await this.deviceAPI.setFanSpeed(String(value as number));
+      this.cacheManager.clear();
+      if (callback && typeof callback === 'function') {
         callback(null);
-      } catch (err) {
-        callback(err as Error);
       }
-    })();
+    } catch (err) {
+      if (callback && typeof callback === 'function') {
+        callback(err as Error);
+      } else {
+        throw err;
+      }
+    }
   }
 
   /**

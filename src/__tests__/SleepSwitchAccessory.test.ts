@@ -4,13 +4,13 @@ import { SleepSwitchAccessory } from '../SleepSwitchAccessory.js';
 import CacheManager from '../CacheManager.js';
 import { SleepModeState } from '../enums.js'; // Import Enum
 import { AirConditionerStatus } from '../AirConditionerAPI.js';
-import { jest, beforeEach, describe, it, expect } from '@jest/globals';
+import { vi, beforeEach, describe, it, expect  } from 'vitest';
 
 // Mock the CacheManager
-jest.mock('../CacheManager.js');
+vi.mock('../CacheManager.js');
 
 // Define mock function types explicitly
-type MockFn<T> = jest.Mock<any>;
+type MockFn<T> = ReturnType<typeof vi.fn>;
 
 describe('SleepSwitchAccessory', () => {
   let platform: TfiacPlatform;
@@ -25,44 +25,44 @@ describe('SleepSwitchAccessory', () => {
 
   beforeEach(() => {
     // Reset mocks before each test
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Create our mock functions with proper types
-    mockSetSleepState = jest.fn<(state: string) => Promise<void>>();
-    mockUpdateState = jest.fn<() => Promise<{}>>();
-    mockGetStatus = jest.fn<() => Promise<AirConditionerStatus>>();
+    mockSetSleepState = vi.fn();
+    mockUpdateState = vi.fn();
+    mockGetStatus = vi.fn();
     
     // Create mock cache manager
     mockCacheManager = {
       api: {
         setSleepState: mockSetSleepState,
         updateState: mockUpdateState,
-        setAirConditionerState: jest.fn(),
+        setAirConditionerState: vi.fn(),
       },
-      get: jest.fn(),
-      set: jest.fn(),
-      clear: jest.fn(),
-      startPolling: jest.fn(),
-      stopPolling: jest.fn(),
+      get: vi.fn(),
+      set: vi.fn(),
+      clear: vi.fn(),
+      startPolling: vi.fn(),
+      stopPolling: vi.fn(),
       getStatus: mockGetStatus,
-      cleanup: jest.fn(),
+      cleanup: vi.fn(),
     };
     
     // Mock the static getInstance method
-    (CacheManager.getInstance as jest.Mock) = jest.fn().mockReturnValue(mockCacheManager);
+    (CacheManager.getInstance as ReturnType<typeof vi.fn>) = vi.fn().mockReturnValue(mockCacheManager);
 
     // Create platform mock
     platform = {
       log: {
-        info: jest.fn(),
-        debug: jest.fn(),
-        error: jest.fn(),
-        warn: jest.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+        warn: vi.fn(),
       },
       api: {
         hap: {
           uuid: {
-            generate: jest.fn().mockReturnValue('mock-uuid'),
+            generate: vi.fn().mockReturnValue('mock-uuid'),
           },
           Characteristic: {
             On: {
@@ -70,7 +70,7 @@ describe('SleepSwitchAccessory', () => {
             },
           },
         },
-        platformAccessory: jest.fn(),
+        platformAccessory: vi.fn(),
       },
       Service: {
         Switch: function() {
@@ -86,17 +86,17 @@ describe('SleepSwitchAccessory', () => {
     } as unknown as TfiacPlatform;
 
     // Create service mock with proper on and updateValue methods
-    const mockOnMethod = jest.fn().mockReturnThis();
-    const mockUpdateValue = jest.fn();
+    const mockOnMethod = vi.fn().mockReturnThis();
+    const mockUpdateValue = vi.fn();
     const mockCharacteristic = {
       on: mockOnMethod,
       updateValue: mockUpdateValue,
     };
     
     service = {
-      getCharacteristic: jest.fn().mockReturnValue(mockCharacteristic),
-      setCharacteristic: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn(),
+      getCharacteristic: vi.fn().mockReturnValue(mockCharacteristic),
+      setCharacteristic: vi.fn().mockReturnThis(),
+      updateCharacteristic: vi.fn(),
     };
 
     // Create accessory mock
@@ -112,12 +112,12 @@ describe('SleepSwitchAccessory', () => {
         }
       },
       services: [],
-      getService: jest.fn().mockReturnValue(null),
-      getServiceById: jest.fn().mockReturnValue(null),
-      addService: jest.fn().mockImplementation(() => service),
-      removeService: jest.fn(),
-      on: jest.fn(),
-      emit: jest.fn(),
+      getService: vi.fn().mockReturnValue(null),
+      getServiceById: vi.fn().mockReturnValue(null),
+      addService: vi.fn().mockImplementation(() => service),
+      removeService: vi.fn(),
+      on: vi.fn(),
+      emit: vi.fn(),
     };
 
     // Create instance of the accessory
@@ -141,28 +141,28 @@ describe('SleepSwitchAccessory', () => {
 
   describe('handleGet', () => {
     it('handles get characteristic with sleep mode on', () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.On };
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, true);
     });
 
     it('handles get characteristic with sleep mode off', () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.Off };
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, false);
     });
 
     it('handles get characteristic with undefined sleep mode', () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       (inst as any).cachedStatus = { opt_sleepMode: undefined };
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, true);
     });
 
     it('handles get characteristic with null status', () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       (inst as any).cachedStatus = null;
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, false);
@@ -171,7 +171,7 @@ describe('SleepSwitchAccessory', () => {
 
   describe('handleSet', () => {
     it('should call setSleepState with SleepModeState.On when value is true', async () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       await (inst as any).handleSet(true, callback);
       expect(mockCacheManager.api.setSleepState).toHaveBeenCalledWith(SleepModeState.On);
       expect(mockCacheManager.clear).toHaveBeenCalled();
@@ -179,7 +179,7 @@ describe('SleepSwitchAccessory', () => {
     });
 
     it('should call setSleepState with SleepModeState.Off when value is false', async () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       await (inst as any).handleSet(false, callback);
       expect(mockCacheManager.api.setSleepState).toHaveBeenCalledWith(SleepModeState.Off);
       expect(mockCacheManager.clear).toHaveBeenCalled();
@@ -187,7 +187,7 @@ describe('SleepSwitchAccessory', () => {
     });
 
     it('should handle errors from setSleepState', async () => {
-      const callback = jest.fn();
+      const callback = vi.fn();
       const error = new Error('API Error');
       mockCacheManager.api.setSleepState.mockRejectedValue(error);
       await (inst as any).handleSet(true, callback);
