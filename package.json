@@ -37,8 +37,7 @@
     "watch": "npm run build && npm link && nodemon",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "postinstall": "node scripts/fix-deprecations.js"
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "homebridge-lib": "^7.1.4",
