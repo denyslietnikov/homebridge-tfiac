@@ -1,3 +1,4 @@
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { TurboSwitchAccessory } from '../TurboSwitchAccessory.js';
 import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory } from 'homebridge';
@@ -5,7 +6,7 @@ import CacheManager from '../CacheManager.js';
 import { PowerState } from '../enums.js';
 
 // Mock the CacheManager
-jest.mock('../CacheManager.js');
+vi.mock('../CacheManager.js');
 
 describe('TurboSwitchAccessory', () => {
   let platform: TfiacPlatform;
@@ -16,23 +17,23 @@ describe('TurboSwitchAccessory', () => {
   // Mock cache manager with API methods
   const mockCacheManager = {
     api: {
-      setTurboState: jest.fn().mockResolvedValue(undefined),
-      updateState: jest.fn().mockResolvedValue({}),
+      setTurboState: vi.fn().mockResolvedValue(undefined),
+      updateState: vi.fn().mockResolvedValue({}),
     },
-    get: jest.fn(),
-    set: jest.fn(),
-    clear: jest.fn(),
-    startPolling: jest.fn(),
-    stopPolling: jest.fn(),
-    cleanup: jest.fn(),
+    get: vi.fn(),
+    set: vi.fn(),
+    clear: vi.fn(),
+    startPolling: vi.fn(),
+    stopPolling: vi.fn(),
+    cleanup: vi.fn(),
   };
 
   beforeEach(() => {
     // Reset mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Mock the CacheManager constructor to return our mock
-    (CacheManager as unknown as jest.Mock).mockImplementation(() => mockCacheManager);
+    (CacheManager as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => mockCacheManager);
     // Ensure BaseSwitchAccessory uses our mockCacheManager via getInstance
     /** @ts-ignore */
     (CacheManager as unknown as any).getInstance = (_config: any) => mockCacheManager;
@@ -40,21 +41,21 @@ describe('TurboSwitchAccessory', () => {
     // Create platform mock
     platform = {
       log: {
-        info: jest.fn(),
-        debug: jest.fn(),
-        error: jest.fn(),
-        warn: jest.fn(),
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+        warn: vi.fn(),
       },
       api: {
         hap: {
           uuid: {
-            generate: jest.fn().mockReturnValue('mock-uuid'),
+            generate: vi.fn().mockReturnValue('mock-uuid'),
           },
         },
-        platformAccessory: jest.fn(),
+        platformAccessory: vi.fn(),
       },
       Service: {
-        Switch: jest.fn(),
+        Switch: vi.fn(),
       },
       Characteristic: {
         On: 'On',
@@ -85,22 +86,22 @@ describe('TurboSwitchAccessory', () => {
         }
       },
       services: [],
-      getService: jest.fn().mockReturnValue(null),
-      getServiceById: jest.fn().mockReturnValue(null),
-      addService: jest.fn().mockImplementation(() => service),
-      removeService: jest.fn(),
-      on: jest.fn(),
-      emit: jest.fn(),
+      getService: vi.fn().mockReturnValue(null),
+      getServiceById: vi.fn().mockReturnValue(null),
+      addService: vi.fn().mockImplementation(() => service),
+      removeService: vi.fn(),
+      on: vi.fn(),
+      emit: vi.fn(),
     } as unknown as PlatformAccessory;
 
     // Create service mock
     service = {
-      getCharacteristic: jest.fn().mockReturnValue({
-        on: jest.fn().mockReturnThis(),
-        updateValue: jest.fn(),
+      getCharacteristic: vi.fn().mockReturnValue({
+        on: vi.fn().mockReturnThis(),
+        updateValue: vi.fn(),
       }),
-      setCharacteristic: jest.fn().mockReturnThis(),
-      updateCharacteristic: jest.fn(),
+      setCharacteristic: vi.fn().mockReturnThis(),
+      updateCharacteristic: vi.fn(),
     };
     
     // Create instance of the accessory
@@ -124,31 +125,26 @@ describe('TurboSwitchAccessory', () => {
     expect(onMethod).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
-  it('handles get characteristic with turbo on', () => {
-    const callback = jest.fn();
-    // Use the correct property name 'opt_turbo' and Enum value
+  it('handles get characteristic with turbo on', async () => {
     (inst as any).cachedStatus = { opt_turbo: PowerState.On };
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, true);
+    const value = await (inst as any).handleGet();
+    expect(value).toBe(true);
   });
 
-  it('handles get characteristic with turbo off', () => {
-    const callback = jest.fn();
-    // Use the correct property name 'opt_turbo' and Enum value
+  it('handles get characteristic with turbo off', async () => {
     (inst as any).cachedStatus = { opt_turbo: PowerState.Off };
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
+    const value = await (inst as any).handleGet();
+    expect(value).toBe(false);
   });
 
-  it('handles get characteristic with null status', () => {
-    const callback = jest.fn();
+  it('handles get characteristic with null status', async () => {
     (inst as any).cachedStatus = null;
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
+    const value = await (inst as any).handleGet();
+    expect(value).toBe(false);
   });
 
   it('handles set characteristic to turn turbo on', async () => {
-    const callback = jest.fn();
+    const callback = vi.fn();
     await (inst as any).handleSet(true, callback);
     expect(mockCacheManager.api.setTurboState).toHaveBeenCalledWith(PowerState.On);
     expect(mockCacheManager.clear).toHaveBeenCalled();
@@ -156,7 +152,7 @@ describe('TurboSwitchAccessory', () => {
   });
 
   it('handles set characteristic to turn turbo off', async () => {
-    const callback = jest.fn();
+    const callback = vi.fn();
     await (inst as any).handleSet(false, callback);
     expect(mockCacheManager.api.setTurboState).toHaveBeenCalledWith(PowerState.Off);
     expect(mockCacheManager.clear).toHaveBeenCalled();
@@ -164,7 +160,7 @@ describe('TurboSwitchAccessory', () => {
   });
 
   it('handles set error', async () => {
-    const callback = jest.fn();
+    const callback = vi.fn();
     const error = new Error('API error');
     mockCacheManager.api.setTurboState.mockRejectedValueOnce(error);
     await (inst as any).handleSet(true, callback);
@@ -173,11 +169,10 @@ describe('TurboSwitchAccessory', () => {
     expect(callback).toHaveBeenCalledWith(error);
   });
 
-  it('handles get characteristic with null cached status', () => {
-    const callback = jest.fn(); // Define the callback variable
+  it('handles get characteristic with null cached status', async () => {
     (inst as any).cachedStatus = null;
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
+    const value = await (inst as any).handleGet();
+    expect(value).toBe(false);
   });
 
   it('should updateStatus and update On characteristic when turbo state changes', () => {

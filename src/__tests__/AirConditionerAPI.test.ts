@@ -1,23 +1,28 @@
 // AirConditionerAPI.test.ts
 
-import AirConditionerAPI, { AirConditionerStatus } from '../AirConditionerAPI.js';
-import dgram from 'dgram';
-import { jest, describe, beforeEach, it, expect, afterEach } from '@jest/globals';
+import { vi, describe, beforeEach, it, expect, afterEach, beforeAll } from 'vitest';
 import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from '../enums.js'; // Import enums
 
-jest.mock('dgram');
+// Mock dgram before imports to avoid hoisting issues
+vi.mock('dgram', () => {
+  const createSocket = vi.fn();
+  return {
+    __esModule: true,
+    default: { createSocket },
+  };
+});
+
+// Import after mocks
+import dgram from 'dgram';
+import { AirConditionerAPI, AirConditionerStatus } from '../AirConditionerAPI.js';
+
+let mockSocket: any;
 
 // Types for mocking
 type MessageCallback = (msg: Buffer) => void;
 type ErrorCallback = (err: Error) => void;
 type SendCallback = (error?: Error) => void;
 
-interface MockSocket {
-  send: jest.Mock;
-  on: jest.Mock;
-  close: jest.Mock;
-  removeAllListeners: jest.Mock;
-}
 
 // Test data
 const mockResponseXML = `
@@ -36,7 +41,9 @@ const mockResponseXML = `
 
 describe('AirConditionerAPI', () => {
   let api: AirConditionerAPI;
-  let mockSocket: MockSocket;
+  
+  // Set longer timeout for these tests
+  vi.setConfig({ testTimeout: 15000 });
 
   const getMessageHandlers = (): MessageCallback[] => {
     return (mockSocket.on.mock.calls as ['message' | 'error', MessageCallback | ErrorCallback][])
@@ -51,28 +58,35 @@ describe('AirConditionerAPI', () => {
   };
 
   beforeEach(() => {
-    jest.useFakeTimers();
-
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    // Create a fresh mockSocket instance for each test
     mockSocket = {
-      send: jest.fn().mockImplementation((...args: unknown[]) => {
-        const callback = args[3] as SendCallback;
-        if (callback) {
-          // Immediately call the callback without error
-          callback();
-          // Then simulate a response after a short delay
-          setTimeout(() => {
-            getMessageHandlers().forEach(handler => {
-              handler(Buffer.from(mockResponseXML));
-            });
-          }, 10);
-        }
-      }),
-      on: jest.fn().mockReturnThis(),
-      close: jest.fn(),
-      removeAllListeners: jest.fn(),
+      on: vi.fn(),
+      bind: vi.fn(),
+      setBroadcast: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+      address: vi.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
+      removeAllListeners: vi.fn(),
+      unref: vi.fn(),
     };
+    // Mock dgram.createSocket to return our mockSocket
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocket);
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocket);
+    // Now implement send behavior on our mockSocket
+    mockSocket.send.mockImplementation((...args: unknown[]) => {
+      const callback = args[3] as SendCallback;
+      if (callback) {
+        // Immediately call callback without error
+        callback();
+        // Then simulate a response after a short delay
+        setTimeout(() => {
+          getMessageHandlers().forEach(handler => handler(Buffer.from(mockResponseXML)));
+        }, 10);
+      }
+    });
+
     api = new AirConditionerAPI('192.168.1.100', 7777);
   });
 
@@ -80,16 +94,14 @@ describe('AirConditionerAPI', () => {
     if (api) {
       api.cleanup();
     }
-    jest.clearAllMocks();
-    jest.clearAllTimers();
-    jest.useRealTimers();
-    mockSocket.close();
-    mockSocket.removeAllListeners();
+    vi.clearAllMocks();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it('should send turnOn command correctly', async () => {
     // Use real timers for this test to handle actual setTimeout behavior
-    jest.useRealTimers();
+    vi.useRealTimers();
 
     const promise = api.turnOn();
     await promise;
@@ -100,11 +112,11 @@ describe('AirConditionerAPI', () => {
       '192.168.1.100',
       expect.any(Function),
     );
-  }, 15000);
+  });
 
   it('should send turnOff command correctly', async () => {
     // Use real timers for this test to handle actual setTimeout behavior
-    jest.useRealTimers();
+    vi.useRealTimers();
 
     const promise = api.turnOff();
     await promise;
@@ -115,11 +127,11 @@ describe('AirConditionerAPI', () => {
       '192.168.1.100',
       expect.any(Function),
     );
-  }, 15000);
+  });
 
   it('should correctly parse updateState response', async () => {
     const promise = api.updateState();
-    jest.advanceTimersByTime(50);
+    vi.advanceTimersByTime(50);
     const status = await promise;
 
     expect(status).toEqual({
@@ -134,7 +146,7 @@ describe('AirConditionerAPI', () => {
 
   it('should send correct swing mode command', async () => {
     // Use real timers for this test to handle actual setTimeout behavior
-    jest.useRealTimers();
+    vi.useRealTimers();
     
     // Reset the mock before test
     mockSocket.send.mockReset();
@@ -167,11 +179,11 @@ describe('AirConditionerAPI', () => {
     expect(calls[0][0]).toContain('<WindDirection_V>on</WindDirection_V>');
     expect(calls[0][1]).toBe(7777);
     expect(calls[0][2]).toBe('192.168.1.100');
-  }, 15000);
+  });
 
   it('should set fan speed correctly', async () => {
     // Use real timers for this test to handle actual setTimeout behavior
-    jest.useRealTimers();
+    vi.useRealTimers();
 
     const promise = api.setFanSpeed(FanSpeed.High);
     await promise;
@@ -182,11 +194,11 @@ describe('AirConditionerAPI', () => {
       '192.168.1.100',
       expect.any(Function),
     );
-  }, 15000);
+  });
 
   it('should update air conditioner state correctly', async () => {
     // Switch to real timers for proper setTimeout operation
-    jest.useRealTimers();
+    vi.useRealTimers();
   
     let responsePromiseResolve: (value: void) => void;
     const responsePromise = new Promise<void>(resolve => {
@@ -230,26 +242,22 @@ describe('AirConditionerAPI', () => {
     await expect(api.turnOn()).rejects.toThrow('Network error');
   });
 
-  it(
-    'should handle timeout errors',
-    async () => {
-      jest.useRealTimers();
-      mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
-        const callback = args[3] as SendCallback;
-        if (callback) {
-          callback();
-        }
-      });
-  
-      const updatePromise = api.updateState();
-      const forcedTimeout = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('Request timed out')), 100);
-      });
-      
-      await expect(Promise.race([updatePromise, forcedTimeout])).rejects.toThrow('Request timed out');
-    },
-    1000,
-  );
+  it('should handle timeout errors', async () => {
+    vi.useRealTimers();
+    mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
+      const callback = args[3] as SendCallback;
+      if (callback) {
+        callback();
+      }
+    });
+
+    const updatePromise = api.updateState();
+    const forcedTimeout = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Request timed out')), 100);
+    });
+    
+    await expect(Promise.race([updatePromise, forcedTimeout])).rejects.toThrow('Request timed out');
+  });
 
   it('should handle empty responses', async () => {
     mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
@@ -261,7 +269,7 @@ describe('AirConditionerAPI', () => {
     });
 
     const promise = api.updateState();
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await expect(promise).rejects.toThrow();
   });
 
@@ -275,7 +283,7 @@ describe('AirConditionerAPI', () => {
     });
 
     const promise = api.updateState();
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await expect(promise).rejects.toThrow();
   });
 
@@ -289,7 +297,7 @@ describe('AirConditionerAPI', () => {
     });
 
     const promise = api.updateState();
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await expect(promise).rejects.toThrow();
   });
 
@@ -311,13 +319,13 @@ describe('AirConditionerAPI', () => {
     });
 
     const promise = api.updateState();
-    jest.advanceTimersByTime(100);
+    vi.advanceTimersByTime(100);
     await expect(promise).rejects.toThrow();
   });
 
   it('should recover after network error', async () => {
     // Use real timers for this test
-    jest.useRealTimers();
+    vi.useRealTimers();
   
     // First request fails
     mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
@@ -346,11 +354,11 @@ describe('AirConditionerAPI', () => {
     const promise = api.turnOn();
     await promise;
     expect(api.available).toBe(true);
-  }, 15000);
+  });
 
   it('should handle concurrent requests correctly', async () => {
     // Switch to real timers for proper timeout handling
-    jest.useRealTimers();
+    vi.useRealTimers();
     
     // Mock to ensure every request gets a response
     mockSocket.send.mockImplementation((...args: unknown[]) => {
@@ -384,20 +392,20 @@ describe('AirConditionerAPI', () => {
     const sendCalls = mockSocket.send.mock.calls;
     
     // Check that turnOn was called
-    const turnOnCall = sendCalls.find(call => 
+    const turnOnCall = sendCalls.find((call: any) => 
       (call[0] as string).includes('<TurnOn>on</TurnOn>'));
     expect(turnOnCall).toBeTruthy();
     
     // Check that setFanSpeed was called
-    const fanSpeedCall = sendCalls.find(call => 
+    const fanSpeedCall = sendCalls.find((call: any) => 
       (call[0] as string).includes('<WindSpeed>High</WindSpeed>'));
     expect(fanSpeedCall).toBeTruthy();
     
     // Check that setTemp was called
-    const tempCall = sendCalls.find(call => 
+    const tempCall = sendCalls.find((call: any) => 
       (call[0] as string).includes('<SetTemp>72</SetTemp>'));
     expect(tempCall).toBeTruthy();
-  }, 30000);
+  });
 
   it('should cleanup resources after error', async () => {
     mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
@@ -476,7 +484,6 @@ describe('AirConditionerAPI', () => {
   });
 
   describe('Wind direction mapping', () => {
-    // Increase timeout to 10 seconds
     it('should handle all wind direction combinations', async () => {
       const testCases = [
         { input: { WindDirection_H: ['off'], WindDirection_V: ['off'] }, expected: 'Off' },
@@ -508,17 +515,17 @@ describe('AirConditionerAPI', () => {
         });
         // Pass true to force bypassing throttle
         const promise = api.updateState(true);
-        jest.advanceTimersByTime(50);
+        vi.advanceTimersByTime(50);
         const status = await promise;
         expect(status.swing_mode).toBe(testCase.expected);
       }
-    }, 10000);
+    });
   });
 
   describe('Message sequence handling', () => {
     it('should use unique sequence numbers', async () => {
       // Switch to real timers for correct execution of setTimeout
-      jest.useRealTimers();
+      vi.useRealTimers();
       const seqs = new Set<string>();
       
       // Clear mock to avoid counting previous calls
@@ -550,10 +557,10 @@ describe('AirConditionerAPI', () => {
       await api.setFanSpeed(FanSpeed.High);
       await api.setSwingMode(SwingMode.Both);
     
-    // Check that we got unique sequence numbers (the test expects 5 because each command 
-    // calls updateState first, then sends the actual command, except setSwingMode which sends only one)
-    expect(seqs.size).toBe(5);
-    }, 15000);
+      // Check that we got unique sequence numbers (the test expects 5 because each command 
+      // calls updateState first, then sends the actual command, except setSwingMode which sends only one)
+      expect(seqs.size).toBe(5);
+    });
   });
 
   describe('XML Response Handling', () => {
@@ -573,9 +580,9 @@ describe('AirConditionerAPI', () => {
       });
   
       const promise = api.updateState();
-      jest.advanceTimersByTime(100);
+      vi.advanceTimersByTime(100);
       await expect(promise).rejects.toThrow();
-    }, 10000);
+    });
   
     it('should parse numeric values correctly', async () => {
       mockSocket.send.mockImplementationOnce((...args: unknown[]) => {
@@ -599,22 +606,20 @@ describe('AirConditionerAPI', () => {
       });
   
       const promise = api.updateState();
-      jest.advanceTimersByTime(100);
+      vi.advanceTimersByTime(100);
       const status = await promise;
       expect(status.current_temp).toBe(72.5);
       expect(status.target_temp).toBe(70.0);
-    }, 10000);
+    });
   });
 
   describe('Specific State Setters', () => {
-    // ... existing tests for turnOn, turnOff, setSwingMode, setFanSpeed ...
-
     it('should set display state using setDisplayState', async () => {
       // First, save the original method
       const originalSetDisplayState = api.setDisplayState;
       
       // Create a spy for setAirConditionerState
-      api.setAirConditionerState = jest.fn().mockImplementation(() => Promise.resolve()) as jest.Mock as any;
+      api.setAirConditionerState = vi.fn().mockResolvedValue(undefined);
       
       // Rather than calling the actual setDisplayState (which may not work as expected in tests),
       // temporarily replace it with our own implementation that properly calls setAirConditionerState
@@ -622,9 +627,9 @@ describe('AirConditionerAPI', () => {
         await api.setAirConditionerState('opt_display', state);
       };
       
-      await api.setDisplayState(PowerState.On); // Use Enum
+      await api.setDisplayState(PowerState.On); 
       expect(api.setAirConditionerState).toHaveBeenCalledWith('opt_display', PowerState.On);
-      await api.setDisplayState(PowerState.Off); // Use Enum
+      await api.setDisplayState(PowerState.Off);
       expect(api.setAirConditionerState).toHaveBeenCalledWith('opt_display', PowerState.Off);
       
       // Restore the original method
@@ -633,7 +638,7 @@ describe('AirConditionerAPI', () => {
 
     it('should call setTurboState for on and off', async () => {
       // Mock setOptionState instead of setAirConditionerState
-      const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
+      const spy = vi.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
       
       await api.setTurboState(PowerState.On);
       await api.setTurboState(PowerState.Off);
@@ -646,7 +651,7 @@ describe('AirConditionerAPI', () => {
 
     it('should set sleep state using setSleepState', async () => {
       // Mock setOptionState instead of setAirConditionerState
-      const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
+      const spy = vi.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
       
       await api.setSleepState(SleepModeState.On);
       await api.setSleepState(SleepModeState.Off);
@@ -669,72 +674,100 @@ describe('AirConditionerAPI extra coverage', () => {
   const port = 7777;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     api = new AirConditionerAPI(ip, port);
   });
 
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
   it('should reject on sendCommand timeout', async () => {
-    jest.useFakeTimers();
-    const origCreateSocket = require('dgram').createSocket;
-    require('dgram').createSocket = jest.fn().mockReturnValue({
-      on: jest.fn(),
-      send: jest.fn(),
-      unref: jest.fn(),
-      removeAllListeners: jest.fn(),
-      close: jest.fn(),
+    vi.useFakeTimers();
+    const dgram = await import('dgram');
+    dgram.createSocket = vi.fn().mockReturnValue({
+      on: vi.fn(),
+      send: vi.fn(),
+      unref: vi.fn(),
+      removeAllListeners: vi.fn(),
+      close: vi.fn(),
     });
     const promise = api["sendCommand"]('<msg></msg>', 10);
-    jest.advanceTimersByTime(20);
+    vi.advanceTimersByTime(20);
     await expect(promise).rejects.toThrow('Command timed out');
-    require('dgram').createSocket = origCreateSocket;
-    jest.useRealTimers();
   });
 
   it('should reject on sendCommand error event', async () => {
-    const origCreateSocket = require('dgram').createSocket;
+    const dgram = await import('dgram');
     let errorHandler: ((err: Error) => void) | undefined;
-    require('dgram').createSocket = jest.fn().mockReturnValue({
-      on: (event: string, cb: any) => { if (event === 'error') errorHandler = cb; return this; },
-      send: jest.fn(),
-      unref: jest.fn(),
-      removeAllListeners: jest.fn(),
-      close: jest.fn(),
+    
+    // Using mockImplementation approach for more control
+    dgram.createSocket = vi.fn().mockImplementation(() => {
+      const socket = {
+        on: vi.fn().mockImplementation((event: string, cb: any) => { 
+          if (event === 'error') errorHandler = cb; 
+          return socket; 
+        }),
+        send: vi.fn(),
+        unref: vi.fn(),
+        removeAllListeners: vi.fn(),
+        close: vi.fn(),
+      };
+      return socket;
     });
+    
     const promise = api["sendCommand"]('<msg></msg>', 1000);
-    errorHandler && errorHandler(new Error('fail')); // simulate error
+    
+    // Now trigger the error handler
+    if (errorHandler) {
+      errorHandler(new Error('fail'));
+    }
+    
     await expect(promise).rejects.toThrow('fail');
-    require('dgram').createSocket = origCreateSocket;
   });
 
   it('should set available=false on send error', async () => {
-    const origCreateSocket = require('dgram').createSocket;
+    const dgram = await import('dgram');
     let sendCb: ((err?: Error) => void) | undefined;
-    require('dgram').createSocket = jest.fn().mockReturnValue({
-      on: jest.fn(),
-      send: (msg: any, port: any, ip: any, cb: any) => { sendCb = cb; },
-      unref: jest.fn(),
-      removeAllListeners: jest.fn(),
-      close: jest.fn(),
+    
+    // Use mockImplementation approach
+    dgram.createSocket = vi.fn().mockImplementation(() => {
+      return {
+        on: vi.fn(),
+        send: vi.fn().mockImplementation((msg: any, port: any, ip: any, cb: any) => { 
+          sendCb = cb;
+        }),
+        unref: vi.fn(),
+        removeAllListeners: vi.fn(),
+        close: vi.fn(),
+      };
     });
+    
     const promise = api["sendCommand"]('<msg></msg>', 1000);
-    sendCb && sendCb(new Error('fail'));
+    
+    // Trigger the send callback with an error
+    if (sendCb) {
+      sendCb(new Error('fail'));
+    }
+    
     await expect(promise).rejects.toThrow('fail');
     expect(api.available).toBe(false);
-    require('dgram').createSocket = origCreateSocket;
   });
 
   it('should handle XML parse error in updateState', async () => {
-    jest.spyOn(api as any, 'sendCommand').mockResolvedValue('<badxml>');
+    vi.spyOn(api as any, 'sendCommand').mockResolvedValue('<badxml>');
     await expect(api.updateState()).rejects.toThrow();
   });
 
   it('should handle error in setAirConditionerState if updateState fails', async () => {
-    jest.spyOn(api, 'updateState').mockRejectedValue(new Error('fail'));
+    vi.spyOn(api, 'updateState').mockRejectedValue(new Error('fail'));
     await expect(api.setAirConditionerState('operation_mode', OperationMode.Cool)).rejects.toThrow('fail');
   });
 
   it('should call setDisplayState for on and off', async () => {
     // Directly mock setAirConditionerState instead of sendCommand
-    const spy = jest.spyOn(api, 'setAirConditionerState').mockResolvedValue();
+    const spy = vi.spyOn(api, 'setAirConditionerState').mockResolvedValue(undefined);
     
     // Instead of calling the actual setDisplayState method,
     // temporarily replace it with a version that uses our mocked setAirConditionerState
@@ -757,7 +790,7 @@ describe('AirConditionerAPI extra coverage', () => {
 
   it('should call setTurboState for on and off', async () => {
     // Mock setOptionState instead of setAirConditionerState
-    const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
+    const spy = vi.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
     
     await api.setTurboState(PowerState.On);
     await api.setTurboState(PowerState.Off);
@@ -770,7 +803,7 @@ describe('AirConditionerAPI extra coverage', () => {
 
   it('should call setSleepState for on and off', async () => {
     // Mock setOptionState instead of setAirConditionerState
-    const spy = jest.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
+    const spy = vi.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
     
     await api.setSleepState(SleepModeState.On);
     await api.setSleepState(SleepModeState.Off);

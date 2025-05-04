@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
-// src/__tests__/testUtils.ts
+// src/__tests__/testUtils.helper.ts
 import {
   API,
   Categories,
@@ -14,60 +14,68 @@ import {
   Service,
   WithUUID,
 } from 'homebridge';
+import { vi } from 'vitest';
 import { TfiacPlatform } from '../platform.js';
 import { TfiacDeviceConfig } from '../settings.js';
 import { PLATFORM_NAME } from '../settings.js';
 
 // Common types for mocks
 export interface MockLogger extends Partial<Logging> {
-  debug: jest.Mock;
-  info: jest.Mock;
-  warn: jest.Mock;
-  error: jest.Mock;
-  log: jest.Mock;
-  success: jest.Mock;
+  debug: ReturnType<typeof vi.fn>;
+  info: ReturnType<typeof vi.fn>;
+  warn: ReturnType<typeof vi.fn>;
+  error: ReturnType<typeof vi.fn>;
+  log: ReturnType<typeof vi.fn>;
+  success: ReturnType<typeof vi.fn>;
 }
 
 // Define MockApiActions interface based on createMockApiActions return type
 export interface MockApiActions {
-  updateState: jest.Mock;
-  turnOn: jest.Mock;
-  turnOff: jest.Mock;
-  setAirConditionerState: jest.Mock;
-  setFanSpeed: jest.Mock;
-  setSwingMode: jest.Mock;
-  setTurboState: jest.Mock;
-  setEcoState: jest.Mock;
-  setDisplayState: jest.Mock;
-  setBeepState: jest.Mock;
-  setSleepState: jest.Mock;
-  cleanup: jest.Mock;
+  updateState: ReturnType<typeof vi.fn>;
+  turnOn: ReturnType<typeof vi.fn>;
+  turnOff: ReturnType<typeof vi.fn>;
+  setAirConditionerState: ReturnType<typeof vi.fn>;
+  setFanSpeed: ReturnType<typeof vi.fn>;
+  setSwingMode: ReturnType<typeof vi.fn>;
+  setTurboState: ReturnType<typeof vi.fn>;
+  setEcoState: ReturnType<typeof vi.fn>;
+  setDisplayState: ReturnType<typeof vi.fn>;
+  setBeepState: ReturnType<typeof vi.fn>;
+  setSleepState: ReturnType<typeof vi.fn>;
+  cleanup: ReturnType<typeof vi.fn>;
+  api: {
+    on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
+  };
 }
 
 // Use a more flexible type for hap to avoid deep compatibility issues
 // Define MockAPI as a standalone interface with necessary mocked properties
 export interface MockAPI {
   hap: any; // Keep 'any' for flexibility in mocking hap internals
-  registerPlatformAccessories: jest.Mock;
-  updatePlatformAccessories: jest.Mock;
-  unregisterPlatformAccessories: jest.Mock;
+  registerPlatformAccessories: ReturnType<typeof vi.fn>;
+  updatePlatformAccessories: ReturnType<typeof vi.fn>;
+  unregisterPlatformAccessories: ReturnType<typeof vi.fn>;
   // Mock platformAccessory as a function returning a PlatformAccessory-like object
-  platformAccessory: jest.Mock<PlatformAccessory, [string, string]>;
-  on: jest.Mock;
-  emit: jest.Mock; // Add emit if needed by tests using API events
-  removeAccessories: jest.Mock; // Add removeAccessories if needed
-  // Add other API methods/properties used in tests if necessary
+  platformAccessory: ReturnType<typeof vi.fn>;
+  on: ReturnType<typeof vi.fn>;
+  emit: ReturnType<typeof vi.fn>;
+  removeAccessories: ReturnType<typeof vi.fn>;
+  api: {
+    on: ReturnType<typeof vi.fn>;
+    off: ReturnType<typeof vi.fn>;
+  };
 }
 
 // Helper function to create a mocked Homebridge logger
 export function createMockLogger(): MockLogger {
   return {
-    debug: jest.fn(),
-    info: jest.fn(),
-    warn: jest.fn(),
-    error: jest.fn(),
-    log: jest.fn(),
-    success: jest.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    log: vi.fn(),
+    success: vi.fn(),
   } as MockLogger;
 }
 
@@ -86,9 +94,17 @@ export function createMockCharacteristic() {
     value: null,
     getHandler: undefined,
     setHandler: undefined,
-    on: jest.fn(onMethod),
-    setProps: jest.fn().mockReturnThis(),
-    updateValue: jest.fn(function (this: any, newValue: CharacteristicValue) {
+    on: vi.fn(onMethod),
+    onGet: vi.fn(function (this: any, handler: any) {
+      this.getHandler = handler;
+      return this;
+    }),
+    onSet: vi.fn(function (this: any, handler: any) {
+      this.setHandler = handler;
+      return this;
+    }),
+    setProps: vi.fn().mockReturnThis(),
+    updateValue: vi.fn(function (this: any, newValue: CharacteristicValue) {
       this.value = newValue;
       return this;
     }),
@@ -106,9 +122,9 @@ export function createMockService(): any {
     iid: 1,
     name: 'Mock Service',
     subtype: undefined,
-    on: jest.fn().mockReturnThis(),
-    emit: jest.fn().mockReturnValue(true),
-    getCharacteristic: jest.fn((charIdentifier: any) => {
+    on: vi.fn().mockReturnThis(),
+    emit: vi.fn().mockReturnValue(true),
+    getCharacteristic: vi.fn((charIdentifier: any) => {
       const key =
         charIdentifier && typeof charIdentifier === 'object' && 'UUID' in charIdentifier
           ? (charIdentifier as { UUID: string }).UUID
@@ -118,19 +134,19 @@ export function createMockService(): any {
       }
       return characteristics.get(key)!;
     }),
-    setCharacteristic: jest.fn(function (this: any, charIdentifier: any, value: CharacteristicValue) {
+    setCharacteristic: vi.fn(function (this: any, charIdentifier: any, value: CharacteristicValue) {
       const mockChar = this.getCharacteristic(charIdentifier);
       mockChar.updateValue(value);
       return this;
     }),
-    updateCharacteristic: jest.fn(function (this: any, charIdentifier: any, value: any) {
+    updateCharacteristic: vi.fn(function (this: any, charIdentifier: any, value: any) {
       const mockChar = this.getCharacteristic(charIdentifier);
       mockChar.updateValue(value);
       return this;
     }),
-    addCharacteristic: jest.fn().mockReturnThis(),
-    removeCharacteristic: jest.fn(),
-    getServiceId: jest.fn().mockReturnValue('mock-service-id'),
+    addCharacteristic: vi.fn().mockReturnThis(),
+    removeCharacteristic: vi.fn(),
+    getServiceId: vi.fn().mockReturnValue('mock-service-id'),
   };
   
   return mockService;
@@ -150,13 +166,13 @@ export function createMockPlatformAccessory(
     displayName,
     UUID: uuid,
     category: Categories.AIR_CONDITIONER,
-    getService: jest.fn().mockReturnValue(service),
-    addService: jest.fn().mockReturnValue(service),
+    getService: vi.fn().mockReturnValue(service),
+    addService: vi.fn().mockReturnValue(service),
     services: [service],
-    on: jest.fn().mockReturnThis(),
-    emit: jest.fn().mockReturnValue(true),
-    removeService: jest.fn(),
-    getServiceById: jest.fn(),
+    on: vi.fn().mockReturnThis(),
+    emit: vi.fn().mockReturnValue(true),
+    removeService: vi.fn(),
+    getServiceById: vi.fn(),
   } as unknown as PlatformAccessory;
 }
 
@@ -209,8 +225,6 @@ export function createMockAPI(customUuid?: string): MockAPI {
   });
 
   // Common individual characteristics used in the tests.
-  // Provide a minimal shape (`UUID` and an empty `prototype`) so TS accepts
-  // them as `typeof Characteristic` while still being lightweight mocks.
   (CharacteristicMock as any).Name = { UUID: 'Name', prototype: {} };
   (CharacteristicMock as any).RotationSpeed = { UUID: 'RotationSpeed', prototype: {} };
 
@@ -236,40 +250,46 @@ export function createMockAPI(customUuid?: string): MockAPI {
       Service: ServiceMock,
       Characteristic: CharacteristicMock,
       uuid: {
-        generate: jest.fn().mockReturnValue(customUuid || 'generated-uuid'),
+        generate: vi.fn().mockReturnValue(customUuid || 'generated-uuid'),
       },
       Categories: categoriesCopy, // Use the manually created copy
     },
-    registerPlatformAccessories: jest.fn(),
-    updatePlatformAccessories: jest.fn(),
-    unregisterPlatformAccessories: jest.fn(),
-    // Ensure the mock function signature matches the interface
-    platformAccessory: jest.fn((name, uuid) => createMockPlatformAccessory(name, uuid, { name, ip: '1.2.3.4' })),
-    on: jest.fn(),
-    emit: jest.fn(), // Add mock implementation if needed
-    removeAccessories: jest.fn(), // Add mock implementation if needed
-  } as MockAPI; // Cast to the standalone MockAPI interface
+    registerPlatformAccessories: vi.fn(),
+    updatePlatformAccessories: vi.fn(),
+    unregisterPlatformAccessories: vi.fn(),
+    platformAccessory: vi.fn(),
+    on: vi.fn(),
+    emit: vi.fn(),
+    removeAccessories: vi.fn(),
+    api: {
+      on: vi.fn(),
+      off: vi.fn(),
+    },
+  } as MockAPI & { api: any };
 }
 
 // Create mock API actions for AirConditionerAPI
-export function createMockApiActions(initialStatus = {}): MockApiActions {
+export function createMockApiActions(initialStatus = {}): MockApiActions & { api: any } {
   const actions = {
-    updateState: jest.fn().mockResolvedValue(initialStatus),
-    turnOn: jest.fn().mockResolvedValue(undefined),
-    turnOff: jest.fn().mockResolvedValue(undefined),
-    setAirConditionerState: jest.fn().mockResolvedValue(undefined),
-    setFanSpeed: jest.fn().mockResolvedValue(undefined),
-    setSwingMode: jest.fn().mockResolvedValue(undefined),
-    setTurboState: jest.fn().mockResolvedValue(undefined),
-    setEcoState: jest.fn().mockResolvedValue(undefined),
-    setDisplayState: jest.fn().mockResolvedValue(undefined),
-    setBeepState: jest.fn().mockResolvedValue(undefined),
-    setSleepState: jest.fn().mockResolvedValue(undefined),
-    cleanup: jest.fn().mockResolvedValue(undefined),
-  } as MockApiActions;
-  // Expose mock actions globally for TfiacPlatformAccessory to use
+    updateState: vi.fn().mockResolvedValue(initialStatus),
+    turnOn: vi.fn().mockResolvedValue(undefined),
+    turnOff: vi.fn().mockResolvedValue(undefined),
+    setAirConditionerState: vi.fn().mockResolvedValue(undefined),
+    setFanSpeed: vi.fn().mockResolvedValue(undefined),
+    setSwingMode: vi.fn().mockResolvedValue(undefined),
+    setTurboState: vi.fn().mockResolvedValue(undefined),
+    setEcoState: vi.fn().mockResolvedValue(undefined),
+    setDisplayState: vi.fn().mockResolvedValue(undefined),
+    setBeepState: vi.fn().mockResolvedValue(undefined),
+    setSleepState: vi.fn().mockResolvedValue(undefined),
+    cleanup: vi.fn().mockResolvedValue(undefined),
+    api: {
+      on: vi.fn(),
+      off: vi.fn(),
+    },
+  };
   (global as any).mockApiActions = actions;
-  return actions;
+  return actions as MockApiActions & { api: any };
 }
 
 // Create a mock platform instance with common test configurations
@@ -307,11 +327,10 @@ export function createMockPlatformConfig(
 export const createMockPlatform = setupTestPlatform;
 // Alias setupTestPlatform for characteristic tests
 export const mockPlatform = setupTestPlatform();
-// Alias createMockPlatformAccessory for compatibility with older tests, but wrap in jest.fn for easier mocking/resetting in tests
-export const mockPlatformAccessory: jest.Mock<any, [string, string]> = jest
-  .fn((displayName: string, uuid: string) =>
-    createMockPlatformAccessory(displayName, uuid),
-  ) as unknown as jest.Mock<any, [string, string]>;
+// Alias createMockPlatformAccessory for compatibility with older tests, but wrap in vi.fn for easier mocking/resetting in tests
+export const mockPlatformAccessory = vi.fn(
+  (displayName: string, uuid: string) => createMockPlatformAccessory(displayName, uuid),
+) as unknown as ReturnType<typeof vi.fn>;
 
 // Helper function to get characteristic handlers from service mock
 export function getHandlerByIdentifier(

@@ -333,23 +333,29 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
    * @returns A Promise resolving to a Set of discovered IP addresses.
    */
   private discoverDevicesNetwork(timeoutMs: number): Promise<Set<string>> {
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       const discoveredIPs = new Set<string>();
       const discoveryMessage = Buffer.from(
         `<msg msgid="SyncStatusReq" type="Control" seq="${Date.now() % 10000000}">` +
         '<SyncStatusReq></SyncStatusReq></msg>',
       );
       const broadcastAddress = '255.255.255.255';
-      const discoveryPort = 7777; // Standard TFIAC port
+      const discoveryPort = 7777;
 
       const socket = dgram.createSocket('udp4');
-      // Allow process to exit if this is the only handle
       if (typeof socket.unref === 'function') {
         socket.unref();
       }
-      let discoveryTimeout: NodeJS.Timeout | null = null;
 
-      const cleanup = () => {
+      let discoveryTimeout: NodeJS.Timeout | null = null;
+      let finished = false;
+      
+      // Helper function to cleanup and resolve the promise with discovered IPs
+      const cleanupAndResolve = () => {
+        if (finished) {
+          return;
+        }
+        finished = true;
         if (discoveryTimeout) {
           clearTimeout(discoveryTimeout);
           discoveryTimeout = null;
@@ -357,25 +363,24 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         try {
           socket.close(() => {
             this.log.debug('Discovery socket closed.');
+            resolve(discoveredIPs);
           });
         } catch (e) {
           this.log.debug('Error closing discovery socket:', e);
+          resolve(discoveredIPs);
         }
       };
 
       socket.on('error', (err) => {
         this.log.error('Discovery socket error:', err);
-        cleanup();
-        reject(err);
+        cleanupAndResolve();
       });
 
       socket.on('message', async (msg, rinfo) => {
         this.log.debug(`Received discovery response from ${rinfo.address}:${rinfo.port}`);
-        // Basic validation: Check if it's likely a TFIAC XML response
         try {
           const xmlString = msg.toString();
           if (xmlString.includes('<statusUpdateMsg>')) {
-            // Attempt to parse for more robust validation
             const xmlObject = await xml2js.parseStringPromise(xmlString);
             if (xmlObject?.msg?.statusUpdateMsg?.[0]?.IndoorTemp?.[0]) {
               if (!discoveredIPs.has(rinfo.address)) {
@@ -384,55 +389,48 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
               }
             } else {
               this.log.debug(`Ignoring non-status response from ${rinfo.address}`, xmlString);
+              // Don't call cleanupAndResolve here, as we want to continue listening until timeout
             }
           } else {
             this.log.debug(`Ignoring non-XML/non-status response from ${rinfo.address}`, xmlString);
+            // Don't call cleanupAndResolve here, as we want to continue listening until timeout
           }
         } catch (parseError) {
           this.log.debug(`Error parsing response from ${rinfo.address}:`, parseError);
+          // Don't call cleanupAndResolve here, as we want to continue listening until timeout
         }
       });
 
-      // Add listener for the 'listening' event
       socket.on('listening', () => {
         try {
-          // Now it's safe to set broadcast flag
           socket.setBroadcast(true);
           this.log.debug(`Discovery socket listening on ${socket.address().address}:${socket.address().port}`);
-          
-          // Send discovery broadcast
           socket.send(discoveryMessage, discoveryPort, broadcastAddress, (err) => {
             if (err) {
               this.log.error('Error sending discovery broadcast:', err);
+              // Continue with discovery even if broadcast fails
             } else {
               this.log.debug('Discovery broadcast message sent.');
             }
           });
         } catch (err) {
           this.log.error('Error setting up broadcast:', err);
-          cleanup();
-          reject(err);
+          cleanupAndResolve();
         }
       });
 
       try {
-        // Start discovery by binding the socket
         socket.bind();
-        
-        // Set timeout to stop discovery
         discoveryTimeout = setTimeout(() => {
           this.log.debug('Discovery timeout reached.');
-          cleanup();
-          resolve(discoveredIPs);
+          cleanupAndResolve();
         }, timeoutMs);
-        // Ensure timeout does not keep process alive
         if (discoveryTimeout.unref) {
           discoveryTimeout.unref();
         }
       } catch (err) {
         this.log.error('Error setting up discovery socket:', err);
-        cleanup();
-        reject(err);
+        cleanupAndResolve();
       }
     });
   }

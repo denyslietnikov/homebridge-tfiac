@@ -1,4 +1,5 @@
 // platform.branch.test.ts
+import { vi, describe, beforeEach, it, test, expect } from 'vitest';
 import { PlatformAccessory, PlatformConfig } from 'homebridge';
 import { TfiacPlatform } from '../platform';
 import { PLUGIN_NAME, PLATFORM_NAME, TfiacPlatformConfig } from '../settings.js';
@@ -12,36 +13,36 @@ import {
 } from './testUtils';
 
 // Mock modules with jest functions
-jest.mock('../platformAccessory');
-jest.mock('../DisplaySwitchAccessory', () => ({
-  DisplaySwitchAccessory: jest.fn(() => ({ name: 'DisplaySwitchAccessory' }))
+vi.mock('../platformAccessory');
+vi.mock('../DisplaySwitchAccessory', () => ({
+  DisplaySwitchAccessory: vi.fn(() => ({ name: 'DisplaySwitchAccessory' }))
 }));
-jest.mock('../SleepSwitchAccessory', () => ({
-  SleepSwitchAccessory: jest.fn(() => ({ name: 'SleepSwitchAccessory' }))
+vi.mock('../SleepSwitchAccessory', () => ({
+  SleepSwitchAccessory: vi.fn(() => ({ name: 'SleepSwitchAccessory' }))
 }));
-jest.mock('../FanSpeedAccessory', () => ({
-  FanSpeedAccessory: jest.fn(() => ({ name: 'FanSpeedAccessory' }))
+vi.mock('../FanSpeedAccessory', () => ({
+  FanSpeedAccessory: vi.fn(() => ({ name: 'FanSpeedAccessory' }))
 }));
-jest.mock('../DrySwitchAccessory', () => ({
-  DrySwitchAccessory: jest.fn(() => ({ name: 'DrySwitchAccessory' }))
+vi.mock('../DrySwitchAccessory', () => ({
+  DrySwitchAccessory: vi.fn(() => ({ name: 'DrySwitchAccessory' }))
 }));
-jest.mock('../FanOnlySwitchAccessory', () => ({
-  FanOnlySwitchAccessory: jest.fn(() => ({ name: 'FanOnlySwitchAccessory' }))
+vi.mock('../FanOnlySwitchAccessory', () => ({
+  FanOnlySwitchAccessory: vi.fn(() => ({ name: 'FanOnlySwitchAccessory' }))
 }));
-jest.mock('../StandaloneFanAccessory', () => ({
-  StandaloneFanAccessory: jest.fn(() => ({ name: 'StandaloneFanAccessory' }))
+vi.mock('../StandaloneFanAccessory', () => ({
+  StandaloneFanAccessory: vi.fn(() => ({ name: 'StandaloneFanAccessory' }))
 }));
-jest.mock('../HorizontalSwingSwitchAccessory', () => ({
-  HorizontalSwingSwitchAccessory: jest.fn(() => ({ name: 'HorizontalSwingSwitchAccessory' }))
+vi.mock('../HorizontalSwingSwitchAccessory', () => ({
+  HorizontalSwingSwitchAccessory: vi.fn(() => ({ name: 'HorizontalSwingSwitchAccessory' }))
 }));
-jest.mock('../TurboSwitchAccessory', () => ({
-  TurboSwitchAccessory: jest.fn(() => ({ name: 'TurboSwitchAccessory' }))
+vi.mock('../TurboSwitchAccessory', () => ({
+  TurboSwitchAccessory: vi.fn(() => ({ name: 'TurboSwitchAccessory' }))
 }));
-jest.mock('../EcoSwitchAccessory', () => ({
-  EcoSwitchAccessory: jest.fn(() => ({ name: 'EcoSwitchAccessory' }))
+vi.mock('../EcoSwitchAccessory', () => ({
+  EcoSwitchAccessory: vi.fn(() => ({ name: 'EcoSwitchAccessory' }))
 }));
-jest.mock('../BeepSwitchAccessory', () => ({
-  BeepSwitchAccessory: jest.fn(() => ({ name: 'BeepSwitchAccessory' }))
+vi.mock('../BeepSwitchAccessory', () => ({
+  BeepSwitchAccessory: vi.fn(() => ({ name: 'BeepSwitchAccessory' }))
 }));
 
 describe('TfiacPlatform branch coverage tests', () => {
@@ -54,7 +55,7 @@ describe('TfiacPlatform branch coverage tests', () => {
 
   beforeEach(() => {
     // Reset mocks for each test
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Create mocks using testUtils
     mockLog = createMockLogger();
@@ -78,7 +79,7 @@ describe('TfiacPlatform branch coverage tests', () => {
       UUID: 'test-uuid',
       displayName: 'Test Accessory',
       context: { deviceConfig: { name: 'Test', ip: '1.2.3.4' } },
-      getService: jest.fn((identifier: string | { UUID: string }, subtype?: string) => {
+      getService: vi.fn((identifier: string | { UUID: string }, subtype?: string) => {
         // Simulate finding services by name or UUID/subtype
         if (typeof identifier === 'string') {
           if (identifier === 'Display') return { UUID: 'DisplayServiceUUID', subtype: 'display', displayName: 'Display' };
@@ -103,7 +104,7 @@ describe('TfiacPlatform branch coverage tests', () => {
         }
         return undefined;
       }),
-      getServiceById: jest.fn((uuid: string, subtype: string) => {
+      getServiceById: vi.fn((uuid: string, subtype: string) => {
         if (uuid === mockApi.hap.Service.Switch.UUID) {
           if (subtype === 'display') return { UUID: 'DisplayServiceUUID', subtype: 'display', displayName: 'Display' };
           if (subtype === 'sleepmode') return { UUID: 'SleepServiceUUID', subtype: 'sleepmode', displayName: 'Sleep Mode' };
@@ -121,7 +122,7 @@ describe('TfiacPlatform branch coverage tests', () => {
         }
         return undefined;
       }),
-      removeService: jest.fn(),
+      removeService: vi.fn(),
       services: [
         { UUID: mockApi.hap.Service.TemperatureSensor.UUID, subtype: 'tempsensor', displayName: 'Temperature Sensor' },
         { UUID: 'OtherServiceUUID', subtype: 'other', displayName: 'Other Service' },
@@ -143,17 +144,17 @@ describe('TfiacPlatform branch coverage tests', () => {
     platform = new TfiacPlatform(mockLog as any, mockConfig, mockApi as any);
     
     // Mock methods that need to be spied on
-    jest.spyOn(platform, 'discoverDevices').mockImplementation(async () => {});
+    vi.spyOn(platform, 'discoverDevices').mockImplementation(async () => {});
   });
 
   describe('removeDisabledServices', () => {
-    let updateAccessoriesSpy: jest.SpyInstance;
+    let updateAccessoriesSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
-      updateAccessoriesSpy = jest.spyOn(mockApi, 'updatePlatformAccessories');
-      mockAccessory.removeService = jest.fn();
-      mockLog.debug = jest.fn();
-      mockLog.info = jest.fn();
+      updateAccessoriesSpy = vi.spyOn(mockApi, 'updatePlatformAccessories');
+      mockAccessory.removeService = vi.fn();
+      mockLog.debug = vi.fn();
+      mockLog.info = vi.fn();
     });
 
     it('does nothing when no features disabled', () => {

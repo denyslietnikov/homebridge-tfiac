@@ -1,3 +1,4 @@
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
 import { IndoorTemperatureSensorAccessory } from '../IndoorTemperatureSensorAccessory.js';
@@ -14,23 +15,23 @@ describe('IndoorTemperatureSensorAccessory', () => {
   beforeEach(() => {
     // Mock service
     mockService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnValue({
-        on: jest.fn().mockReturnThis(),
+      setCharacteristic: vi.fn().mockReturnThis(),
+      getCharacteristic: vi.fn().mockReturnValue({
+        on: vi.fn().mockReturnThis(),
         value: 20,
       }),
-      updateCharacteristic: jest.fn(),
+      updateCharacteristic: vi.fn(),
     };
 
     // Mock platform
     platform = {
       log: {
-        debug: jest.fn(),
-        info: jest.fn(),
-        error: jest.fn(),
+        debug: vi.fn(),
+        info: vi.fn(),
+        error: vi.fn(),
       },
       Service: {
-        TemperatureSensor: jest.fn(),
+        TemperatureSensor: vi.fn(),
       },
       Characteristic: {
         Name: 'Name',
@@ -49,9 +50,9 @@ describe('IndoorTemperatureSensorAccessory', () => {
     // Mock accessory
     accessory = {
       context: { deviceConfig },
-      getServiceById: jest.fn().mockReturnValue(null),
-      addService: jest.fn().mockReturnValue(mockService),
-      removeService: jest.fn(),
+      getServiceById: vi.fn().mockReturnValue(null),
+      addService: vi.fn().mockReturnValue(mockService),
+      removeService: vi.fn(),
     } as unknown as PlatformAccessory;
 
     // Create the accessory
@@ -80,19 +81,19 @@ describe('IndoorTemperatureSensorAccessory', () => {
 
   it('should use existing service if available', () => {
     // Reset mocks
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Mock an existing service
     const existingService = {
-      setCharacteristic: jest.fn().mockReturnThis(),
-      getCharacteristic: jest.fn().mockReturnValue({
-        on: jest.fn().mockReturnThis(),
+      setCharacteristic: vi.fn().mockReturnThis(),
+      getCharacteristic: vi.fn().mockReturnValue({
+        on: vi.fn().mockReturnThis(),
         value: 22,
       }),
-      updateCharacteristic: jest.fn(),
+      updateCharacteristic: vi.fn(),
     };
     
-    (accessory.getServiceById as jest.Mock).mockReturnValue(existingService);
+    (accessory.getServiceById as ReturnType<typeof vi.fn>).mockReturnValue(existingService);
     
     // Create new instance with existing service
     const newAccessory = new IndoorTemperatureSensorAccessory(platform, accessory, deviceConfig);

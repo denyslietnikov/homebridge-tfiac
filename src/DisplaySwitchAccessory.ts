@@ -21,4 +21,21 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       'Display',
     );
   }
+
+  /**
+   * Handle requests to get the current value of the "On" characteristic.
+   * This method matches the signature of the base class method.
+   */
+  protected handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
+    // Support both promise-based (homebridge/HAP v1.4.0+) and callback-based API
+    const value = this.cachedStatus ? (status => status.opt_display === PowerState.On)(this.cachedStatus) : false;
+    
+    if (callback && typeof callback === 'function') {
+      // Callback-style API (for backward compatibility)
+      callback(null, value);
+    }
+    
+    // Return the value directly - works for promise pattern
+    return value;
+  }
 }

@@ -1,5 +1,5 @@
 // Mock dependencies
-import { jest, describe, beforeEach, afterEach, it, expect } from '@jest/globals';
+import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
 import { DisplaySwitchAccessory } from '../DisplaySwitchAccessory.js';
 import { CharacteristicGetCallback, CharacteristicSetCallback, PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
@@ -22,9 +22,10 @@ mockApiActions.setDisplayState.mockImplementation(function(state) {
   return mockApiActions.setAirConditionerState('opt_display', state);
 });
 
-jest.mock('../AirConditionerAPI.js', () => {
-  return jest.fn().mockImplementation(() => mockApiActions);
-});
+// Fix the mock by using the default export format that Vitest expects
+vi.mock('../AirConditionerAPI.js', () => ({
+  default: vi.fn(() => mockApiActions)
+}));
 
 describe('DisplaySwitchAccessory', () => {
   let platform: TfiacPlatform;
@@ -33,7 +34,7 @@ describe('DisplaySwitchAccessory', () => {
   let inst: DisplaySwitchAccessory;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    vi.clearAllMocks();
     
     // Create mocks using our utility functions
     mockService = createMockService();
@@ -63,11 +64,11 @@ describe('DisplaySwitchAccessory', () => {
       mockService
     );
 
-    // Correctly type the jest.fn mocks for service methods
-    accessory.getService = jest.fn<() => Service | undefined>().mockReturnValue(undefined); // Use undefined instead of null
-    accessory.getServiceById = jest.fn<() => Service | undefined>().mockReturnValue(undefined); // Use undefined instead of null
+    // Correctly type the vi.fn mocks for service methods
+    accessory.getService = vi.fn().mockReturnValue(undefined); // Use undefined instead of null
+    accessory.getServiceById = vi.fn().mockReturnValue(undefined); // Use undefined instead of null
     // Cast mockService to satisfy the type checker for the mock return value
-    accessory.addService = jest.fn<() => Service>().mockReturnValue(mockService as unknown as Service);
+    accessory.addService = vi.fn().mockReturnValue(mockService as unknown as Service);
   });
 
   afterEach(() => {
@@ -103,29 +104,27 @@ describe('DisplaySwitchAccessory', () => {
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
   });
 
-  it('should handle get with cached status', done => {
+  it('should handle get with cached status', async () => {
     createAccessory();
     (inst as any).cachedStatus = { opt_display: 'on' };
-    (inst as any).handleGet((err: Error | null, val: boolean) => {
+    await (inst as any).handleGet((err: Error | null, val: boolean) => {
       expect(err).toBeNull();
       expect(val).toBe(true);
-      done();
     });
   });
 
-  it('should handle get with no cached status', done => {
+  it('should handle get with no cached status', async () => {
     createAccessory();
     (inst as any).cachedStatus = null;
-    (inst as any).handleGet((err: Error | null, val: boolean) => {
+    await (inst as any).handleGet((err: Error | null, val: boolean) => {
       expect(err).toBeNull();
       expect(val).toBe(false);
-      done();
     });
   });
 
   it('should handle set and update status', async () => {
     createAccessory();
-    const cb = jest.fn() as CharacteristicSetCallback;
+    const cb = vi.fn() as CharacteristicSetCallback;
     mockApiActions.setDisplayState.mockResolvedValueOnce(undefined);
     await (inst as any).handleSet(true, cb);
     expect(mockApiActions.setDisplayState).toHaveBeenCalledWith('on');
@@ -137,7 +136,7 @@ describe('DisplaySwitchAccessory', () => {
     createAccessory();
     const error = new Error('fail');
     mockApiActions.setDisplayState.mockRejectedValueOnce(error);
-    const cb = jest.fn() as CharacteristicSetCallback;
+    const cb = vi.fn() as CharacteristicSetCallback;
     await (inst as any).handleSet(true, cb);
     expect(mockApiActions.setDisplayState).toHaveBeenCalledWith('on');
     expect(cb).toHaveBeenCalledWith(error);

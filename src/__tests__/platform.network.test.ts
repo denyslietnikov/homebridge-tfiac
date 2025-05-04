@@ -1,33 +1,21 @@
 // platform.network.discovery.test.ts - Tests specifically for network discovery functionality
+import { vi, describe, beforeEach, afterEach, test, expect } from 'vitest';
 import { TfiacPlatform } from '../platform.js';
 import { API } from 'homebridge';
 import * as dgram from 'dgram';
 import { createMockLogger, createMockAPI, MockLogger, MockAPI } from './testUtils.js';
 
-// Define interface for the mock socket
-interface MockSocket {
-  on: jest.Mock<MockSocket, [string, (...args: any[]) => void]>;
-  bind: jest.Mock;
-  setBroadcast: jest.Mock;
-  send: jest.Mock;
-  close: jest.Mock;
-  address: jest.Mock;
-}
-
-// Increase the default timeout for all tests in this suite
-jest.setTimeout(30000); // Increased to 30 seconds to ensure tests have adequate time
-
 // Mock the dgram module
-jest.mock('dgram', () => {
-  const actualDgram = jest.requireActual('dgram');
+vi.mock('dgram', () => {
+  const actualDgram = vi.importActual('dgram');
   return {
-    createSocket: jest.fn(),
+    createSocket: vi.fn(),
   };
 });
 
 // Mock xml2js
-jest.mock('xml2js', () => ({
-  parseStringPromise: jest.fn(),
+vi.mock('xml2js', () => ({
+  parseStringPromise: vi.fn(),
 }));
 
 // Helper to create a mock socket with specified behavior
@@ -37,9 +25,9 @@ const createMockSocket = (options: {
   bindError?: Error;
   setBroadcastError?: Error;
   sendError?: Error;
-}) => {
-  const mockSocket: MockSocket = {
-    on: jest.fn((event, callback) => {
+}): any => {
+  const mockSocket: any = {
+    on: vi.fn((event, callback) => {
       if (event === 'message' && options.onMessage) {
         // Schedule message events to be emitted
         setTimeout(() => {
@@ -56,19 +44,19 @@ const createMockSocket = (options: {
       }
       return mockSocket;
     }),
-    bind: jest.fn(() => {
+    bind: vi.fn(() => {
       if (options.bindError) {
         throw options.bindError;
       }
       return undefined;
     }),
-    setBroadcast: jest.fn(() => {
+    setBroadcast: vi.fn(() => {
       if (options.setBroadcastError) {
         throw options.setBroadcastError;
       }
       return true;
     }),
-    send: jest.fn((msg, port, addr, callback) => {
+    send: vi.fn((msg, port, addr, callback) => {
       if (options.sendError) {
         callback(options.sendError);
       } else {
@@ -76,13 +64,13 @@ const createMockSocket = (options: {
       }
       return mockSocket;
     }),
-    close: jest.fn((callback) => {
+    close: vi.fn((callback) => {
       if (callback) {
         callback();
       }
       return mockSocket;
     }),
-    address: jest.fn(() => ({ address: '0.0.0.0', port: 12345, family: 'IPv4' })),
+    address: vi.fn(() => ({ address: '0.0.0.0', port: 12345, family: 'IPv4' })),
   };
   return mockSocket;
 };
@@ -109,12 +97,12 @@ describe('TfiacPlatform Network Discovery', () => {
     mockLogger = createMockLogger();
     mockAPI = createMockAPI();
     
-    jest.clearAllMocks();
-    jest.useRealTimers();
+    vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   // Helper to create valid TFIAC XML response
@@ -167,8 +155,8 @@ describe('TfiacPlatform Network Discovery', () => {
 
   test('should discover devices via network scan', async () => {
     // Setup
-    const xml2js = require('xml2js');
-    xml2js.parseStringPromise.mockResolvedValue(createValidParsedResponse());
+    const xml2js = await import('xml2js');
+    (xml2js.parseStringPromise as any).mockResolvedValue(createValidParsedResponse());
 
     const mockSocketInstance = createMockSocket({
       onMessage: [
@@ -184,7 +172,7 @@ describe('TfiacPlatform Network Discovery', () => {
       ],
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -216,7 +204,7 @@ describe('TfiacPlatform Network Discovery', () => {
       onError: socketError,
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -224,8 +212,10 @@ describe('TfiacPlatform Network Discovery', () => {
     // Access the private method using type assertion
     const discoverDevicesNetwork = (platform as any).discoverDevicesNetwork.bind(platform);
 
-    // Test
-    await expect(discoverDevicesNetwork(1000)).rejects.toThrow('Socket error');
+    // Test: should resolve to empty set and log error
+    const discoveredIPs = await discoverDevicesNetwork(1000);
+    expect(discoveredIPs.size).toBe(0);
+    expect(mockLogger.error).toHaveBeenCalledWith('Discovery socket error:', socketError);
 
     // Expectations
     expect(dgram.createSocket).toHaveBeenCalledWith('udp4');
@@ -236,8 +226,8 @@ describe('TfiacPlatform Network Discovery', () => {
 
   test('should handle XML parsing errors', async () => {
     // Setup
-    const xml2js = require('xml2js');
-    xml2js.parseStringPromise.mockRejectedValue(new Error('XML parse error'));
+    const xml2js = await import('xml2js');
+    (xml2js.parseStringPromise as any).mockRejectedValue(new Error('XML parse error'));
 
     const mockSocketInstance = createMockSocket({
       onMessage: [
@@ -253,7 +243,7 @@ describe('TfiacPlatform Network Discovery', () => {
       ],
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -275,8 +265,8 @@ describe('TfiacPlatform Network Discovery', () => {
 
   test('should handle non-status XML responses', async () => {
     // Setup
-    const xml2js = require('xml2js');
-    xml2js.parseStringPromise.mockResolvedValue({
+    const xml2js = await import('xml2js');
+    (xml2js.parseStringPromise as any).mockResolvedValue({
       msg: {
         otherMsg: [{ SomeData: ['test'] }],
       },
@@ -296,7 +286,7 @@ describe('TfiacPlatform Network Discovery', () => {
       ],
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -323,7 +313,7 @@ describe('TfiacPlatform Network Discovery', () => {
       bindError,
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -331,8 +321,10 @@ describe('TfiacPlatform Network Discovery', () => {
     // Access the private method using type assertion
     const discoverDevicesNetwork = (platform as any).discoverDevicesNetwork.bind(platform);
 
-    // Test
-    await expect(discoverDevicesNetwork(1000)).rejects.toThrow('Bind error');
+    // Test: should resolve to empty set and log setup error
+    const discoveredBind = await discoverDevicesNetwork(1000);
+    expect(discoveredBind.size).toBe(0);
+    expect(mockLogger.error).toHaveBeenCalledWith('Error setting up discovery socket:', bindError);
 
     // Expectations
     expect(dgram.createSocket).toHaveBeenCalledWith('udp4');
@@ -347,7 +339,7 @@ describe('TfiacPlatform Network Discovery', () => {
       setBroadcastError,
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -355,8 +347,10 @@ describe('TfiacPlatform Network Discovery', () => {
     // Access the private method using type assertion
     const discoverDevicesNetwork = (platform as any).discoverDevicesNetwork.bind(platform);
 
-    // Test
-    await expect(discoverDevicesNetwork(1000)).rejects.toThrow('SetBroadcast error');
+    // Test: should resolve to empty set and log broadcast setup error
+    const discoveredBroadcast = await discoverDevicesNetwork(1000);
+    expect(discoveredBroadcast.size).toBe(0);
+    expect(mockLogger.error).toHaveBeenCalledWith('Error setting up broadcast:', setBroadcastError);
 
     // Expectations
     expect(dgram.createSocket).toHaveBeenCalledWith('udp4');
@@ -372,7 +366,7 @@ describe('TfiacPlatform Network Discovery', () => {
       sendError,
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -392,8 +386,8 @@ describe('TfiacPlatform Network Discovery', () => {
 
   test('should discover multiple devices', async () => {
     // Setup
-    const xml2js = require('xml2js');
-    xml2js.parseStringPromise.mockResolvedValue(createValidParsedResponse());
+    const xml2js = await import('xml2js');
+    (xml2js.parseStringPromise as any).mockResolvedValue(createValidParsedResponse());
 
     const mockSocketInstance = createMockSocket({
       onMessage: [
@@ -418,7 +412,7 @@ describe('TfiacPlatform Network Discovery', () => {
       ],
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -438,8 +432,8 @@ describe('TfiacPlatform Network Discovery', () => {
 
   test('should ignore duplicate devices during discovery', async () => {
     // Setup
-    const xml2js = require('xml2js');
-    xml2js.parseStringPromise.mockResolvedValue(createValidParsedResponse());
+    const xml2js = await import('xml2js');
+    (xml2js.parseStringPromise as any).mockResolvedValue(createValidParsedResponse());
 
     const mockSocketInstance = createMockSocket({
       onMessage: [
@@ -464,7 +458,7 @@ describe('TfiacPlatform Network Discovery', () => {
       ],
     });
 
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
@@ -486,7 +480,7 @@ describe('TfiacPlatform Network Discovery', () => {
   test('should respect discovery timeout', async () => {
     // Setup
     const mockSocketInstance = createMockSocket({});
-    (dgram.createSocket as jest.Mock).mockReturnValue(mockSocketInstance);
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocketInstance);
 
     // Create platform instance
     const platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);

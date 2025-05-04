@@ -113,8 +113,36 @@ export class AirConditionerAPI extends EventEmitter {
 
   private async sendCommand(command: string, timeoutMs: number = 10000): Promise<string> {
     return new Promise<string>((resolve, reject) => {
-      // Create socket
-      const client = dgram.createSocket('udp4');
+      interface DgramSocket {
+        unref?: () => void;
+        on(event: string, cb: (...args: unknown[]) => void): void;
+        removeAllListeners(): void;
+        close(): void;
+        send(
+          msg: string | Buffer,
+          port: number,
+          ip: string,
+          cb: (error: Error | null | undefined) => void
+        ): void;
+      }
+      interface DgramModule {
+        default?: { createSocket: (type: string) => DgramSocket };
+        createSocket?: (type: string) => DgramSocket;
+      }
+      // Use the DgramModule type to access createSocket
+      const dmModule = dgram as unknown as DgramModule;
+      let createSocketFn: ((type: string) => DgramSocket) | undefined;
+      // Prefer explicit namespace export (e.g., when tests assign dgram.createSocket)
+      if ('createSocket' in dmModule && typeof dmModule.createSocket === 'function') {
+        createSocketFn = dmModule.createSocket.bind(dmModule);
+      } else if (dmModule.default && typeof dmModule.default.createSocket === 'function') {
+        createSocketFn = dmModule.default.createSocket.bind(dmModule.default);
+      }
+      if (!createSocketFn) {
+        throw new Error('dgram.createSocket is not a function');
+      }
+
+      const client = createSocketFn('udp4');
 
       // Call unref if available
       if (typeof client.unref === 'function') {
@@ -154,8 +182,8 @@ export class AirConditionerAPI extends EventEmitter {
           reject(new Error('Command timed out'));
         }
       }, timeoutMs);
-      // Prevent timer from keeping the process alive
-      if (timeoutId.unref) {
+      // Prevent timer from keeping the process alive (if supported)
+      if (timeoutId && typeof timeoutId.unref === 'function') {
         timeoutId.unref();
       }
       this.activeTimeouts.push(timeoutId);
@@ -165,7 +193,7 @@ export class AirConditionerAPI extends EventEmitter {
           isResolved = true;
           this.available = true;
           cleanupSocket();
-          const response = data.toString();
+          const response = (data as Buffer).toString();
           // Graceful fallback for UnknownCmd
           if (response.includes('<UnknownCmd>')) {
             // Log warning and resolve as no-op
@@ -176,13 +204,12 @@ export class AirConditionerAPI extends EventEmitter {
           resolve(response);
         }
       });
-
-      client.on('error', (error) => {
+      client.on('error', (err) => {
         if (!isResolved) {
           isResolved = true;
           this.available = false;
           cleanupSocket();
-          reject(error);
+          reject(err as Error);
         }
       });
 
@@ -381,4 +408,4 @@ export class AirConditionerAPI extends EventEmitter {
 }
 
 // Export the class directly instead of a default export
-export { AirConditionerAPI as default };
+export default AirConditionerAPI;

@@ -3,13 +3,20 @@ import {
   PlatformAccessory,
   CharacteristicValue,
   CharacteristicSetCallback,
-  CharacteristicGetCallback,
 } from 'homebridge';
 import type { WithUUID, Characteristic } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
-import CacheManager from './CacheManager.js';
+import * as CacheMgrModule from './CacheManager.js';
+import type { CacheManager } from './CacheManager.js';
+// Prefer named export, then default, then throw an error if no valid export is found
+const CacheManagerClass =
+  (CacheMgrModule as { CacheManager?: { getInstance: (config: TfiacDeviceConfig) => CacheManager } }).CacheManager ??
+  (CacheMgrModule as { default?: { getInstance: (config: TfiacDeviceConfig) => CacheManager } }).default ??
+  (() => {
+    throw new Error('No CacheManager export found'); 
+  })();
 
 /**
  * Function type to determine the boolean state from the status object.
@@ -20,7 +27,7 @@ type GetStatusValueFn = (status: Partial<AirConditionerStatus>) => boolean;
  * Function type to set the state via the API.
  */
 type SetApiStateFn = (value: boolean) => Promise<void>;
-
+              
 /**
  * Base class for simple switch accessories (On/Off).
  * Handles common initialization, polling, and basic get/set handlers.
@@ -28,7 +35,7 @@ type SetApiStateFn = (value: boolean) => Promise<void>;
 export abstract class BaseSwitchAccessory {
   protected readonly service: Service | undefined;
   private readonly nameChar: WithUUID<new () => Characteristic>;
-  private readonly onChar: WithUUID<new () => Characteristic>;
+  protected readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
   protected cachedStatus: Partial<AirConditionerStatus> | null = null;
 
@@ -48,9 +55,9 @@ export abstract class BaseSwitchAccessory {
     protected readonly logPrefix: string, // e.g., 'Turbo', 'Eco'
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
-    this.cacheManager = CacheManager.getInstance(this.deviceConfig);
+    this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig);
     // Subscribe to API debug events when plugin debug mode is enabled
-    if (this.platform.config?.debug && this.cacheManager.api && typeof this.cacheManager.api.on === 'function') {
+    if (this.platform.config?.debug && this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
       this.cacheManager.api.on('debug', (msg: string) => {
         // Always log API debug messages at info level when plugin debug is enabled
         this.platform.log.info(`${this.logPrefix} API: ${msg}`);
@@ -86,17 +93,25 @@ export abstract class BaseSwitchAccessory {
     if (this.service) {
       this.service.setCharacteristic(this.nameChar, this.serviceName);
       // ALSO set the configured name characteristic for better display in Home app
-      this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, this.serviceName);
+      if (typeof this.platform.Characteristic.ConfiguredName !== 'undefined') {
+        this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, this.serviceName);
+      }
 
       // Register handlers for the On characteristic
       const onCharacteristic = this.service.getCharacteristic(this.onChar)!; // assert non-null
-      onCharacteristic.on('get', this.handleGet.bind(this));
-      onCharacteristic.on('set', this.handleSet.bind(this));
+      // Register handlers via onGet/onSet if available, fallback to .on('get')/.on('set')
+      if (onCharacteristic && typeof onCharacteristic.onGet === 'function' && typeof onCharacteristic.onSet === 'function') {
+        onCharacteristic.onGet(this.handleGet.bind(this));
+        onCharacteristic.onSet(this.handleSet.bind(this));
+      } else if (onCharacteristic && typeof onCharacteristic.on === 'function') {
+        onCharacteristic.on('get', this.handleGet.bind(this));
+        onCharacteristic.on('set', this.handleSet.bind(this));
+      }
 
       this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);
       // Subscribe to centralized status updates instead of individual polling
       this.statusListener = this.updateStatus.bind(this);
-      if (typeof this.cacheManager.api.on === 'function') {
+      if (this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
         this.cacheManager.api.on('status', this.statusListener);
       }
     } else {
@@ -106,12 +121,10 @@ export abstract class BaseSwitchAccessory {
 
   /** Unsubscribe from centralized status updates */
   public stopPolling(): void {
-    // Cleanup cache and API
-    this.cacheManager.cleanup();
+    // Safely clean up if available
+    this.cacheManager?.cleanup?.();
     // Unsubscribe listeners if supported
-    if (typeof this.cacheManager.api.off === 'function') {
-      this.cacheManager.api.off('status', this.statusListener!);
-    }
+    this.cacheManager?.api?.off?.('status', this.statusListener!);
   }
 
   /**
@@ -158,16 +171,24 @@ export abstract class BaseSwitchAccessory {
   /**
    * Handle requests to get the current value of the "On" characteristic.
    */
-  protected handleGet(callback: CharacteristicGetCallback) {
-    const currentValue = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
-    this.platform.log.debug(`Get ${this.logPrefix}: Returning ${currentValue} (Cached: ${JSON.stringify(this.cachedStatus ?? null)})`);
-    callback(null, currentValue);
+  protected handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
+    // Support both promise-based (homebridge/HAP v1.4.0+) and callback-based API
+    const value = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
+    
+    if (callback && typeof callback === 'function') {
+      // Callback-style API (for backward compatibility)
+      // Call the callback but still return the value to satisfy the type checker
+      callback(null, value);
+    }
+    
+    // Return the value directly - works for promise pattern and satisfies the type for callback pattern
+    return value;
   }
 
   /**
    * Handle requests to set the "On" characteristic.
    */
-  protected async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback) {
+  protected async handleSet(value: CharacteristicValue, callback?: CharacteristicSetCallback): Promise<void> {
     const requestedState = value as boolean;
     this.platform.log.info(`Set ${this.logPrefix}: Received request to turn ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
 
@@ -178,10 +199,16 @@ export abstract class BaseSwitchAccessory {
       if (this.service) {
         this.service.updateCharacteristic(this.onChar, requestedState);
       }
-      callback(null);
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
     } catch (error) {
       this.platform.log.error(`Error setting ${this.logPrefix} to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}:`, error);
-      callback(error as Error);
+      if (callback && typeof callback === 'function') {
+        callback(error as Error);
+      } else {
+        throw error; // Re-throw for promise-based API
+      }
     }
   }
 }

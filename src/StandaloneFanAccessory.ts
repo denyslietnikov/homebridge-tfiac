@@ -59,42 +59,62 @@ export class StandaloneFanAccessory {
     this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, speed);
   }
 
-  private handleGet(callback: (err: Error | null, value?: boolean) => void): void {
+  private handleGet(callback?: (err: Error | null, value?: boolean) => void): boolean | Promise<boolean> {
     const value = this.service.getCharacteristic(this.platform.Characteristic.On).value as boolean;
-    callback(null, value ?? false);
+    
+    if (callback && typeof callback === 'function') {
+      callback(null, value ?? false);
+      return value ?? false;
+    }
+    
+    return Promise.resolve(value ?? false);
   }
 
-  private handleSet(value: CharacteristicValue, callback: (err?: Error | null) => void): void {
-    (async () => {
-      try {
-        if (value) {
-          await this.deviceAPI.turnOn();
-        } else {
-          await this.deviceAPI.turnOff();
-        }
-        this.cacheManager.clear();
-        callback(null);
-      } catch (err) {
-        callback(err as Error);
+  private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
+    try {
+      if (value) {
+        await this.deviceAPI.turnOn();
+      } else {
+        await this.deviceAPI.turnOff();
       }
-    })();
+      this.cacheManager.clear();
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
+    } catch (err) {
+      if (callback && typeof callback === 'function') {
+        callback(err as Error);
+      } else {
+        throw err;
+      }
+    }
   }
 
-  private handleRotationSpeedGet(callback: (err: Error | null, value?: number) => void): void {
+  private handleRotationSpeedGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
     const value = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).value as number;
-    callback(null, value ?? 50);
+    
+    if (callback && typeof callback === 'function') {
+      callback(null, value ?? 50);
+      return value ?? 50;
+    }
+    
+    return Promise.resolve(value ?? 50);
   }
 
-  private async handleRotationSpeedSet(value: CharacteristicValue, callback: (err?: Error | null) => void): Promise<void> {
-    (async () => {
-      try {
-        await this.deviceAPI.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
-        this.cacheManager.clear();
+  private async handleRotationSpeedSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
+    try {
+      await this.deviceAPI.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
+      this.cacheManager.clear();
+      if (callback && typeof callback === 'function') {
         callback(null);
-      } catch (err) {
-        callback(err as Error);
       }
-    })();
+    } catch (err) {
+      if (callback && typeof callback === 'function') {
+        callback(err as Error);
+      } else {
+        throw err;
+      }
+    }
   }
 
   private mapFanModeToRotationSpeed(fanMode: FanSpeed): number {

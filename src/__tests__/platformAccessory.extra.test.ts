@@ -1,3 +1,4 @@
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatformAccessory } from '../platformAccessory.js';
 import type { TfiacPlatform } from '../platform.js';
@@ -27,14 +28,14 @@ describe('TfiacPlatformAccessory extra tests', () => {
     const charStore: Record<string, any> = {};
 
     // Override service.getCharacteristic to always supply an object that includes updateValue
-    service.getCharacteristic = jest.fn((char: any) => {
+    service.getCharacteristic = vi.fn((char: any) => {
       const key = String(char);
       if (!charStore[key]) {
         // each characteristic mock only needs value, on, and updateValue for these tests
         charStore[key] = {
           value: undefined,
-          on: jest.fn().mockReturnThis(),
-          updateValue: jest.fn((val: any) => {
+          on: vi.fn().mockReturnThis(),
+          updateValue: vi.fn((val: any) => {
             charStore[key].value = val;
             return charStore[key];
           }),
@@ -44,12 +45,12 @@ describe('TfiacPlatformAccessory extra tests', () => {
     });
 
     // Simplified set/updateCharacteristic that work with the above mock
-    service.setCharacteristic = jest.fn((char: any, val: any) => {
+    service.setCharacteristic = vi.fn((char: any, val: any) => {
       service.getCharacteristic(char).updateValue(val);
       return service;
     });
 
-    service.updateCharacteristic = jest.fn((char: any, val: any) => {
+    service.updateCharacteristic = vi.fn((char: any, val: any) => {
       service.getCharacteristic(char).updateValue(val);
       return service;
     });
@@ -58,10 +59,10 @@ describe('TfiacPlatformAccessory extra tests', () => {
     accessory = createMockPlatformAccessory() as any;
     Object.assign(accessory, {
       context: { deviceConfig: { name: 'AC', ip: '1', updateInterval: 1 } },
-      getService: jest.fn().mockReturnValue(service),
-      addService: jest.fn().mockReturnValue(service),
-      getServiceById: jest.fn(),
-      removeService: jest.fn(),
+      getService: vi.fn().mockReturnValue(service),
+      addService: vi.fn().mockReturnValue(service),
+      getServiceById: vi.fn(),
+      removeService: vi.fn(),
     });
 
     // Ensure the accessory has a services array that includes the mocked
@@ -105,7 +106,7 @@ describe('TfiacPlatformAccessory extra tests', () => {
     // Provide existing sensor services
     const indoorService = {};
     const outdoorService = {};
-    (accessory.getServiceById as jest.Mock)
+    (accessory.getServiceById as ReturnType<typeof vi.fn>)
       .mockImplementation((serviceType, id) => {
         if (serviceType === 'TemperatureSensor' && id === 'indoor_temperature') {
           return indoorService;
@@ -129,7 +130,7 @@ describe('TfiacPlatformAccessory extra tests', () => {
     (inst as any).warmupTimeout = setTimeout(() => {}, 1000) as any;
     (inst as any).pollingInterval = setInterval(() => {}, 1000) as any;
     // stub api.cleanup
-    inst['deviceAPI'].cleanup = jest.fn();
+    inst['deviceAPI'].cleanup = vi.fn();
     inst.stopPolling();
     expect(inst['warmupTimeout']).toBeNull();
     expect(inst['pollingInterval']).toBeNull();
