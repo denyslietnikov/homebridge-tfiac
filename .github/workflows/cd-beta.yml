@@ -16,7 +16,6 @@ jobs:
   beta-release:
     name: 🚀 Beta Release to npm & GitHub
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/develop'
     permissions:
       contents: write
       packages: write
