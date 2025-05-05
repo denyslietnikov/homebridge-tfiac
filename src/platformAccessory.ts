@@ -50,6 +50,8 @@ export class TfiacPlatformAccessory {
 
   private deviceConfig: TfiacDeviceConfig;
 
+  private lastTargetOperation: OperationMode | null = null;
+
   constructor(
     platformArg: TfiacPlatform | (() => TfiacPlatform),
     private readonly accessory: PlatformAccessory,
@@ -407,8 +409,12 @@ export class TfiacPlatformAccessory {
 
       const currentHCState = this.mapOperationModeToCurrentHeaterCoolerState(status.operation_mode as OperationMode);
       this.service.updateCharacteristic(this.platform.Characteristic.CurrentHeaterCoolerState, currentHCState);
-
-      const targetHCState = this.mapOperationModeToTargetHeaterCoolerState(status.operation_mode as OperationMode);
+      let targetHCState: number;
+      if (this.lastTargetOperation === OperationMode.Auto) {
+        targetHCState = this.platform.Characteristic.TargetHeaterCoolerState.AUTO;
+      } else {
+        targetHCState = this.mapOperationModeToTargetHeaterCoolerState(status.operation_mode as OperationMode);
+      }
       this.service.updateCharacteristic(this.platform.Characteristic.TargetHeaterCoolerState, targetHCState);
 
       const currentTempCelsius = fahrenheitToCelsius(status.current_temp) + correction;
@@ -517,6 +523,7 @@ export class TfiacPlatformAccessory {
     this.platform.log.debug('Triggered SET TargetHeaterCoolerState:', value);
     try {
       const mode = this.mapTargetHeaterCoolerStateToOperationMode(value as number);
+      this.lastTargetOperation = mode;
       await this.deviceAPI.setAirConditionerState('operation_mode', mode);
       this.cacheManager.clear();
       await this.updateCachedStatus();
