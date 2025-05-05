@@ -230,7 +230,11 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   async turnOff(): Promise<void> {
-    await this.setAirConditionerState('is_on', PowerState.Off);
+    // Turn off and reset Sleep Mode in a single command to avoid double beep
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+      <SetMessage><TurnOn>off</TurnOn><Opt_sleepMode>off</Opt_sleepMode></SetMessage>
+    </msg>`;
+    await this.sendCommandWithRetry(command);
   }
 
   private mapWindDirectionToSwingMode(status: StatusUpdateMsg): string {
