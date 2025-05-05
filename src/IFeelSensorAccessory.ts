@@ -125,9 +125,10 @@ export class IFeelSensorAccessory {
     }
 
     if (status && typeof status.operation_mode === 'string') {
+      // Consider iFeel mode active when operation_mode is SelfFeel, regardless of is_on state
       const isIFeelMode = status.operation_mode === OperationMode.SelfFeel;
       this.platform.log.debug(
-        `[iFeelSensor] Updating state to: ${isIFeelMode ? 'ON' : 'OFF'} (mode: ${status.operation_mode})`,
+        `[iFeelSensor] Updating state to: ${isIFeelMode ? 'ON' : 'OFF'} (mode: ${status.operation_mode}, power: ${status.is_on})`,
       );
       this.service.updateCharacteristic(
         this.platform.Characteristic.On,

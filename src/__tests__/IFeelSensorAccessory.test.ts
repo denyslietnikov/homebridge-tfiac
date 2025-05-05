@@ -143,6 +143,27 @@ describe('IFeelSensorAccessory', () => {
     );
   });
 
+  it('should update state to ON when operation_mode is selfFeel even if power is OFF', () => {
+    const status = {
+      current_temp: 77,
+      target_temp: 70,
+      operation_mode: OperationMode.SelfFeel,
+      fan_mode: 'Auto',
+      is_on: PowerState.Off, // Note: Power is OFF
+      swing_mode: 'off',
+    };
+    
+    sensorAccessory.updateStatus(status);
+    
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.On,
+      true // Should still be ON because operation_mode is selfFeel
+    );
+    expect(platform.log.debug).toHaveBeenCalledWith(
+      expect.stringContaining('ON (mode: selfFeel, power: off)')
+    );
+  });
+
   it('should update state to OFF when operation_mode is not selfFeel', () => {
     const status = {
       current_temp: 77,
