@@ -37,12 +37,18 @@ export class FanSpeedAccessory {
       this.cacheManager.api.on('status', this.statusListener);
     }
 
-    this.service
-      .getCharacteristic(
-        this.platform.Characteristic.RotationSpeed,
-      )
-      .on('get', (callback) => this.handleGet(callback))
-      .on('set', (value, callback) => this.handleSet(value, callback));
+    // Get the RotationSpeed characteristic
+    const rotationSpeedChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
+    
+    // Use modern methods if available, fallback to legacy methods for compatibility
+    if (typeof rotationSpeedChar.onGet === 'function' && typeof rotationSpeedChar.onSet === 'function') {
+      rotationSpeedChar.onGet(this.handleGet.bind(this));
+      rotationSpeedChar.onSet(this.handleSet.bind(this));
+    } else {
+      rotationSpeedChar
+        .on('get', (callback) => this.handleGet(callback))
+        .on('set', (value, callback) => this.handleSet(value, callback));
+    }
   }
 
   /**

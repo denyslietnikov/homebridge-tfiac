@@ -41,6 +41,10 @@ export class TfiacPlatformAccessory {
   private indoorTemperatureSensorAccessory: IndoorTemperatureSensorAccessory | null = null;
   private outdoorTemperatureSensorAccessory: OutdoorTemperatureSensorAccessory | null = null;
   private iFeelSensorAccessory: IFeelSensorAccessory | null = null;
+  
+  // Properties used for temperature sensors
+  private indoorTemperatureSensor: IndoorTemperatureSensorAccessory | null = null;
+  private outdoorTemperatureSensor: OutdoorTemperatureSensorAccessory | null = null;
 
   private characteristicHandlers: Map<string, CharacteristicHandlers> = new Map();
 
@@ -846,5 +850,39 @@ export class TfiacPlatformAccessory {
       return;
     }
     return value;
+  }
+
+  /**
+   * Create services for temperature sensors if enabled in config
+   */
+  private createTemperatureSensors(): void {
+    // Skip if no platform services (in test environment)
+    if (!this.platform.Service || !this.platform.Characteristic) {
+      return;
+    }
+
+    if (this.deviceConfig.enableIndoorTempSensor === true) {
+      try {
+        this.indoorTemperatureSensor = new IndoorTemperatureSensorAccessory(
+          this.platform,
+          this.accessory,
+          this.deviceConfig,
+        );
+      } catch (error) {
+        this.platform.log.error('Failed to create indoor temperature sensor:', error);
+      }
+    }
+
+    if (this.deviceConfig.enableOutdoorTempSensor === true) {
+      try {
+        this.outdoorTemperatureSensor = new OutdoorTemperatureSensorAccessory(
+          this.platform,
+          this.accessory,
+          this.deviceConfig,
+        );
+      } catch (error) {
+        this.platform.log.error('Failed to create outdoor temperature sensor:', error);
+      }
+    }
   }
 }

@@ -35,14 +35,30 @@ export class StandaloneFanAccessory {
 
     // Subscribe to centralized status updates
     this.cacheManager.api.on('status', this.updateStatus.bind(this));
-    this.service
-      .getCharacteristic(this.platform.Characteristic.On)
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
-    this.service
-      .getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      .on('get', this.handleRotationSpeedGet.bind(this))
-      .on('set', this.handleRotationSpeedSet.bind(this));
+    
+    // Get the On characteristic
+    const onCharacteristic = this.service.getCharacteristic(this.platform.Characteristic.On);
+    // Use modern methods if available, fallback to legacy methods for compatibility
+    if (typeof onCharacteristic.onGet === 'function' && typeof onCharacteristic.onSet === 'function') {
+      onCharacteristic.onGet(this.handleGet.bind(this));
+      onCharacteristic.onSet(this.handleSet.bind(this));
+    } else {
+      onCharacteristic
+        .on('get', this.handleGet.bind(this))
+        .on('set', this.handleSet.bind(this));
+    }
+    
+    // Get the RotationSpeed characteristic
+    const rotationSpeedCharacteristic = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
+    // Use modern methods if available, fallback to legacy methods for compatibility
+    if (typeof rotationSpeedCharacteristic.onGet === 'function' && typeof rotationSpeedCharacteristic.onSet === 'function') {
+      rotationSpeedCharacteristic.onGet(this.handleRotationSpeedGet.bind(this));
+      rotationSpeedCharacteristic.onSet(this.handleRotationSpeedSet.bind(this));
+    } else {
+      rotationSpeedCharacteristic
+        .on('get', this.handleRotationSpeedGet.bind(this))
+        .on('set', this.handleRotationSpeedSet.bind(this));
+    }
   }
 
   /** No-op stub for stopPolling; cleanup handled by platform */

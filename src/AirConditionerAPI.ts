@@ -346,9 +346,11 @@ export class AirConditionerAPI extends EventEmitter {
   /**
    * Generic method to set option state for the air conditioner
    */
-  private async setOptionState(option: string, value: string): Promise<void> {
+  private async setOptionState(option: string, value: string, callerMethod?: string): Promise<void> {
     // Emit debug event so BaseSwitchAccessory can log when commands are sent
-    this.emit('debug', `setOptionState: <${option}>${value}</${option}>`);
+    // Include caller method name if provided to improve debugging context
+    const methodPrefix = callerMethod ? `[${callerMethod}] ` : '';
+    this.emit('debug', `${methodPrefix}setOptionState: <${option}>${value}</${option}>`);
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
                       <SetMessage><${option}>${value}</${option}></SetMessage></msg>`;
     await this.sendCommandWithRetry(command);
@@ -363,7 +365,7 @@ export class AirConditionerAPI extends EventEmitter {
     // using the generic option setter instead of the high‑level
     // `setAirConditionerState` helper (which doesn’t include this flag
     // in the aggregated message).
-    await this.setOptionState('Opt_display', state);
+    await this.setOptionState('Opt_display', state, 'setDisplayState');
   }
 
   /**
@@ -396,14 +398,14 @@ export class AirConditionerAPI extends EventEmitter {
    * Uses the generic <Opt_eco> tag in the device's XML protocol.
    */
   async setEcoState(state: PowerState): Promise<void> {
-    await this.setOptionState('Opt_eco', state);
+    await this.setOptionState('Opt_eco', state, 'setEcoState');
   }
 
   /**
    * Set the Beep (Opt_beep) state (on/off) for the air conditioner.
    */
   async setBeepState(state: PowerState): Promise<void> {
-    await this.setOptionState('Opt_beep', state);
+    await this.setOptionState('Opt_beep', state, 'setBeepState');
   }
 }
 
