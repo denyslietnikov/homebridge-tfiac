@@ -13,7 +13,7 @@ import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js'
 import { TfiacDeviceConfig } from './settings.js';
 import { IndoorTemperatureSensorAccessory } from './IndoorTemperatureSensorAccessory.js';
 import { OutdoorTemperatureSensorAccessory } from './OutdoorTemperatureSensorAccessory.js';
-import { SelfFeelSensorAccessory } from './SelfFeelSensorAccessory.js';
+import { IFeelSensorAccessory } from './IFeelSensorAccessory.js';
 import { fahrenheitToCelsius, celsiusToFahrenheit } from './utils.js';
 import CacheManager from './CacheManager.js';
 import { PowerState, OperationMode, FanSpeed, SwingMode } from './enums.js';
@@ -40,7 +40,7 @@ export class TfiacPlatformAccessory {
 
   private indoorTemperatureSensorAccessory: IndoorTemperatureSensorAccessory | null = null;
   private outdoorTemperatureSensorAccessory: OutdoorTemperatureSensorAccessory | null = null;
-  private selfFeelSensorAccessory: SelfFeelSensorAccessory | null = null;
+  private iFeelSensorAccessory: IFeelSensorAccessory | null = null;
 
   private characteristicHandlers: Map<string, CharacteristicHandlers> = new Map();
 
@@ -161,9 +161,9 @@ export class TfiacPlatformAccessory {
       );
     }
 
-    // Initialize SelfFeel sensor regardless of temperature setting
-    // It can be disabled separately with enableSelfFeelSensor
-    this.selfFeelSensorAccessory = new SelfFeelSensorAccessory(
+    // Initialize iFeel sensor regardless of temperature setting
+    // It can be disabled separately with enableIFeelSensor
+    this.iFeelSensorAccessory = new IFeelSensorAccessory(
       this.platform,
       this.accessory,
       deviceConfig,
@@ -378,7 +378,7 @@ export class TfiacPlatformAccessory {
 
       this.indoorTemperatureSensorAccessory?.updateStatus(status);
       this.outdoorTemperatureSensorAccessory?.updateStatus(status);
-      this.selfFeelSensorAccessory?.updateStatus(status);
+      this.iFeelSensorAccessory?.updateStatus(status);
       // Emit centralized status to subscribers
       this.cacheManager.api.emit('status', status);
 
@@ -387,7 +387,7 @@ export class TfiacPlatformAccessory {
       this.updateHeaterCoolerCharacteristics(null);
       this.indoorTemperatureSensorAccessory?.updateStatus(null);
       this.outdoorTemperatureSensorAccessory?.updateStatus(null);
-      this.selfFeelSensorAccessory?.updateStatus(null);
+      this.iFeelSensorAccessory?.updateStatus(null);
       // Notify subscribers of null status on error
       this.cacheManager.api.emit('status', null);
     }

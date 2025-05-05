@@ -158,7 +158,7 @@ describe('SleepSwitchAccessory', () => {
       const callback = vi.fn();
       (inst as any).cachedStatus = { opt_sleepMode: undefined };
       (inst as any).handleGet(callback);
-      expect(callback).toHaveBeenCalledWith(null, true);
+      expect(callback).toHaveBeenCalledWith(null, false);
     });
 
     it('handles get characteristic with null status', () => {

@@ -1,4 +1,4 @@
-// SelfFeelSensorAccessory.ts
+// IFeelSensorAccessory.ts
 import {
   PlatformAccessory,
   Service,
@@ -15,7 +15,7 @@ interface MockService {
   updateCharacteristic: () => MockService;
 }
 
-export class SelfFeelSensorAccessory {
+export class IFeelSensorAccessory {
   private service: Service | undefined;
 
   constructor(
@@ -23,18 +23,18 @@ export class SelfFeelSensorAccessory {
     private readonly accessory: PlatformAccessory,
     private readonly deviceConfig: TfiacDeviceConfig,
   ) {
-    const serviceName = 'SelfFeel Mode';
+    const serviceName = 'iFeel';
     
     // Skip initialization if feature is disabled in config
-    if (deviceConfig.enableSelfFeelSensor === false) {
-      this.platform.log.debug('[SelfFeelSensor] Disabled in config, skipping initialization');
+    if (deviceConfig.enableIFeelSensor === false) {
+      this.platform.log.debug('[iFeelSensor] Disabled in config, skipping initialization');
       return;
     }
 
     // Look for existing switch service with the specific subtype
     const existingService = this.accessory.getServiceById(
       this.platform.Service.Switch,
-      'selffeel_sensor',
+      'ifeel_sensor',
     );
 
     if (existingService) {
@@ -44,7 +44,7 @@ export class SelfFeelSensorAccessory {
       this.service = this.accessory.addService(
         this.platform.Service.Switch,
         serviceName,
-        'selffeel_sensor', // Subtype for uniqueness
+        'ifeel_sensor', // Subtype for uniqueness
       );
     }
 
@@ -102,7 +102,7 @@ export class SelfFeelSensorAccessory {
    * Handle requests to get the current value of the "On" characteristic
    */
   async handleOnGet(): Promise<boolean> {
-    this.platform.log.debug('Triggered GET SelfFeelSensor.On');
+    this.platform.log.debug('Triggered GET iFeelSensor.On');
     const currentValue = this.service?.getCharacteristic(
       this.platform.Characteristic.On,
     ).value;
@@ -110,12 +110,12 @@ export class SelfFeelSensorAccessory {
   }
 
   /**
-   * Updates the SelfFeel sensor characteristic based on the latest status.
+   * Updates the iFeel sensor characteristic based on the latest status.
    * @param status The latest status from the AirConditionerAPI.
    */
   public updateStatus(status: AirConditionerStatus | null): void {
     // Skip updates if disabled in config
-    if (this.deviceConfig.enableSelfFeelSensor === false) {
+    if (this.deviceConfig.enableIFeelSensor === false) {
       return;
     }
 
@@ -125,17 +125,17 @@ export class SelfFeelSensorAccessory {
     }
 
     if (status && typeof status.operation_mode === 'string') {
-      const isSelfFeelMode = status.operation_mode === OperationMode.SelfFeel;
+      const isIFeelMode = status.operation_mode === OperationMode.SelfFeel;
       this.platform.log.debug(
-        `[SelfFeelSensor] Updating state to: ${isSelfFeelMode ? 'ON' : 'OFF'} (mode: ${status.operation_mode})`,
+        `[iFeelSensor] Updating state to: ${isIFeelMode ? 'ON' : 'OFF'} (mode: ${status.operation_mode})`,
       );
       this.service.updateCharacteristic(
         this.platform.Characteristic.On,
-        isSelfFeelMode,
+        isIFeelMode,
       );
     } else {
       // Set default state (OFF) if no status available
-      this.platform.log.debug('[SelfFeelSensor] Setting default state to OFF.');
+      this.platform.log.debug('[iFeelSensor] Setting default state to OFF.');
       this.service.updateCharacteristic(
         this.platform.Characteristic.On,
         false,
@@ -148,7 +148,7 @@ export class SelfFeelSensorAccessory {
    */
   public removeService(): void {
     if (this.service && this.accessory.removeService) {
-      this.platform.log.info('[SelfFeelSensor] Removing service.');
+      this.platform.log.info('[iFeelSensor] Removing service.');
       this.accessory.removeService(this.service);
       this.service = undefined;
     }

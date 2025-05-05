@@ -31,6 +31,7 @@ export interface TfiacDeviceConfig {
     enableBeep?: boolean;             // show beep switch
     enableFanSpeed?: boolean;         // show fan speed control
     enableTemperature?: boolean;      // show temperature sensor
+    enableIFeelSensor?: boolean;      // show iFeel mode sensor
     [key: string]: string | number | boolean | undefined;  // Add index signature
 }
 

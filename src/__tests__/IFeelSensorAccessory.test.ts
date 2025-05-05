@@ -1,15 +1,15 @@
 import { vi, it, expect, describe, beforeEach } from 'vitest';
 import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
-import { SelfFeelSensorAccessory } from '../SelfFeelSensorAccessory.js';
+import { IFeelSensorAccessory } from '../IFeelSensorAccessory.js';
 import { TfiacDeviceConfig } from '../settings.js';
 import { PowerState, OperationMode } from '../enums.js';
 
-describe('SelfFeelSensorAccessory', () => {
+describe('IFeelSensorAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: PlatformAccessory;
   let deviceConfig: TfiacDeviceConfig;
-  let sensorAccessory: SelfFeelSensorAccessory;
+  let sensorAccessory: IFeelSensorAccessory;
   let mockService: any;
 
   beforeEach(() => {
@@ -58,7 +58,7 @@ describe('SelfFeelSensorAccessory', () => {
       ip: '192.168.1.100',
       port: 8080,
       updateInterval: 30,
-      enableSelfFeelSensor: true
+      enableIFeelSensor: true
     };
 
     // Mock accessory
@@ -70,7 +70,7 @@ describe('SelfFeelSensorAccessory', () => {
     } as unknown as PlatformAccessory;
 
     // Create the accessory
-    sensorAccessory = new SelfFeelSensorAccessory(platform, accessory, deviceConfig);
+    sensorAccessory = new IFeelSensorAccessory(platform, accessory, deviceConfig);
   });
 
   it('should create an instance', () => {
@@ -80,16 +80,16 @@ describe('SelfFeelSensorAccessory', () => {
   it('should add a new service if none exists', () => {
     expect(accessory.getServiceById).toHaveBeenCalledWith(
       platform.Service.Switch,
-      'selffeel_sensor'
+      'ifeel_sensor'
     );
     expect(accessory.addService).toHaveBeenCalledWith(
       platform.Service.Switch,
-      'SelfFeel Mode',
-      'selffeel_sensor'
+      'iFeel',
+      'ifeel_sensor'
     );
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic.Name,
-      'SelfFeel Mode'
+      'iFeel'
     );
   });
 
@@ -112,16 +112,16 @@ describe('SelfFeelSensorAccessory', () => {
     (accessory.getServiceById as ReturnType<typeof vi.fn>).mockReturnValue(existingService);
     
     // Create new instance with existing service
-    const newAccessory = new SelfFeelSensorAccessory(platform, accessory, deviceConfig);
+    const newAccessory = new IFeelSensorAccessory(platform, accessory, deviceConfig);
     
     expect(accessory.getServiceById).toHaveBeenCalledWith(
       platform.Service.Switch,
-      'selffeel_sensor'
+      'ifeel_sensor'
     );
     expect(accessory.addService).not.toHaveBeenCalled();
     expect(existingService.setCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic.Name,
-      'SelfFeel Mode'
+      'iFeel'
     );
   });
 
@@ -170,33 +170,33 @@ describe('SelfFeelSensorAccessory', () => {
     );
   });
 
-  it('should not initialize service when enableSelfFeelSensor is false', () => {
+  it('should not initialize service when enableIFeelSensor is false', () => {
     vi.clearAllMocks();
     
     const configWithDisabledSensor = {
       ...deviceConfig,
-      enableSelfFeelSensor: false
+      enableIFeelSensor: false
     };
     
     accessory.context.deviceConfig = configWithDisabledSensor;
     
-    const disabledSensorAccessory = new SelfFeelSensorAccessory(platform, accessory, configWithDisabledSensor);
+    const disabledSensorAccessory = new IFeelSensorAccessory(platform, accessory, configWithDisabledSensor);
     
     expect(accessory.getServiceById).not.toHaveBeenCalled();
     expect(accessory.addService).not.toHaveBeenCalled();
   });
 
-  it('should not update status when enableSelfFeelSensor is false', () => {
+  it('should not update status when enableIFeelSensor is false', () => {
     vi.clearAllMocks();
     
     const configWithDisabledSensor = {
       ...deviceConfig,
-      enableSelfFeelSensor: false
+      enableIFeelSensor: false
     };
     
     accessory.context.deviceConfig = configWithDisabledSensor;
     
-    const disabledSensorAccessory = new SelfFeelSensorAccessory(platform, accessory, configWithDisabledSensor);
+    const disabledSensorAccessory = new IFeelSensorAccessory(platform, accessory, configWithDisabledSensor);
     
     const status = {
       current_temp: 77,
@@ -218,7 +218,7 @@ describe('SelfFeelSensorAccessory', () => {
     const result = await (sensorAccessory as any).handleOnGet();
     
     expect(result).toBe(true);
-    expect(platform.log.debug).toHaveBeenCalledWith('Triggered GET SelfFeelSensor.On');
+    expect(platform.log.debug).toHaveBeenCalledWith('Triggered GET iFeelSensor.On');
   });
 
   it('should return false in handleOnGet when no value is available', async () => {
@@ -232,7 +232,7 @@ describe('SelfFeelSensorAccessory', () => {
   it('should remove the service when removeService is called', () => {
     sensorAccessory.removeService();
     
-    expect(platform.log.info).toHaveBeenCalledWith('[SelfFeelSensor] Removing service.');
+    expect(platform.log.info).toHaveBeenCalledWith('[iFeelSensor] Removing service.');
     expect(accessory.removeService).toHaveBeenCalledWith(mockService);
   });
 });
