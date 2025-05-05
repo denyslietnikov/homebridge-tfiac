@@ -13,6 +13,7 @@ import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js'
 import { TfiacDeviceConfig } from './settings.js';
 import { IndoorTemperatureSensorAccessory } from './IndoorTemperatureSensorAccessory.js';
 import { OutdoorTemperatureSensorAccessory } from './OutdoorTemperatureSensorAccessory.js';
+import { SelfFeelSensorAccessory } from './SelfFeelSensorAccessory.js';
 import { fahrenheitToCelsius, celsiusToFahrenheit } from './utils.js';
 import CacheManager from './CacheManager.js';
 import { PowerState, OperationMode, FanSpeed, SwingMode } from './enums.js';
@@ -39,6 +40,7 @@ export class TfiacPlatformAccessory {
 
   private indoorTemperatureSensorAccessory: IndoorTemperatureSensorAccessory | null = null;
   private outdoorTemperatureSensorAccessory: OutdoorTemperatureSensorAccessory | null = null;
+  private selfFeelSensorAccessory: SelfFeelSensorAccessory | null = null;
 
   private characteristicHandlers: Map<string, CharacteristicHandlers> = new Map();
 
@@ -158,6 +160,14 @@ export class TfiacPlatformAccessory {
         'outdoor',
       );
     }
+
+    // Initialize SelfFeel sensor regardless of temperature setting
+    // It can be disabled separately with enableSelfFeelSensor
+    this.selfFeelSensorAccessory = new SelfFeelSensorAccessory(
+      this.platform,
+      this.accessory,
+      deviceConfig,
+    );
 
     this.startPolling();
 
@@ -368,6 +378,7 @@ export class TfiacPlatformAccessory {
 
       this.indoorTemperatureSensorAccessory?.updateStatus(status);
       this.outdoorTemperatureSensorAccessory?.updateStatus(status);
+      this.selfFeelSensorAccessory?.updateStatus(status);
       // Emit centralized status to subscribers
       this.cacheManager.api.emit('status', status);
 
@@ -376,6 +387,7 @@ export class TfiacPlatformAccessory {
       this.updateHeaterCoolerCharacteristics(null);
       this.indoorTemperatureSensorAccessory?.updateStatus(null);
       this.outdoorTemperatureSensorAccessory?.updateStatus(null);
+      this.selfFeelSensorAccessory?.updateStatus(null);
       // Notify subscribers of null status on error
       this.cacheManager.api.emit('status', null);
     }
@@ -440,7 +452,12 @@ export class TfiacPlatformAccessory {
     this.platform.log.debug('Triggered SET Active:', value);
     try {
       if (value === this.platform.Characteristic.Active.ACTIVE) {
-        await this.deviceAPI.turnOn();
+        // Skip sending turnOn if device is already on to avoid duplicate beeps
+        if (this.cachedStatus?.is_on === PowerState.On) {
+          this.platform.log.debug('ActiveSet skipped: device already on');
+        } else {
+          await this.deviceAPI.turnOn();
+        }
       } else {
         await this.deviceAPI.turnOff();
       }

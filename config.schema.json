@@ -102,6 +102,11 @@
               "type": "boolean",
               "required": false
             },
+            "enableSelfFeelSensor": {
+              "title": "Enable SelfFeel Sensor",
+              "type": "boolean",
+              "required": false
+            },
             "enableStandaloneFan": {
               "title": "Enable Standalone Fan Service",
               "type": "boolean",
