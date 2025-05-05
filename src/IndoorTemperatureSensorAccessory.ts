@@ -95,6 +95,14 @@ export class IndoorTemperatureSensorAccessory {
           'Indoor Temperature',
         );
         
+        // Set ConfiguredName for better display in Home app
+        if (typeof this.platform.Characteristic.ConfiguredName !== 'undefined') {
+          service.setCharacteristic(
+            this.platform.Characteristic.ConfiguredName,
+            'Indoor Temperature',
+          );
+        }
+        
         // Add an identifier
         if (typeof service.setPrimaryService === 'function') {
           service.setPrimaryService(false);

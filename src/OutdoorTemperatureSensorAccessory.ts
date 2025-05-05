@@ -77,6 +77,14 @@ export class OutdoorTemperatureSensorAccessory {
           this.platform.Characteristic.Name,
           'Outdoor Temperature',
         );
+        
+        // Set ConfiguredName for better display in Home app
+        if (typeof this.platform.Characteristic.ConfiguredName !== 'undefined') {
+          service.setCharacteristic(
+            this.platform.Characteristic.ConfiguredName,
+            'Outdoor Temperature',
+          );
+        }
       }
     } catch (error) {
       this.platform.log.debug('Error configuring outdoor temperature sensor:', error);

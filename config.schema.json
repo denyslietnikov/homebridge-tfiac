@@ -61,7 +61,7 @@
               "required": false
             },
             "auto": {
-              "title": "Auto fan speed",
+              "title": "Auto Fan Speed",
               "type": "boolean",
               "required": false
             },
@@ -73,52 +73,52 @@
               "maximum": 3
             },
             "enableDry": {
-              "title": "Enable Dry Mode Switch",
+              "title": "Dry",
               "type": "boolean",
               "required": false
             },
             "enableFanOnly": {
-              "title": "Enable Fan Only Mode Switch",
+              "title": "Fan Only",
               "type": "boolean",
               "required": false
             },
             "enableTurbo": {
-              "title": "Enable Turbo Switch",
+              "title": "Turbo",
               "type": "boolean",
               "required": false
             },
             "enableEco": {
-              "title": "Enable Eco Switch",
+              "title": "Eco",
               "type": "boolean",
               "required": false
             },
             "enableBeep": {
-              "title": "Enable Beep Switch",
+              "title": "Beep",
               "type": "boolean",
               "required": false
             },
             "enableHorizontalSwing": {
-              "title": "Enable Horizontal Swing Switch",
+              "title": "Horizontal Swing",
               "type": "boolean",
               "required": false
             },
             "enableIFeelSensor": {
-              "title": "Enable iFeel Sensor",
+              "title": "iFeel",
               "type": "boolean",
               "required": false
             },
             "enableStandaloneFan": {
-              "title": "Enable Standalone Fan Service",
+              "title": "Standalone Fan",
               "type": "boolean",
               "required": false
             },
             "enableTemperature": {
-              "title": "Enable Temperature Sensor",
+              "title": "Temperature",
               "type": "boolean",
               "required": false
             },
             "enableFanSpeed": {
-              "title": "Enable Fan Speed Control",
+              "title": "Fan Speed",
               "type": "boolean",
               "required": false
             },

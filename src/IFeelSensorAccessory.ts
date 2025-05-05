@@ -40,7 +40,7 @@ export class IFeelSensorAccessory {
     // If not in accessory already, create a new switch service
     if (!existingService) {
       if (typeof this.accessory.addService === 'function') {
-        // Use the exact name expected by tests
+        // Set service name to just iFeel without device name prefix
         service = this.accessory.addService(
           this.platform.Service.Switch,
           'iFeel',
@@ -73,6 +73,14 @@ export class IFeelSensorAccessory {
         this.platform.Characteristic.Name,
         'iFeel',
       );
+      
+      // Set ConfiguredName for better display in Home app
+      if (typeof this.platform.Characteristic.ConfiguredName !== 'undefined') {
+        service.setCharacteristic(
+          this.platform.Characteristic.ConfiguredName,
+          'iFeel',
+        );
+      }
     } catch (error) {
       this.platform.log.debug('Error configuring IFeel sensor:', error);
     }
