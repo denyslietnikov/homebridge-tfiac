@@ -155,6 +155,9 @@ describe('TfiacPlatformAccessory - Extended Coverage', () => {
     });
 
     it('handleActiveSet calls turnOn and updateCachedStatus', async () => {
+      // Make sure the device is OFF so turnOn is called
+      (accessory as any).cachedStatus.is_on = 'off';
+      
       mockApi.turnOn.mockResolvedValue(undefined);
       vi.spyOn(accessory as any, 'updateCachedStatus').mockResolvedValue(undefined);
       

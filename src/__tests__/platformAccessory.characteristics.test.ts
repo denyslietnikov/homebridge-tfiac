@@ -657,6 +657,9 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     });
 
     it('handleActiveSet should handle missing callback parameter', async () => {
+      // Make sure the device is OFF so turnOn is called
+      (accessory as any).cachedStatus.is_on = 'off';
+      
       // Access the handler directly
       const handler = (accessory as any).handleActiveSet.bind(accessory);
       
