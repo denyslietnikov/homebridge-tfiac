@@ -7,7 +7,7 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
-import { PowerState } from './enums.js';
+import { PowerState, FanSpeed, FanSpeedPercentMap } from './enums.js';
 
 export class FanSpeedAccessory {
   private service: Service;
@@ -79,9 +79,10 @@ export class FanSpeedAccessory {
     );
 
     // Update RotationSpeed
-    const value = status && typeof status.fan_mode === 'string'
-      ? parseInt(status.fan_mode as string, 10) || 0
-      : 50;
+    const value =
+      status && typeof status.fan_mode === 'string'
+        ? FanSpeedPercentMap[status.fan_mode as FanSpeed] ?? 50
+        : 50;
     this.service.updateCharacteristic(
       this.platform.Characteristic.RotationSpeed,
       value,
