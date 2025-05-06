@@ -7,6 +7,7 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
+import { PowerState } from './enums.js';
 
 export class FanSpeedAccessory {
   private service: Service;
@@ -37,6 +38,19 @@ export class FanSpeedAccessory {
       this.cacheManager.api.on('status', this.statusListener);
     }
 
+    // Get the Active characteristic
+    const activeChar = this.service.getCharacteristic(this.platform.Characteristic.Active);
+    
+    // Use modern methods if available, fallback to legacy methods for compatibility
+    if (typeof activeChar.onGet === 'function' && typeof activeChar.onSet === 'function') {
+      activeChar.onGet(this.handleActiveGet.bind(this));
+      activeChar.onSet(this.handleActiveSet.bind(this));
+    } else {
+      activeChar
+        .on('get', (callback) => this.handleActiveGet(callback))
+        .on('set', (value, callback) => this.handleActiveSet(value, callback));
+    }
+
     // Get the RotationSpeed characteristic
     const rotationSpeedChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
     
@@ -55,6 +69,16 @@ export class FanSpeedAccessory {
    * Update fan speed based on centralized status
    */
   private updateStatus(status: AirConditionerStatus | null): void {
+    // Update Active state
+    const activeValue = status && status.is_on === PowerState.On
+      ? this.platform.Characteristic.Active.ACTIVE
+      : this.platform.Characteristic.Active.INACTIVE;
+    this.service.updateCharacteristic(
+      this.platform.Characteristic.Active,
+      activeValue,
+    );
+
+    // Update RotationSpeed
     const value = status && typeof status.fan_mode === 'string'
       ? parseInt(status.fan_mode as string, 10) || 0
       : 50;
@@ -62,6 +86,40 @@ export class FanSpeedAccessory {
       this.platform.Characteristic.RotationSpeed,
       value,
     );
+  }
+
+  private handleActiveGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
+    // Read current characteristic value
+    const current = this.service.getCharacteristic(
+      this.platform.Characteristic.Active,
+    ).value as number;
+    
+    if (callback && typeof callback === 'function') {
+      callback(null, current ?? this.platform.Characteristic.Active.INACTIVE);
+      return current ?? this.platform.Characteristic.Active.INACTIVE;
+    }
+    
+    return Promise.resolve(current ?? this.platform.Characteristic.Active.INACTIVE);
+  }
+
+  private async handleActiveSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
+    try {
+      if (value === this.platform.Characteristic.Active.ACTIVE) {
+        await this.deviceAPI.turnOn();
+      } else {
+        await this.deviceAPI.turnOff();
+      }
+      this.cacheManager.clear();
+      if (callback && typeof callback === 'function') {
+        callback(null);
+      }
+    } catch (err) {
+      if (callback && typeof callback === 'function') {
+        callback(err as Error);
+      } else {
+        throw err;
+      }
+    }
   }
 
   private handleGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
