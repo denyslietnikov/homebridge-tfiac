@@ -70,6 +70,17 @@ export class TfiacPlatformAccessory {
     this.cacheManager = CacheManager.getInstance(deviceConfig);
     // Shared API instance for all accessory services
     this.deviceAPI = this.cacheManager.api;
+    
+    // Подписка на debug события API если включен режим отладки
+    if (this.platform.config?.debug && this.deviceAPI && typeof this.deviceAPI.on === 'function') {
+      this.deviceAPI.on('debug', (msg: string) => {
+        this.platform.log.debug(`[${deviceConfig.name}] API: ${msg}`);
+      });
+      
+      this.deviceAPI.on('error', (msg: string) => {
+        this.platform.log.error(`[${deviceConfig.name}] API Error: ${msg}`);
+      });
+    }
 
     this.pollInterval = deviceConfig.updateInterval
       ? deviceConfig.updateInterval * 1000

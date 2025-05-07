@@ -452,10 +452,27 @@ export class AirConditionerAPI extends EventEmitter {
     // If sleep mode is being enabled
     if (isOn) {
       // Get current status
-      
-      // If Turbo mode is active, disable it
       const status = await this.updateState();
-      if (status.opt_turbo === PowerState.On) {
+      
+      // First check if Turbo mode is active, and if so, set fan speed directly to Low
+      // to avoid multiple beeps during auto-transition
+      if (status.opt_turbo === PowerState.On || status.fan_mode === FanSpeed.Turbo) {
+        this.emit('debug', 'Sleep mode enabled while Turbo active - directly setting fan to Low');
+        
+        // First disable turbo to avoid its forced fan speed
+        await this.setOptionState('Opt_super', PowerState.Off);
+        
+        // Set fan speed to Low in same command as sleep mode to minimize beeps
+        const sleepValue = 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0';
+        const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+                        <SetMessage>
+                          <Opt_sleepMode>${sleepValue}</Opt_sleepMode>
+                          <WindSpeed>${FanSpeed.Low}</WindSpeed>
+                        </SetMessage></msg>`;
+        await this.sendCommandWithRetry(command);
+        return;
+      } else if (status.opt_turbo === PowerState.Off) {
+        // If Turbo mode is already off, just disable it to be safe
         await this.setOptionState('Opt_super', PowerState.Off);
       }
     }

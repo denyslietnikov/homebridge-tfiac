@@ -7,7 +7,7 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
-import { PowerState, FanSpeed, FanSpeedPercentMap } from './enums.js';
+import { PowerState, FanSpeed, FanSpeedPercentMap, SleepModeState } from './enums.js';
 
 export class FanSpeedAccessory {
   private service: Service;
@@ -204,6 +204,18 @@ export class FanSpeedAccessory {
       
       // Send the fan mode string to the air conditioner instead of the raw percentage
       await this.deviceAPI.setFanSpeed(fanMode);
+      
+      // If fan speed is being set to Auto (0%), also turn off Sleep mode
+      if (value === 0 || fanMode === FanSpeed.Auto) {
+        this.platform.log.info('Fan speed set to Auto (0%), turning off Sleep mode');
+        try {
+          // Turn off sleep mode when setting fan to Auto
+          await this.deviceAPI.setSleepState(SleepModeState.Off);
+        } catch (sleepErr) {
+          // Log but don't fail the operation if we can't turn off sleep mode
+          this.platform.log.error('Failed to turn off Sleep mode:', sleepErr);
+        }
+      }
       
       // Don't clear cache manually - let the centralized status update handle it
       

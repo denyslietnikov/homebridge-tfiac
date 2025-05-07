@@ -112,7 +112,7 @@ export abstract class BaseSwitchAccessory {
       // Subscribe to API debug events when debug mode is enabled
       if (this.platform.config?.debug && this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
         this.cacheManager.api.on('debug', (msg: string) => {
-          this.platform.log.debug(`API debug: ${msg}`);
+          this.platform.log.debug(`[${this.logPrefix}] API: ${msg}`);
         });
       }
     } else {
