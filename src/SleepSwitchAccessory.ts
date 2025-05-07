@@ -1,7 +1,8 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import { SleepModeState } from './enums.js';
+import { SleepModeState, PowerState } from './enums.js';
+import type { AirConditionerStatus } from './AirConditionerAPI.js';
 
 export class SleepSwitchAccessory extends BaseSwitchAccessory {
   constructor(
@@ -13,20 +14,9 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       'Sleep',
       'sleep',
-      (status) => {
-        // Check the opt_sleepMode value
-        // Consider Sleep turned off if the value starts with 'off'
-        // or equals SleepModeState.Off
-        if (!status.opt_sleepMode) {
-          return false;
-        }
-        
-        if (typeof status.opt_sleepMode === 'string') {
-          return !status.opt_sleepMode.toLowerCase().startsWith('off');
-        }
-        
-        return status.opt_sleepMode !== SleepModeState.Off;
-      },
+      // Sleep on for both complex enum (opt_sleepMode) or simple 'opt_sleep'
+      (status: Partial<AirConditionerStatus> & { opt_sleep?: PowerState }) =>
+        status.opt_sleep === PowerState.On || status.opt_sleepMode === SleepModeState.On,
       async (value) => {
         const state = value ? SleepModeState.On : SleepModeState.Off;
         await this.cacheManager.api.setSleepState(state);

@@ -31,7 +31,7 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
   }
 
   // Override handleGet to check if swing_mode includes Horizontal
-  protected handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
+  public handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
     const value = this.cachedStatus ? 
       (this.cachedStatus.swing_mode === SwingMode.Horizontal || this.cachedStatus.swing_mode === SwingMode.Both) : 
       false;
@@ -85,9 +85,9 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       if (this.cachedStatus) {
         this.cachedStatus.swing_mode = newMode;
       }
-      if (this.service) {
+      if (this.service && newMode === SwingMode.Horizontal) {
         this.service.updateCharacteristic(this.onChar, requestedState);
-      } else {
+      } else if (!this.service) {
         this.platform.log.warn(`Service not found for ${this.accessory.displayName} during set operation.`);
       }
       

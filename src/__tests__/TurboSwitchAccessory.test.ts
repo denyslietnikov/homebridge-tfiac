@@ -88,6 +88,8 @@ describe('TurboSwitchAccessory', () => {
     
     // Create mock CacheManager
     mockCacheManager = createMockCacheManager(mockApiActions, { opt_turbo: 'on' });
+
+    // No listener capture; tests will call updateStatus directly
   });
 
   function createAccessory() {
@@ -111,7 +113,8 @@ describe('TurboSwitchAccessory', () => {
   it('handles get characteristic with turbo on', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_turbo: 'on' });
+    inst.updateStatus({ opt_turbo: 'on' } as any);
+    
     (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, true);
   });
@@ -119,7 +122,8 @@ describe('TurboSwitchAccessory', () => {
   it('handles get characteristic with turbo off', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_turbo: 'off' });
+    inst.updateStatus({ opt_turbo: 'off' } as any);
+    
     (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
@@ -127,7 +131,9 @@ describe('TurboSwitchAccessory', () => {
   it('handles get characteristic with null status', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce(null);
+    // Don't set status to test null case
+    (inst as any).cachedStatus = null;
+    
     (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
@@ -137,7 +143,8 @@ describe('TurboSwitchAccessory', () => {
     const callback = vi.fn();
     await (inst as any).handleSet(true, callback);
     expect(mockApiActions.setTurboState).toHaveBeenCalledWith('on');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
+    // Don't expect clear() to be called in the new implementation
+    expect(mockCacheManager.clear).not.toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -146,7 +153,8 @@ describe('TurboSwitchAccessory', () => {
     const callback = vi.fn();
     await (inst as any).handleSet(false, callback);
     expect(mockApiActions.setTurboState).toHaveBeenCalledWith('off');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
+    // Don't expect clear() to be called in the new implementation
+    expect(mockCacheManager.clear).not.toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -158,23 +166,61 @@ describe('TurboSwitchAccessory', () => {
     await (inst as any).handleSet(true, callback);
     expect(mockApiActions.setTurboState).toHaveBeenCalledWith('on');
     expect(callback).toHaveBeenCalledWith(error);
+    expect(platform.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Error setting Turbo'),
+      error
+    );
   });
 
-  it('handles get characteristic with null cached status', () => {
-    createAccessory();
-    (inst as any).cachedStatus = null;
-    const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce(null);
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
-  });
+  describe('Status Listener', () => {
+    it('updates characteristic when turbo state changes from off to on', () => {
+      createAccessory();
+      inst.updateStatus({ opt_turbo: 'off' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_turbo: 'on' } as any);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
+    });
 
-  it('should updateStatus and update On characteristic when turbo state changes', async () => {
-    createAccessory();
-    (inst as any).cachedStatus = { opt_turbo: 'off' };
-    mockCacheManager.getStatus.mockResolvedValueOnce({ opt_turbo: 'on' });
-    await (inst as any).updateCachedStatus();
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
+    it('updates characteristic when turbo state changes from on to off', () => {
+      createAccessory();
+      inst.updateStatus({ opt_turbo: 'on' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_turbo: 'off' } as any);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
+    });
+
+    it('does not update characteristic if turbo state unchanged (on)', () => {
+      createAccessory();
+      inst.updateStatus({ opt_turbo: 'on' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_turbo: 'on' } as any);
+      
+      expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
+    });
+
+    it('does not update characteristic if turbo state unchanged (off)', () => {
+      createAccessory();
+      inst.updateStatus({ opt_turbo: 'off' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_turbo: 'off' } as any);
+      
+      expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
+    });
+
+    it('handles null status gracefully', () => {
+      createAccessory();
+      // Simulate receiving null status
+      inst.updateStatus(null as any);
+      
+      // No crash should occur
+      expect(true).toBe(true);
+    });
   });
 
   it('stops polling and cleans up api', () => {

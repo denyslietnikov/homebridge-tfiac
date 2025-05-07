@@ -115,11 +115,10 @@ describe('DrySwitchAccessory', () => {
   it('should update cached status and update characteristic', async () => {
     createAccessory();
     // Initialize with Cool mode
-    (inst as any).cachedStatus = { operation_mode: OperationMode.Cool };
-    
-    // Mock getStatus to return Dry mode, which should update the characteristic to true
+    inst.updateStatus({ operation_mode: OperationMode.Cool } as any);
+    mockService.updateCharacteristic.mockClear();
+    // Mock getStatus to return Dry mode, which should update the characteristic
     mockCacheManager.getStatus.mockResolvedValueOnce({ operation_mode: OperationMode.Dry });
-    
     await (inst as any).updateCachedStatus();
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
@@ -127,24 +126,23 @@ describe('DrySwitchAccessory', () => {
   it('should handle get with cached status (dry mode on)', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce({ operation_mode: OperationMode.Dry });
-    (inst as any).handleGet(callback);
+    inst.updateStatus({ operation_mode: OperationMode.Dry } as any);
+    inst['handleGet'](callback);
     expect(callback).toHaveBeenCalledWith(null, true);
   });
 
   it('should handle get with cached status (dry mode off)', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce({ operation_mode: OperationMode.Cool });
-    (inst as any).handleGet(callback);
+    inst.updateStatus({ operation_mode: OperationMode.Cool } as any);
+    inst['handleGet'](callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('should handle get with no cached status', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce(null);
-    (inst as any).handleGet(callback);
+    inst['handleGet'](callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
@@ -153,7 +151,6 @@ describe('DrySwitchAccessory', () => {
     const callback = vi.fn();
     await (inst as any).handleSet(true, callback);
     expect(deviceAPI.setAirConditionerState).toHaveBeenCalledWith('operation_mode', OperationMode.Dry);
-    expect(mockCacheManager.clear).toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -162,7 +159,6 @@ describe('DrySwitchAccessory', () => {
     const callback = vi.fn();
     await (inst as any).handleSet(false, callback);
     expect(deviceAPI.setAirConditionerState).toHaveBeenCalledWith('operation_mode', OperationMode.Auto);
-    expect(mockCacheManager.clear).toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
   });
 

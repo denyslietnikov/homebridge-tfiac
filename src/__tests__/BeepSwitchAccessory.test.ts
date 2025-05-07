@@ -85,7 +85,7 @@ describe('BeepSwitchAccessory', () => {
     // Create API mock with beep methods
     deviceAPI = createMockApiActions({ opt_beep: 'on' });
     deviceAPI.setBeepState = vi.fn().mockResolvedValue(undefined);
-    
+
     // Create mock CacheManager
     mockCacheManager = createMockCacheManager(deviceAPI, { opt_beep: 'on' });
   });
@@ -94,8 +94,6 @@ describe('BeepSwitchAccessory', () => {
     inst = new BeepSwitchAccessory(platform, accessory);
     // Override CacheManager to use our mock
     (inst as any).cacheManager = mockCacheManager;
-    // Set initial cached status for tests
-    (inst as any).cachedStatus = { opt_beep: 'on' };
     return inst;
   }
 
@@ -119,11 +117,10 @@ describe('BeepSwitchAccessory', () => {
   it('should update cached status and update characteristic', async () => {
     createAccessory();
     // Initialize with beep off
-    (inst as any).cachedStatus = { opt_beep: 'off' };
-    
+    inst.updateStatus({ opt_beep: 'off' } as any);
+    mockService.updateCharacteristic.mockClear();
     // Mock getStatus to return beep on, which should update the characteristic to true
     mockCacheManager.getStatus.mockResolvedValueOnce({ opt_beep: 'on' });
-    
     await (inst as any).updateCachedStatus();
     expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
@@ -131,24 +128,23 @@ describe('BeepSwitchAccessory', () => {
   it('should handle get with cached status (beep on)', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_beep: 'on' });
-    (inst as any).handleGet(callback);
+    inst.updateStatus({ opt_beep: 'on' } as any);
+    inst.handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, true);
   });
 
   it('should handle get with cached status (beep off)', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_beep: 'off' });
-    (inst as any).handleGet(callback);
+    inst.updateStatus({ opt_beep: 'off' } as any);
+    inst.handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('should handle get with no cached status', () => {
     createAccessory();
     const callback = vi.fn();
-    mockCacheManager.getLastStatus.mockReturnValueOnce(null);
-    (inst as any).handleGet(callback);
+    inst['handleGet'](callback);
     expect(callback).toHaveBeenCalledWith(null, false);
   });
 
@@ -157,7 +153,6 @@ describe('BeepSwitchAccessory', () => {
     const callback = vi.fn();
     await (inst as any).handleSet(true, callback);
     expect(deviceAPI.setBeepState).toHaveBeenCalledWith('on');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -166,7 +161,6 @@ describe('BeepSwitchAccessory', () => {
     const callback = vi.fn();
     await (inst as any).handleSet(false, callback);
     expect(deviceAPI.setBeepState).toHaveBeenCalledWith('off');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -178,5 +172,47 @@ describe('BeepSwitchAccessory', () => {
     await (inst as any).handleSet(true, callback);
     expect(deviceAPI.setBeepState).toHaveBeenCalledWith('on');
     expect(callback).toHaveBeenCalledWith(error);
+    expect(platform.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Error setting Beep'),
+      error
+    );
+  });
+
+  describe('Status Listener', () => {
+    it('updates characteristic when beep state changes from off to on', () => {
+      createAccessory();
+      inst.updateStatus({ opt_beep: 'off' } as any);
+      mockService.updateCharacteristic.mockClear();
+
+      inst.updateStatus({ opt_beep: 'on' } as any);
+
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
+    });
+
+    it('updates characteristic when beep state changes from on to off', () => {
+      createAccessory();
+      inst.updateStatus({ opt_beep: 'on' } as any);
+      mockService.updateCharacteristic.mockClear();
+
+      inst.updateStatus({ opt_beep: 'off' } as any);
+
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
+    });
+
+    it('does not update characteristic if beep state unchanged', () => {
+      createAccessory();
+      inst.updateStatus({ opt_beep: 'on' } as any);
+      mockService.updateCharacteristic.mockClear();
+
+      inst.updateStatus({ opt_beep: 'on' } as any);
+
+      expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
+    });
+
+    it('handles null status gracefully', () => {
+      createAccessory();
+      inst.updateStatus(null as any);
+      expect(true).toBe(true);
+    });
   });
 });

@@ -1,32 +1,33 @@
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
+import { SleepSwitchAccessory } from '../SleepSwitchAccessory.js';
 import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
-import { SleepSwitchAccessory } from '../SleepSwitchAccessory.js';
-import CacheManager from '../CacheManager.js';
-import { SleepModeState } from '../enums.js'; // Import Enum
-import { AirConditionerStatus } from '../AirConditionerAPI.js';
-import { vi, beforeEach, describe, it, expect  } from 'vitest';
-import { createMockApiActions, createMockCacheManager, createMockPlatformAccessory } from './testUtils';
+import { createMockApiActions, createMockCacheManager } from './testUtils';
+import { SleepModeState, PowerState } from '../enums.js';
 
-// Mock the CacheManager
-vi.mock('../CacheManager.js');
-
-// Define mock function types explicitly
-type MockFn<T> = ReturnType<typeof vi.fn>;
+// Create mock implementations
+vi.mock('../CacheManager.js', () => ({
+  CacheManager: {
+    getInstance: vi.fn(),
+  },
+  default: {
+    getInstance: vi.fn(),
+  },
+}));
 
 describe('SleepSwitchAccessory', () => {
   let platform: TfiacPlatform;
-  let accessory: any; // Use 'any' instead of PlatformAccessory to avoid type issues
+  let accessory: any;
   let mockService: any;
-  let service: any;
   let inst: SleepSwitchAccessory;
-  let deviceAPI: any;
+  let mockApiActions: any;
   let mockCacheManager: any;
-  let createAccessory: () => SleepSwitchAccessory;
-  let initialMockStatus: any;
 
-  // Set up test mocks
   beforeEach(() => {
-    // Create mock platform
+    // Reset mocks
+    vi.clearAllMocks();
+
+    // Create platform mock
     platform = {
       log: {
         debug: vi.fn(),
@@ -55,12 +56,8 @@ describe('SleepSwitchAccessory', () => {
       },
     } as any;
 
-    initialMockStatus = {
-      opt_sleepMode: SleepModeState.Off,
-    };
-
     // Create mock service
-    service = {
+    mockService = {
       setCharacteristic: vi.fn().mockReturnThis(),
       getCharacteristic: vi.fn().mockReturnValue({
         on: vi.fn(),
@@ -72,9 +69,9 @@ describe('SleepSwitchAccessory', () => {
 
     // Create mock accessory
     accessory = {
-      getService: vi.fn().mockReturnValue(service),
-      getServiceById: vi.fn().mockReturnValue(service),
-      addService: vi.fn().mockReturnValue(service),
+      getService: vi.fn().mockReturnValue(null), // Return null to force addService call
+      getServiceById: vi.fn().mockReturnValue(null), // Return null to force addService call
+      addService: vi.fn().mockReturnValue(mockService),
       context: {
         deviceConfig: {
           ip: '192.168.1.100',
@@ -83,134 +80,151 @@ describe('SleepSwitchAccessory', () => {
         },
       },
       displayName: 'Test AC',
-      services: [service],
+      services: [mockService],
     };
 
-    // Create mock device API
-    deviceAPI = createMockApiActions(initialMockStatus);
-    deviceAPI.setSleepState = vi.fn().mockResolvedValue(undefined);
+    // Create API mock with sleep methods
+    mockApiActions = createMockApiActions({ opt_sleep: 'on' });
+    mockApiActions.setSleepState = vi.fn().mockResolvedValue(undefined);
     
     // Create mock CacheManager
-    mockCacheManager = createMockCacheManager(deviceAPI, initialMockStatus);
+    mockCacheManager = createMockCacheManager(mockApiActions, { opt_sleep: 'on' });
 
-    createAccessory = () => {
-      inst = new SleepSwitchAccessory(platform, accessory);
-      // Override CacheManager to use our mock
-      (inst as any).cacheManager = mockCacheManager;
-      (inst as any).cachedStatus = initialMockStatus;
-      return inst;
-    };
-
-    // Create instance
-    inst = createAccessory();
+    // No listener capture; tests will call updateStatus directly
   });
+
+  function createAccessory() {
+    inst = new SleepSwitchAccessory(platform, accessory);
+    // Override CacheManager to use our mock
+    (inst as any).cacheManager = mockCacheManager;
+    return inst;
+  }
 
   it('should initialize correctly', () => {
-    expect(accessory.getServiceById).toHaveBeenCalled();
-    expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Sleep');
+    createAccessory();
+    expect(accessory.addService).toHaveBeenCalledWith(
+      platform.Service.Switch,
+      'Sleep',
+      'sleep'
+    );
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Sleep');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    // No subscription test here
+  });
+
+  it('handles get characteristic with sleep on', () => {
+    createAccessory();
+    const callback = vi.fn();
+    inst.updateStatus({ opt_sleep: 'on' } as any);
     
-    // Check getCharacteristic and on handlers are set up
-    expect(service.getCharacteristic).toHaveBeenCalledWith('On');
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, true);
   });
 
-  describe('handleGet', () => {
-    it('handles get characteristic with sleep mode on', () => {
-      const callback = vi.fn();
-      mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_sleepMode: SleepModeState.On });
-      (inst as any).handleGet(callback);
-      expect(callback).toHaveBeenCalledWith(null, true);
+  it('handles get characteristic with sleep off', () => {
+    createAccessory();
+    const callback = vi.fn();
+    inst.updateStatus({ opt_sleep: 'off' } as any);
+    
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
+  });
+
+  it('handles get characteristic with null status', () => {
+    createAccessory();
+    const callback = vi.fn();
+    // Don't set status to test null case
+    (inst as any).cachedStatus = null;
+    
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
+  });
+
+  it('handles set characteristic to turn sleep on', async () => {
+    createAccessory();
+    const callback = vi.fn();
+    await (inst as any).handleSet(true, callback);
+    expect(mockApiActions.setSleepState).toHaveBeenCalledWith(SleepModeState.On);
+    // Don't expect clear() to be called
+    expect(mockCacheManager.clear).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
+  });
+
+  it('handles set characteristic to turn sleep off', async () => {
+    createAccessory();
+    const callback = vi.fn();
+    await (inst as any).handleSet(false, callback);
+    expect(mockApiActions.setSleepState).toHaveBeenCalledWith(SleepModeState.Off);
+    // Don't expect clear() to be called
+    expect(mockCacheManager.clear).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
+  });
+
+  it('handles set error', async () => {
+    createAccessory();
+    const callback = vi.fn();
+    const error = new Error('Network error');
+    mockApiActions.setSleepState.mockRejectedValue(error);
+    await (inst as any).handleSet(true, callback);
+    expect(mockApiActions.setSleepState).toHaveBeenCalledWith(SleepModeState.On);
+    expect(callback).toHaveBeenCalledWith(error);
+    expect(platform.log.error).toHaveBeenCalledWith(
+      expect.stringContaining('Error setting Sleep'),
+      error
+    );
+  });
+
+  describe('Status Listener', () => {
+    it('updates characteristic when sleep state changes from off to on', () => {
+      createAccessory();
+      inst.updateStatus({ opt_sleep: 'off' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_sleep: 'on' } as any);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
     });
 
-    it('handles get characteristic with sleep mode off', () => {
-      const callback = vi.fn();
-      mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_sleepMode: SleepModeState.Off });
-      (inst as any).handleGet(callback);
-      expect(callback).toHaveBeenCalledWith(null, false);
+    it('updates characteristic when sleep state changes from on to off', () => {
+      createAccessory();
+      inst.updateStatus({ opt_sleep: 'on' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_sleep: 'off' } as any);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
     });
 
-    it('handles get characteristic with undefined sleep mode', () => {
-      const callback = vi.fn();
-      mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_sleepMode: undefined });
-      (inst as any).handleGet(callback);
-      expect(callback).toHaveBeenCalledWith(null, false);
+    it('does not update characteristic if sleep state unchanged (on)', () => {
+      createAccessory();
+      inst.updateStatus({ opt_sleep: 'on' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_sleep: 'on' } as any);
+      
+      expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
     });
 
-    it('handles get characteristic with null status', () => {
-      const callback = vi.fn();
-      mockCacheManager.getLastStatus.mockReturnValueOnce(null);
-      (inst as any).handleGet(callback);
-      expect(callback).toHaveBeenCalledWith(null, false);
+    it('does not update characteristic if sleep state unchanged (off)', () => {
+      createAccessory();
+      inst.updateStatus({ opt_sleep: 'off' } as any);
+      mockService.updateCharacteristic.mockClear();
+      
+      inst.updateStatus({ opt_sleep: 'off' } as any);
+      
+      expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
+    });
+
+    it('handles null status gracefully', () => {
+      createAccessory();
+      inst.updateStatus(null);
+      expect(true).toBe(true);
     });
   });
 
-  describe('handleSet', () => {
-    it('should call setSleepState with SleepModeState.On when value is true', async () => {
-      const callback = vi.fn();
-      await (inst as any).handleSet(true, callback);
-      expect(mockCacheManager.api.setSleepState).toHaveBeenCalledWith(SleepModeState.On);
-      expect(mockCacheManager.clear).toHaveBeenCalled();
-      expect(callback).toHaveBeenCalledWith(null);
-    });
-
-    it('should call setSleepState with SleepModeState.Off when value is false', async () => {
-      const callback = vi.fn();
-      await (inst as any).handleSet(false, callback);
-      expect(mockCacheManager.api.setSleepState).toHaveBeenCalledWith(SleepModeState.Off);
-      expect(mockCacheManager.clear).toHaveBeenCalled();
-      expect(callback).toHaveBeenCalledWith(null);
-    });
-
-    it('should handle errors from setSleepState', async () => {
-      const callback = vi.fn();
-      const error = new Error('API Error');
-      mockCacheManager.api.setSleepState.mockRejectedValue(error);
-      await (inst as any).handleSet(true, callback);
-      expect(mockCacheManager.api.setSleepState).toHaveBeenCalledWith(SleepModeState.On);
-      expect(mockCacheManager.clear).not.toHaveBeenCalled();
-      expect(callback).toHaveBeenCalledWith(error);
-    });
-  });
-
-  describe('updateCachedStatus', () => {
-    it('updateCachedStatus updates characteristic when opt_sleepMode changes from off to on', async () => {
-      (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.Off };
-      mockCacheManager.getStatus.mockResolvedValueOnce({ opt_sleepMode: SleepModeState.On });
-      await (inst as any).updateCachedStatus();
-      // BaseSwitchAccessory uses updateCharacteristic, not updateValue
-      expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
-    });
-
-    it('updateCachedStatus updates characteristic when opt_sleepMode changes from on to off', async () => {
-      (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.On };
-      mockCacheManager.getStatus.mockResolvedValueOnce({ opt_sleepMode: SleepModeState.Off });
-      await (inst as any).updateCachedStatus();
-      // BaseSwitchAccessory uses updateCharacteristic, not updateValue
-      expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
-    });
-
-    it('updateCachedStatus does not update characteristic if opt_sleepMode unchanged (on)', async () => {
-      (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.On };
-      mockCacheManager.getStatus.mockResolvedValueOnce({ opt_sleepMode: SleepModeState.On });
-      await (inst as any).updateCachedStatus();
-      expect(service.updateCharacteristic).not.toHaveBeenCalled();
-    });
-
-    it('updateCachedStatus does not update characteristic if opt_sleepMode unchanged (off)', async () => {
-      (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.Off };
-      mockCacheManager.getStatus.mockResolvedValueOnce({ opt_sleepMode: SleepModeState.Off });
-      await (inst as any).updateCachedStatus();
-      expect(service.updateCharacteristic).not.toHaveBeenCalled();
-    });
-
-    it('updateCachedStatus handles error from getStatus', async () => {
-      const error = new Error('fail');
-      mockCacheManager.getStatus.mockRejectedValueOnce(error);
-      await (inst as any).updateCachedStatus();
-      expect(platform.log.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error updating Sleep status for'),
-        error,
-      );
-      expect(service.updateCharacteristic).not.toHaveBeenCalled();
-    });
+  it('stops polling and cleans up api', () => {
+    createAccessory();
+    inst.stopPolling();
+    expect(mockCacheManager.cleanup).toHaveBeenCalled();
   });
 });

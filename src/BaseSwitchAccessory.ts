@@ -37,7 +37,7 @@ export abstract class BaseSwitchAccessory {
   private readonly nameChar: WithUUID<new () => Characteristic>;
   protected readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
-  protected cachedStatus: Partial<AirConditionerStatus> | null = null;
+  public cachedStatus: Partial<AirConditionerStatus> | null = null;
 
   protected isPolling = false; // Flag to prevent concurrent polling updates
   protected cacheManager: CacheManager;
@@ -56,13 +56,6 @@ export abstract class BaseSwitchAccessory {
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig);
-    // Subscribe to API debug events when plugin debug mode is enabled
-    if (this.platform.config?.debug && this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
-      this.cacheManager.api.on('debug', (msg: string) => {
-        // Log API debug messages, using the device name to disambiguate
-        this.platform.log.info(`${this.accessory.displayName} - ${this.logPrefix} API: ${msg}`);
-      });
-    }
 
     // 1) Try by UUID + subtype, 2) fall back to service name
     this.service =
@@ -112,7 +105,9 @@ export abstract class BaseSwitchAccessory {
       // Subscribe to centralized status updates instead of individual polling
       this.statusListener = this.updateStatus.bind(this);
       if (this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
+        // Subscribe to both new and legacy status events
         this.cacheManager.api.on('status', this.statusListener);
+        this.cacheManager.api.on('statusChanged', this.statusListener);
       }
     } else {
       this.platform.log.error(`Failed to initialize ${this.logPrefix} accessory for ${this.accessory.displayName}: no service available`);
@@ -124,7 +119,9 @@ export abstract class BaseSwitchAccessory {
     // Safely clean up if available
     this.cacheManager?.cleanup?.();
     // Unsubscribe listeners if supported
+    // Unsubscribe from both events
     this.cacheManager?.api?.off?.('status', this.statusListener!);
+    this.cacheManager?.api?.off?.('statusChanged', this.statusListener!);
   }
 
   /**
@@ -138,10 +135,12 @@ export abstract class BaseSwitchAccessory {
     }
     this.isPolling = true;
     this.platform.log.debug(`Updating ${this.logPrefix} status for ${this.accessory.displayName}...`);
-    // Clear cache to ensure fresh status fetch
-    this.cacheManager.clear();
+    
     try {
+      // Always fetch latest status
       const status = await this.cacheManager.getStatus();
+      
+      // Update cached status and the characteristic if needed
       const oldValue = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
       this.cachedStatus = status;
       const newValue = this.getStatusValue(status as Partial<import('./AirConditionerAPI').AirConditionerStatus>);
@@ -156,14 +155,22 @@ export abstract class BaseSwitchAccessory {
     }
   }
 
-  /**
-   * Update this switch based on centralized status.
-   */
-  public updateStatus(status: import('./AirConditionerAPI').AirConditionerStatus | null): void {
-    // Update cached status and characteristic
+  /** Update this switch based on centralized status. */
+  public updateStatus(status: Partial<AirConditionerStatus> | null): void {
+    // If status is null, clear cached status without updating characteristic
+    if (status === null) {
+      this.cachedStatus = null;
+      return;
+    }
+    // Determine if this is the first status update
+    const isFirst = this.cachedStatus === null;
+    // Get previous boolean state (false if first)
+    const oldValue = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
+    // Cache new status
     this.cachedStatus = status;
-    const newValue = status ? this.getStatusValue(status) : false;
-    if (this.service) {
+    const newValue = this.getStatusValue(status);
+    // Always update on first run, or when the value changes
+    if ((isFirst || newValue !== oldValue) && this.service) {
       this.service.updateCharacteristic(this.onChar, newValue);
     }
   }
@@ -171,12 +178,11 @@ export abstract class BaseSwitchAccessory {
   /**
    * Handle requests to get the current value of the "On" characteristic.
    */
-  protected handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
+  public handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
     this.platform.log.debug(`Triggered GET ${this.logPrefix}`);
 
-    // Use already cached status rather than making a new API call
-    const status = this.cacheManager.getLastStatus();
-    const isOn = status ? this.getStatusValue(status) : false;
+    // Use only in-memory cachedStatus for GET
+    const isOn = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
     
     if (callback) {
       callback(null, isOn);
@@ -185,28 +191,27 @@ export abstract class BaseSwitchAccessory {
   }
 
   /**
-   * Handle requests to set the "On" characteristic.
+   * Handle request to set the "On" characteristic
    */
   protected async handleSet(value: CharacteristicValue, callback?: CharacteristicSetCallback): Promise<void> {
-    const requestedState = value as boolean;
-    this.platform.log.info(`Set ${this.logPrefix}: Received request to turn ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
+    this.platform.log.debug(`Triggered SET ${this.logPrefix}: ${value}`);
 
     try {
-      await this.setApiState(requestedState);
-      this.cacheManager.clear();
-      this.platform.log.info(`${this.logPrefix} successfully set to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}`);
-      if (this.service) {
-        this.service.updateCharacteristic(this.onChar, requestedState);
-      }
+      // Convert the value to boolean
+      const boolValue = value === true || value === 1;
+      
+      // Call the provided API function to change the state
+      await this.setApiState(boolValue);
+      
+      // Don't clear cache manually - let the centralized status update handle it
+      
       if (callback && typeof callback === 'function') {
         callback(null);
       }
     } catch (error) {
-      this.platform.log.error(`Error setting ${this.logPrefix} to ${requestedState ? 'on' : 'off'} for ${this.accessory.displayName}:`, error);
+      this.platform.log.error(`Error setting ${this.logPrefix} for ${this.accessory.displayName}`, error);
       if (callback && typeof callback === 'function') {
         callback(error as Error);
-      } else {
-        throw error; // Re-throw for promise-based API
       }
     }
   }

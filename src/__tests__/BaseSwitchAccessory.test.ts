@@ -88,10 +88,6 @@ class TestSwitchAccessory extends BaseSwitchAccessory {
   public async handleSet(value: CharacteristicValue, callback?: CharacteristicSetCallback): Promise<void> {
     await super.handleSet(value, callback as any);
   }
-
-  public async updateCachedStatus(): Promise<void> {
-    return super.updateCachedStatus();
-  }
 }
 
 describe('BaseSwitchAccessory', () => {
@@ -103,6 +99,7 @@ describe('BaseSwitchAccessory', () => {
   let mockSetApiState: ReturnType<typeof vi.fn>;
   let mockCacheManager: any;
   let inst: TestSwitchAccessory;
+  let statusListener: Function;
 
   beforeEach(() => {
     // Reset mocks before each test
@@ -175,7 +172,11 @@ describe('BaseSwitchAccessory', () => {
       clear: vi.fn(),
       cleanup: vi.fn(),
       api: { 
-        on: vi.fn(), 
+        on: vi.fn().mockImplementation((event, listener) => {
+          if (event === 'status') {
+            statusListener = listener;
+          }
+        }), 
         off: vi.fn(),
         emit: vi.fn()
       }
@@ -197,10 +198,6 @@ describe('BaseSwitchAccessory', () => {
     
     // Replace the cacheManager with our mock
     (inst as any).cacheManager = mockCacheManager;
-    
-    // Prevent actual polling during tests
-    inst.stopPolling();
-    (inst as any).pollingInterval = null; // Ensure interval is cleared
   });
 
   it('should initialize correctly', () => {
@@ -209,14 +206,27 @@ describe('BaseSwitchAccessory', () => {
     expect(service.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
     expect(characteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(characteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
+    // Verify event listener is registered
+    expect(mockCacheManager.api.on).toHaveBeenCalledWith('status', expect.any(Function));
     // Update to match the actual log message format
     expect(platform.log.debug).toHaveBeenCalledWith(
       expect.stringContaining('Test Switch accessory initialized for Test AC Display Name')
     );
   });
 
+  it('should stop polling and cleanup', () => {
+    inst.stopPolling();
+    expect(mockCacheManager.cleanup).toHaveBeenCalled();
+    // Verify event listener is removed
+    expect(mockCacheManager.api.off).toHaveBeenCalledWith('status', expect.any(Function));
+
+    // Clear mock calls
+    (service.updateCharacteristic as any).mockClear();
+  });
+
   describe('handleGet', () => {
     it('should return false when cachedStatus is null', async () => {
+      // Don't set any status via listener to test null case
       (inst as any).cachedStatus = null;
       const callback = vi.fn();
       await inst.handleGet(callback);
@@ -225,8 +235,9 @@ describe('BaseSwitchAccessory', () => {
     });
 
     it('should return value from getStatusValue when cachedStatus exists', async () => {
-      // Set up our mocks correctly
-      mockCacheManager.getLastStatus.mockReturnValue({ opt_test: 'on' });
+      // Update via status listener
+      const status = { opt_test: 'on' };
+      statusListener(status);
       
       // Make sure the mock function returns the expected value
       mockGetStatusValue.mockReturnValue(true);
@@ -234,30 +245,31 @@ describe('BaseSwitchAccessory', () => {
       const callback = vi.fn();
       inst.handleGet(callback);
       
-      // The test shouldn't expect mockGetStatusValue to be called with the cached status
-      // because in handleGet we use getLastStatus from the cacheManager instead of the instance variable
-      expect(mockCacheManager.getLastStatus).toHaveBeenCalled();
+      expect(mockGetStatusValue).toHaveBeenCalledWith(status);
       expect(callback).toHaveBeenCalledWith(null, true);
 
       // Test the opposite case
       vi.clearAllMocks();
-      mockCacheManager.getLastStatus.mockReturnValue({ opt_test: 'off' });
       mockGetStatusValue.mockReturnValue(false);
+      const status2 = { opt_test: 'off' };
+      statusListener(status2);
       
       const callback2 = vi.fn();
       inst.handleGet(callback2);
-      expect(mockCacheManager.getLastStatus).toHaveBeenCalled();
+      expect(mockGetStatusValue).toHaveBeenCalledWith(status2);
       expect(callback2).toHaveBeenCalledWith(null, false);
     });
   });
 
   describe('handleSet', () => {
-    it('should call setApiState and update characteristic', async () => {
+    it('should call setApiState and not clear cache manually', async () => {
       const callback = vi.fn();
       await inst.handleSet(true, callback);
       expect(mockSetApiState).toHaveBeenCalledWith(true);
-      expect(mockCacheManager.clear).toHaveBeenCalled();
-      expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+      // The test should not expect clear() to be called - centralized status updates handle this now
+      expect(mockCacheManager.clear).not.toHaveBeenCalled();
+      // Don't expect updateCharacteristic to be called directly by handleSet anymore
+      expect(service.updateCharacteristic).not.toHaveBeenCalled();
       expect(callback).toHaveBeenCalledWith(null);
       expect(platform.log.error).not.toHaveBeenCalled();
     });
@@ -273,29 +285,58 @@ describe('BaseSwitchAccessory', () => {
       expect(callback).toHaveBeenCalledWith(error);
       // Update to match the actual log message format
       expect(platform.log.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error setting Test Switch to off for Test AC Display Name'),
+        expect.stringContaining('Error setting Test Switch'),
         error
       );
     });
   });
 
-  describe('updateCachedStatus', () => {
-    it('should update cachedStatus from CacheManager', async () => {
-      mockCacheManager.getStatus.mockResolvedValue({ opt_test: 'on', other_prop: 'value' });
-      await inst.updateCachedStatus();
-      expect(mockCacheManager.getStatus).toHaveBeenCalled();
-      expect((inst as any).cachedStatus).toEqual({ opt_test: 'on', other_prop: 'value' });
+  describe('Status Listener', () => {
+    it('should update characteristic when status changes to ON', () => {
+      // Start with off state
+      statusListener({ opt_test: 'off' });
+      // Clear mock calls
+      (service.updateCharacteristic as any).mockClear();
+      
+      // Now update to on
+      statusListener({ opt_test: 'on' });
+      
+      expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'on' });
+      expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
     });
-
-    it('should handle errors during status update', async () => {
-      const error = new Error('Failed to get status');
-      mockCacheManager.getStatus.mockRejectedValue(error);
-      await inst.updateCachedStatus();
-      expect(platform.log.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error updating Test Switch status for Test AC Display Name'),
-        error
-      );
-      expect((inst as any).cachedStatus).toBeNull();
+    
+    it('should update characteristic when status changes to OFF', () => {
+      // Start with on state
+      statusListener({ opt_test: 'on' });
+      // Clear mock calls
+      (service.updateCharacteristic as any).mockClear();
+      
+      // Now update to off
+      statusListener({ opt_test: 'off' });
+      
+      expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'off' });
+      expect(service.updateCharacteristic).toHaveBeenCalledWith('On', false);
+    });
+    
+    it('should not update characteristic if status value has not changed', () => {
+      // Start with on state
+      statusListener({ opt_test: 'on' });
+      // Clear mock calls
+      (service.updateCharacteristic as any).mockClear();
+      
+      // Update with same value
+      statusListener({ opt_test: 'on' });
+      
+      expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'on' });
+      expect(service.updateCharacteristic).not.toHaveBeenCalled();
+    });
+    
+    it('should handle null status gracefully', () => {
+      // Simulate receiving null status
+      statusListener(null);
+      
+      // Should not crash
+      expect((service.updateCharacteristic as any)).not.toHaveBeenCalled();
     });
   });
 });

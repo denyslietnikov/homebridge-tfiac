@@ -140,12 +140,18 @@ export class FanSpeedAccessory {
 
   private async handleActiveSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
     try {
+      this.platform.log.debug(`Fan accessory active set: ${value}`);
+      
       if (value === this.platform.Characteristic.Active.ACTIVE) {
+        // Turn on AC with current settings
         await this.deviceAPI.turnOn();
       } else {
+        // Turn off AC
         await this.deviceAPI.turnOff();
       }
-      this.cacheManager.clear();
+      
+      // Don't clear cache manually - let the centralized status update handle it
+      
       if (callback && typeof callback === 'function') {
         callback(null);
       }
@@ -198,7 +204,9 @@ export class FanSpeedAccessory {
       
       // Send the fan mode string to the air conditioner instead of the raw percentage
       await this.deviceAPI.setFanSpeed(fanMode);
-      this.cacheManager.clear();
+      
+      // Don't clear cache manually - let the centralized status update handle it
+      
       if (callback && typeof callback === 'function') {
         callback(null);
       }
