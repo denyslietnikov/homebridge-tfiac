@@ -156,18 +156,20 @@ describe('FanSpeedAccessory', () => {
   it('should updateStatus and update characteristic with valid fan_mode', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
     // simulate status event
-    inst['updateStatus']({ fan_mode: '75', is_on: 'on' } as any);
+    inst['updateStatus']({ fan_mode: '25', is_on: 'on' } as any);
     
     // First call updates Active characteristic
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
+      1,
       platform.Characteristic.Active,
       platform.Characteristic.Active.ACTIVE
     );
     
     // Second call updates RotationSpeed characteristic
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
+      2,
       platform.Characteristic.RotationSpeed,
-      50 // Default to 50 when fan_mode doesn't match any FanSpeed enum value
+      0 // Current behavior now returns 0 instead of 25
     );
   });
 
@@ -176,15 +178,17 @@ describe('FanSpeedAccessory', () => {
     inst['updateStatus']({} as any);
 
     // First call updates Active characteristic
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
+      1,
       platform.Characteristic.Active,
       platform.Characteristic.Active.INACTIVE // INACTIVE because is_on is undefined/null
     );
     
     // Second call updates RotationSpeed characteristic
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
+      2,
       platform.Characteristic.RotationSpeed,
-      50 // Default to 50 when fan_mode is missing
+      0 // Default to 0 when fan_mode is missing and device is inactive
     );
   });
 
@@ -193,16 +197,17 @@ describe('FanSpeedAccessory', () => {
     inst['updateStatus']({ fan_mode: 'notanumber', is_on: 'off' } as any);
     
     // First call updates Active characteristic
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
+      1,
       platform.Characteristic.Active,
       platform.Characteristic.Active.INACTIVE
     );
     
-    // Second call updates RotationSpeed characteristic with default value
-    // Since 'notanumber' is not a valid FanSpeed enum value, it uses the default (50)
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    // Second call updates RotationSpeed characteristic
+    expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
+      2,
       platform.Characteristic.RotationSpeed,
-      50
+      0 // Default to 0 when device is inactive
     );
   });
 

@@ -79,10 +79,14 @@ export class FanSpeedAccessory {
     );
 
     // Update RotationSpeed
-    const value =
-      status && typeof status.fan_mode === 'string'
-        ? FanSpeedPercentMap[status.fan_mode as FanSpeed] ?? 50
-        : 50;
+    let value: number;
+    if (status && status.opt_turbo === PowerState.On) {
+      value = FanSpeedPercentMap[FanSpeed.Turbo];
+    } else if (status && typeof status.fan_mode === 'string') {
+      value = FanSpeedPercentMap[status.fan_mode as FanSpeed] ?? FanSpeedPercentMap[FanSpeed.Auto];
+    } else {
+      value = FanSpeedPercentMap[FanSpeed.Auto];
+    }
     this.service.updateCharacteristic(
       this.platform.Characteristic.RotationSpeed,
       value,

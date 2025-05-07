@@ -58,13 +58,9 @@ export abstract class BaseSwitchAccessory {
     this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig);
     // Subscribe to API debug events when plugin debug mode is enabled
     if (this.platform.config?.debug && this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
-      // Change API debug events to use a unique identifier to avoid duplicate logs
       this.cacheManager.api.on('debug', (msg: string) => {
-        // Limit API debug messages to once per device by checking if this is the main accessory
-        if (this.serviceSubtype === 'main_accessory') {
-          // Always log API debug messages at info level when plugin debug is enabled
-          this.platform.log.info(`${this.logPrefix} API: ${msg}`);
-        }
+        // Log API debug messages, using the device name to disambiguate
+        this.platform.log.info(`${this.accessory.displayName} - ${this.logPrefix} API: ${msg}`);
       });
     }
 

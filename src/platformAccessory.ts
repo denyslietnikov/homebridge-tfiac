@@ -16,7 +16,7 @@ import { OutdoorTemperatureSensorAccessory } from './OutdoorTemperatureSensorAcc
 import { IFeelSensorAccessory } from './IFeelSensorAccessory.js';
 import { fahrenheitToCelsius, celsiusToFahrenheit } from './utils.js';
 import CacheManager from './CacheManager.js';
-import { PowerState, OperationMode, FanSpeed, SwingMode } from './enums.js';
+import { PowerState, OperationMode, FanSpeed, FanSpeedPercentMap, SwingMode } from './enums.js';
 
 export interface CharacteristicHandlers {
   get?: () => Promise<CharacteristicValue>;
@@ -715,25 +715,21 @@ export class TfiacPlatformAccessory {
   }
 
   private mapFanModeToRotationSpeed(fanMode: FanSpeed): number {
-    const fanSpeedMap: { [key in FanSpeed]?: number } = {
-      [FanSpeed.Auto]: 50,
-      [FanSpeed.Low]: 25,
-      [FanSpeed.Middle]: 50,
-      [FanSpeed.High]: 75,
-    };
-    return fanSpeedMap[fanMode] ?? 50;
+    // Use FanSpeedPercentMap for all supported fan modes
+    return FanSpeedPercentMap[fanMode] ?? 50;
   }
 
   private mapRotationSpeedToFanMode(speed: number): FanSpeed {
-    if (speed > 75) {
-      return FanSpeed.Auto;
-    } else if (speed > 50) {
-      return FanSpeed.High;
-    } else if (speed > 25) {
-      return FanSpeed.Middle;
-    } else {
-      return FanSpeed.Low;
+    let nearestMode: FanSpeed = FanSpeed.Auto;
+    let minDiff = Infinity;
+    for (const [mode, percent] of Object.entries(FanSpeedPercentMap) as [FanSpeed, number][]) {
+      const diff = Math.abs(speed - percent);
+      if (diff < minDiff) {
+        minDiff = diff;
+        nearestMode = mode;
+      }
     }
+    return nearestMode;
   }
 
   private convertTemperatureToDisplay(value: number, displayUnits: number): number {
