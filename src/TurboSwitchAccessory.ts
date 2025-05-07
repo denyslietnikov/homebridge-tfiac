@@ -31,5 +31,13 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
       },
       'Turbo',
     );
+    
+    // Add debug event listener with Turbo API prefix
+    if (this.platform.config.debug) {
+      this.platform.log.debug(`[${this.accessory.displayName}] Turbo API: debug listener attached`);
+      this.cacheManager.api.on('debug', msg =>
+        this.platform.log.debug(`[${this.accessory.displayName}] Turbo API: ${msg}`),
+      );
+    }
   }
 }

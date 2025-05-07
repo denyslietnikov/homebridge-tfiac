@@ -240,7 +240,14 @@ export class AirConditionerAPI extends EventEmitter {
         <BaseMode>auto</BaseMode>
       </SetMessage>
     </msg>`;
-    await this.sendCommandWithRetry(command);
+    
+    // Add debug event for turnOff command
+    this.emit('debug', `Sending turnOff command: ${command}`);
+    
+    const response = await this.sendCommandWithRetry(command);
+    
+    // Add debug event for turnOff response
+    this.emit('debug', `Received turnOff response: ${response}`);
     
     // Make sure the cached status reflects these changes
     if (this.lastStatus) {
@@ -362,10 +369,15 @@ export class AirConditionerAPI extends EventEmitter {
     // No 'else' block needed, covering all mutable properties explicitly avoids the 'never' type issue.
 
     const updateMessage = this.createUpdateMessage(status);
-    // Disable max-len for this specific line as formatting attempts failed
-     
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">\n  <SetMessage>${updateMessage}</SetMessage>\n</msg>`;
-    await this.sendCommandWithRetry(command);
+    
+    // Add debug event for command send
+    this.emit('debug', `Sending setAirConditionerState command: ${command}`);
+    
+    const response = await this.sendCommandWithRetry(command);
+    
+    // Add debug event for command response
+    this.emit('debug', `Received setAirConditionerState response: ${response}`);
   }
 
   async setSwingMode(mode: SwingMode | string): Promise<void> {
@@ -376,7 +388,14 @@ export class AirConditionerAPI extends EventEmitter {
       Both: '<WindDirection_H>on</WindDirection_H><WindDirection_V>on</WindDirection_V>',
     };
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}"><SetMessage>${SET_SWING[mode as keyof typeof SET_SWING]}</SetMessage></msg>`;
-    await this.sendCommandWithRetry(command);
+    
+    // Add debug event for swing mode command
+    this.emit('debug', `Sending setSwingMode command: ${command}`);
+    
+    const response = await this.sendCommandWithRetry(command);
+    
+    // Add debug event for swing mode response
+    this.emit('debug', `Received setSwingMode response: ${response}`);
   }
 
   async setFanSpeed(speed: FanSpeed | string): Promise<void> {
@@ -497,6 +516,35 @@ export class AirConditionerAPI extends EventEmitter {
    */
   async setBeepState(state: PowerState): Promise<void> {
     await this.setOptionState('Opt_beep', state, 'setBeepState');
+  }
+
+  /**
+   * Set both fan speed and sleep state in a single command to minimize beeps.
+   * @param fanMode The fan speed to set
+   * @param sleepState The sleep state to set
+   */
+  async setFanAndSleepState(fanMode: FanSpeed, sleepState: SleepModeState): Promise<void> {
+    // Convert sleep state to the appropriate value format
+    const sleepValue = sleepState === SleepModeState.On
+      ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
+      : 'off';
+    
+    // Create a combined command with both parameters
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+      <SetMessage>
+        <WindSpeed>${fanMode}</WindSpeed>
+        <Opt_sleepMode>${sleepValue}</Opt_sleepMode>
+      </SetMessage>
+    </msg>`;
+    
+    // Send debug event for combined command
+    this.emit('debug', `Sending setFanAndSleepState command: ${command}`);
+    
+    // Send the command
+    const response = await this.sendCommandWithRetry(command);
+    
+    // Send debug event for response
+    this.emit('debug', `Received setFanAndSleepState response: ${response}`);
   }
 }
 

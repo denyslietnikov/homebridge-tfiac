@@ -40,5 +40,13 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
       },
       'Sleep',
     );
+    
+    // Add debug event listener with Sleep API prefix
+    if (this.platform.config.debug) {
+      this.platform.log.debug(`[${this.accessory.displayName}] Sleep API: debug listener attached`);
+      this.cacheManager.api.on('debug', msg =>
+        this.platform.log.debug(`[${this.accessory.displayName}] Sleep API: ${msg}`),
+      );
+    }
   }
 }

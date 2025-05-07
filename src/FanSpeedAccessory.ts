@@ -39,6 +39,14 @@ export class FanSpeedAccessory {
     if (typeof this.cacheManager.api.on === 'function') {
       this.cacheManager.api.on('status', this.statusListener);
     }
+    
+    // Add debug event listener with Fan Speed API prefix
+    if (this.platform.config.debug) {
+      this.platform.log.debug(`[${this.accessory.displayName}] Fan Speed API: debug listener attached`);
+      this.cacheManager.api.on('debug', msg =>
+        this.platform.log.debug(`[${this.accessory.displayName}] Fan Speed API: ${msg}`),
+      );
+    }
 
     // Get the Active characteristic
     const activeChar = this.service.getCharacteristic(this.platform.Characteristic.Active);
@@ -202,19 +210,15 @@ export class FanSpeedAccessory {
       
       this.platform.log.debug(`User set fan speed to ${value}%, mapped to mode: ${fanMode}`);
       
-      // Send the fan mode string to the air conditioner instead of the raw percentage
-      await this.deviceAPI.setFanSpeed(fanMode);
-      
-      // If fan speed is being set to Auto (0%), also turn off Sleep mode
+      // Special handling for Auto mode (0%)
       if (value === 0 || fanMode === FanSpeed.Auto) {
-        this.platform.log.info('Fan speed set to Auto (0%), turning off Sleep mode');
-        try {
-          // Turn off sleep mode when setting fan to Auto
-          await this.deviceAPI.setSleepState(SleepModeState.Off);
-        } catch (sleepErr) {
-          // Log but don't fail the operation if we can't turn off sleep mode
-          this.platform.log.error('Failed to turn off Sleep mode:', sleepErr);
-        }
+        // Send a combined command to set fan to Auto and turn off Sleep mode
+        // This will produce only one beep instead of two
+        this.platform.log.info('Fan speed set to Auto (0%), using combined command to turn off Sleep mode');
+        await this.deviceAPI.setFanAndSleepState(FanSpeed.Auto, SleepModeState.Off);
+      } else {
+        // For other fan speeds, just send the fan mode command
+        await this.deviceAPI.setFanSpeed(fanMode);
       }
       
       // Don't clear cache manually - let the centralized status update handle it
