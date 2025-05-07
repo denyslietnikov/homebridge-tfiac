@@ -413,3 +413,30 @@ export const hapIdentifiers = {
 
 // Mocked constants for HAP characteristics used in tests
 export const hapConstants = createMockAPI().hap;
+
+/**
+ * Create a mock CacheManager compatible with our enhanced version
+ */
+export function createMockCacheManager(mockApi: any = {}, mockStatus: any = null) {
+  // Create mock EventEmitter methods
+  const eventEmitter = {
+    on: vi.fn(),
+    off: vi.fn(),
+    emit: vi.fn(),
+    removeAllListeners: vi.fn(),
+  };
+  
+  // Combine API with EventEmitter capabilities
+  const apiWithEvents = {
+    ...mockApi,
+    ...eventEmitter,
+  };
+  
+  return {
+    api: apiWithEvents,
+    getStatus: vi.fn().mockResolvedValue(mockStatus),
+    getLastStatus: vi.fn().mockReturnValue(mockStatus),
+    clear: vi.fn(),
+    cleanup: vi.fn(),
+  };
+}

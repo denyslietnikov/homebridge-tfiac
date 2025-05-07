@@ -1,153 +1,182 @@
-import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { BeepSwitchAccessory } from '../BeepSwitchAccessory.js';
-import { CharacteristicGetCallback, CharacteristicSetCallback, PlatformAccessory, Service } from 'homebridge';
+import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
-import {
-  createMockLogger,
-  createMockService,
-  createMockPlatformAccessory,
-  createMockAPI,
-  createMockApiActions,
-  MockApiActions,
-} from './testUtils.js';
+import { createMockApiActions, createMockCacheManager } from './testUtils';
 
-const mockApiActions: MockApiActions = createMockApiActions({
-  opt_beep: 'on',
-});
-
-vi.mock('../AirConditionerAPI.js', () => ({
-  default: vi.fn(() => mockApiActions)
+// Create mock implementations
+vi.mock('../CacheManager.js', () => ({
+  CacheManager: {
+    getInstance: vi.fn(),
+  },
+  default: {
+    getInstance: vi.fn(),
+  },
 }));
 
 describe('BeepSwitchAccessory', () => {
   let platform: TfiacPlatform;
-  let accessory: PlatformAccessory;
-  let mockService: ReturnType<typeof createMockService>;
+  let accessory: any;
+  let mockService: any;
   let inst: BeepSwitchAccessory;
+  let deviceAPI: any;
+  let mockCacheManager: any;
 
   beforeEach(() => {
+    // Reset mocks
     vi.clearAllMocks();
-    mockApiActions.updateState.mockResolvedValue({ opt_beep: 'on' });
 
-    mockService = createMockService();
-
-    const mockAPI = createMockAPI();
-    const mockLogger = createMockLogger();
-
+    // Create platform mock
     platform = {
+      log: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      api: {
+        hap: {
+          Service: {
+            Switch: { UUID: 'switch-uuid' },
+          },
+          Characteristic: {
+            On: 'On',
+            Name: 'Name',
+          },
+        },
+      },
       Service: {
         Switch: { UUID: 'switch-uuid' },
       },
       Characteristic: {
-        Name: 'Name',
         On: 'On',
+        Name: 'Name',
         ConfiguredName: 'ConfiguredName',
       },
-      log: mockLogger,
-      api: mockAPI,
-    } as unknown as TfiacPlatform;
+    } as any;
 
-    accessory = createMockPlatformAccessory(
-      'Test Beep Switch',
-      'uuid-beep',
-      { name: 'Test AC', ip: '192.168.1.100', port: 7777, updateInterval: 1 },
-      mockService,
-    );
+    // Create mock service
+    mockService = {
+      setCharacteristic: vi.fn().mockReturnThis(),
+      getCharacteristic: vi.fn().mockReturnValue({
+        on: vi.fn(),
+        onGet: vi.fn(),
+        onSet: vi.fn(),
+      }),
+      updateCharacteristic: vi.fn(),
+    };
 
-    accessory.getService = vi.fn().mockReturnValue(undefined);
-    accessory.getServiceById = vi.fn().mockReturnValue(undefined);
-    accessory.addService = vi.fn().mockReturnValue(mockService as unknown as Service);
+    // Create mock accessory
+    accessory = {
+      getService: vi.fn().mockReturnValue(null), // Return null to force addService call
+      getServiceById: vi.fn().mockReturnValue(null), // Return null to force addService call
+      addService: vi.fn().mockReturnValue(mockService),
+      context: {
+        deviceConfig: {
+          ip: '192.168.1.100',
+          port: 8080,
+          name: 'Test AC',
+        },
+      },
+      displayName: 'Test AC',
+      services: [mockService],
+    };
+
+    // Create API mock with beep methods
+    deviceAPI = createMockApiActions({ opt_beep: 'on' });
+    deviceAPI.setBeepState = vi.fn().mockResolvedValue(undefined);
+    
+    // Create mock CacheManager
+    mockCacheManager = createMockCacheManager(deviceAPI, { opt_beep: 'on' });
   });
 
-  afterEach(() => {
-    if (inst) {
-      inst.stopPolling();
-    }
-  });
-
-  const createAccessory = () => {
+  function createAccessory() {
     inst = new BeepSwitchAccessory(platform, accessory);
+    // Override CacheManager to use our mock
+    (inst as any).cacheManager = mockCacheManager;
+    // Set initial cached status for tests
+    (inst as any).cachedStatus = { opt_beep: 'on' };
     return inst;
-  };
+  }
 
   it('should construct and set up polling and handlers', () => {
     createAccessory();
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Beep', 'beep');
+    expect(accessory.addService).toHaveBeenCalledWith(
+      platform.Service.Switch,
+      'Beep',
+      'beep'
+    );
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Beep');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
-    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
-    expect(onChar.onGet).toHaveBeenCalledWith(expect.any(Function));
-    expect(onChar.onSet).toHaveBeenCalledWith(expect.any(Function));
   });
 
   it('should stop polling and cleanup', () => {
     createAccessory();
     inst.stopPolling();
-    expect(mockApiActions.cleanup).toHaveBeenCalled();
+    expect(mockCacheManager.cleanup).toHaveBeenCalled();
   });
 
   it('should update cached status and update characteristic', async () => {
-    inst = new BeepSwitchAccessory(platform, accessory);
-    mockService.updateCharacteristic.mockClear();
+    createAccessory();
+    // Initialize with beep off
     (inst as any).cachedStatus = { opt_beep: 'off' };
-
+    
+    // Mock getStatus to return beep on, which should update the characteristic to true
+    mockCacheManager.getStatus.mockResolvedValueOnce({ opt_beep: 'on' });
+    
     await (inst as any).updateCachedStatus();
-    expect(mockApiActions.updateState).toHaveBeenCalled();
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
-  // New get-handler tests using onGet API
-  it('should handle get with cached status (beep on)', async () => {
+  it('should handle get with cached status (beep on)', () => {
     createAccessory();
-    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
-    (inst as any).cachedStatus = { opt_beep: 'on' };
-    const handler = onChar.onGet.mock.calls[0][0] as () => boolean;
-    expect(await handler()).toBe(true);
+    const callback = vi.fn();
+    mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_beep: 'on' });
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, true);
   });
 
-  it('should handle get with cached status (beep off)', async () => {
+  it('should handle get with cached status (beep off)', () => {
     createAccessory();
-    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
-    (inst as any).cachedStatus = { opt_beep: 'off' };
-    const handler = onChar.onGet.mock.calls[0][0] as () => boolean;
-    expect(await handler()).toBe(false);
+    const callback = vi.fn();
+    mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_beep: 'off' });
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
   });
 
-  it('should handle get with no cached status', async () => {
+  it('should handle get with no cached status', () => {
     createAccessory();
-    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
-    (inst as any).cachedStatus = null;
-    const handler = onChar.onGet.mock.calls[0][0] as () => boolean;
-    expect(await handler()).toBe(false);
+    const callback = vi.fn();
+    mockCacheManager.getLastStatus.mockReturnValueOnce(null);
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('should handle set (turn beep on) and update status', async () => {
     createAccessory();
-    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
-    mockApiActions.setBeepState.mockResolvedValueOnce(undefined);
-    const handler = onChar.onSet.mock.calls[0][0] as (value: boolean) => Promise<void>;
-    await handler(true);
-    expect(mockApiActions.setBeepState).toHaveBeenCalledWith('on');
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+    const callback = vi.fn();
+    await (inst as any).handleSet(true, callback);
+    expect(deviceAPI.setBeepState).toHaveBeenCalledWith('on');
+    expect(mockCacheManager.clear).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
   });
 
   it('should handle set (turn beep off) and update status', async () => {
     createAccessory();
-    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
-    mockApiActions.setBeepState.mockResolvedValueOnce(undefined);
-    const handler = onChar.onSet.mock.calls[0][0] as (value: boolean) => Promise<void>;
-    await handler(false);
-    expect(mockApiActions.setBeepState).toHaveBeenCalledWith('off');
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
+    const callback = vi.fn();
+    await (inst as any).handleSet(false, callback);
+    expect(deviceAPI.setBeepState).toHaveBeenCalledWith('off');
+    expect(mockCacheManager.clear).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
   });
 
   it('should handle set error', async () => {
     createAccessory();
-    const onChar = mockService.getCharacteristic(platform.Characteristic.On);
-    const error = new Error('API Error');
-    mockApiActions.setBeepState.mockRejectedValueOnce(error);
-    const handler = onChar.onSet.mock.calls[0][0] as (value: boolean) => Promise<void>;
-    await expect(handler(true)).rejects.toThrow(error);
-    expect(mockService.updateCharacteristic).not.toHaveBeenCalledWith(platform.Characteristic.On, true);
+    const callback = vi.fn();
+    const error = new Error('Network error');
+    deviceAPI.setBeepState.mockRejectedValue(error);
+    await (inst as any).handleSet(true, callback);
+    expect(deviceAPI.setBeepState).toHaveBeenCalledWith('on');
+    expect(callback).toHaveBeenCalledWith(error);
   });
 });

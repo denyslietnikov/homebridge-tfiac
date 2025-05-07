@@ -58,9 +58,13 @@ export abstract class BaseSwitchAccessory {
     this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig);
     // Subscribe to API debug events when plugin debug mode is enabled
     if (this.platform.config?.debug && this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
+      // Change API debug events to use a unique identifier to avoid duplicate logs
       this.cacheManager.api.on('debug', (msg: string) => {
-        // Always log API debug messages at info level when plugin debug is enabled
-        this.platform.log.info(`${this.logPrefix} API: ${msg}`);
+        // Limit API debug messages to once per device by checking if this is the main accessory
+        if (this.serviceSubtype === 'main_accessory') {
+          // Always log API debug messages at info level when plugin debug is enabled
+          this.platform.log.info(`${this.logPrefix} API: ${msg}`);
+        }
       });
     }
 
@@ -172,17 +176,16 @@ export abstract class BaseSwitchAccessory {
    * Handle requests to get the current value of the "On" characteristic.
    */
   protected handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
-    // Support both promise-based (homebridge/HAP v1.4.0+) and callback-based API
-    const value = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
+    this.platform.log.debug(`Triggered GET ${this.logPrefix}`);
+
+    // Use already cached status rather than making a new API call
+    const status = this.cacheManager.getLastStatus();
+    const isOn = status ? this.getStatusValue(status) : false;
     
-    if (callback && typeof callback === 'function') {
-      // Callback-style API (for backward compatibility)
-      // Call the callback but still return the value to satisfy the type checker
-      callback(null, value);
+    if (callback) {
+      callback(null, isOn);
     }
-    
-    // Return the value directly - works for promise pattern and satisfies the type for callback pattern
-    return value;
+    return isOn;
   }
 
   /**

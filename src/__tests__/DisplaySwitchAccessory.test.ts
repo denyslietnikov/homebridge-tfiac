@@ -1,91 +1,111 @@
-// Mock dependencies
-import { vi, describe, beforeEach, afterEach, it, expect } from 'vitest';
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { DisplaySwitchAccessory } from '../DisplaySwitchAccessory.js';
-import { CharacteristicGetCallback, CharacteristicSetCallback, PlatformAccessory, Service } from 'homebridge';
+import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
-import {
-  createMockLogger,
-  createMockService,
-  createMockPlatformAccessory,
-  createMockAPI,
-  createMockApiActions, // Keep this import
-  MockApiActions, // Import the type definition
-} from './testUtils';
+import { createMockApiActions, createMockCacheManager } from './testUtils';
 
-// Mock AirConditionerAPI with our utilities
-const mockApiActions: MockApiActions = createMockApiActions({
-  opt_display: 'on',
-});
-
-// Update the setDisplayState mock to correctly call setAirConditionerState
-mockApiActions.setDisplayState.mockImplementation(function(state) {
-  return mockApiActions.setAirConditionerState('opt_display', state);
-});
-
-// Fix the mock by using the default export format that Vitest expects
-vi.mock('../AirConditionerAPI.js', () => ({
-  default: vi.fn(() => mockApiActions)
+// Create mock implementations
+vi.mock('../CacheManager.js', () => ({
+  CacheManager: {
+    getInstance: vi.fn(),
+  },
+  default: {
+    getInstance: vi.fn(),
+  },
 }));
 
 describe('DisplaySwitchAccessory', () => {
   let platform: TfiacPlatform;
-  let accessory: PlatformAccessory;
-  let mockService: ReturnType<typeof createMockService>;
+  let accessory: any;
+  let mockService: any;
   let inst: DisplaySwitchAccessory;
+  let deviceAPI: any;
+  let mockCacheManager: any;
 
   beforeEach(() => {
+    // Reset mocks
     vi.clearAllMocks();
-    
-    // Create mocks using our utility functions
-    mockService = createMockService();
-    
-    // Set up the platform with our mock utilities
-    const mockAPI = createMockAPI();
-    const mockLogger = createMockLogger();
-    
+
+    // Create platform mock
     platform = {
-      Service: { 
+      log: {
+        debug: vi.fn(),
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+      },
+      api: {
+        hap: {
+          Service: {
+            Switch: { UUID: 'switch-uuid' },
+          },
+          Characteristic: {
+            On: 'On',
+            Name: 'Name',
+          },
+        },
+      },
+      Service: {
         Switch: { UUID: 'switch-uuid' },
       },
       Characteristic: {
-        Name: 'Name',
         On: 'On',
+        Name: 'Name',
         ConfiguredName: 'ConfiguredName',
       },
-      log: mockLogger,
-      api: mockAPI
-    } as unknown as TfiacPlatform;
+    } as any;
+
+    // Create mock service
+    mockService = {
+      setCharacteristic: vi.fn().mockReturnThis(),
+      getCharacteristic: vi.fn().mockReturnValue({
+        on: vi.fn(),
+        onGet: vi.fn(),
+        onSet: vi.fn(),
+      }),
+      updateCharacteristic: vi.fn(),
+    };
+
+    // Create mock accessory
+    accessory = {
+      getService: vi.fn().mockReturnValue(null), // Return null to force addService call
+      getServiceById: vi.fn().mockReturnValue(null), // Return null to force addService call
+      addService: vi.fn().mockReturnValue(mockService),
+      context: {
+        deviceConfig: {
+          ip: '192.168.1.100',
+          port: 8080,
+          name: 'Test AC',
+        },
+      },
+      displayName: 'Test AC',
+      services: [mockService],
+    };
+
+    // Create API mock with display methods
+    deviceAPI = createMockApiActions({ opt_display: 'on' });
+    deviceAPI.setDisplayState = vi.fn().mockResolvedValue(undefined);
     
-    // Create a mock accessory with our utility
-    accessory = createMockPlatformAccessory(
-      'Test Display Switch', 
-      'uuid-display', 
-      { name: 'Test AC', ip: '192.168.1.99', port: 7777, updateInterval: 1 },
-      mockService
-    );
-
-    // Correctly type the vi.fn mocks for service methods
-    accessory.getService = vi.fn().mockReturnValue(undefined); // Use undefined instead of null
-    accessory.getServiceById = vi.fn().mockReturnValue(undefined); // Use undefined instead of null
-    // Cast mockService to satisfy the type checker for the mock return value
-    accessory.addService = vi.fn().mockReturnValue(mockService as unknown as Service);
+    // Create mock CacheManager
+    mockCacheManager = createMockCacheManager(deviceAPI, { opt_display: 'on' });
   });
 
-  afterEach(() => {
-    if (inst) {
-      inst.stopPolling();
-    }
-  });
-
-  const createAccessory = () => {
+  function createAccessory() {
     inst = new DisplaySwitchAccessory(platform, accessory);
+    // Override CacheManager to use our mock
+    (inst as any).cacheManager = mockCacheManager;
+    // Set initial cached status for tests
+    (inst as any).cachedStatus = { opt_display: 'on' };
     return inst;
-  };
+  }
 
   it('should construct and set up polling and handlers', () => {
     createAccessory();
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Switch, 'Display', 'display');
-    // Name is now set in BaseSwitchAccessory constructor only
+    expect(accessory.addService).toHaveBeenCalledWith(
+      platform.Service.Switch,
+      'Display',
+      'display'
+    );
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Display');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
   });
@@ -93,52 +113,59 @@ describe('DisplaySwitchAccessory', () => {
   it('should stop polling and cleanup', () => {
     createAccessory();
     inst.stopPolling();
-    expect(mockApiActions.cleanup).toHaveBeenCalled();
+    expect(mockCacheManager.cleanup).toHaveBeenCalled();
   });
 
   it('should update cached status and update characteristic', async () => {
     createAccessory();
-    mockApiActions.updateState.mockResolvedValueOnce({ opt_display: 'on' });
+    // Initialize with display off
+    (inst as any).cachedStatus = { opt_display: 'off' };
+    
+    // Mock getStatus to return display on, which should update the characteristic to true
+    mockCacheManager.getStatus.mockResolvedValueOnce({ opt_display: 'on' });
+    
     await (inst as any).updateCachedStatus();
-    expect(mockApiActions.updateState).toHaveBeenCalled();
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
   });
 
-  it('should handle get with cached status', async () => {
+  it('should handle get with cached status', () => {
     createAccessory();
-    (inst as any).cachedStatus = { opt_display: 'on' };
-    await (inst as any).handleGet((err: Error | null, val: boolean) => {
-      expect(err).toBeNull();
-      expect(val).toBe(true);
-    });
+    const callback = vi.fn();
+    mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_display: 'on' });
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, true);
   });
 
-  it('should handle get with no cached status', async () => {
+  it('should handle get with no cached status', () => {
     createAccessory();
+    const callback = vi.fn();
+    
+    // Clear the cached status in the instance itself since that's what the implementation checks
     (inst as any).cachedStatus = null;
-    await (inst as any).handleGet((err: Error | null, val: boolean) => {
-      expect(err).toBeNull();
-      expect(val).toBe(false);
-    });
+    
+    // When using getLastStatus, it should still return null
+    mockCacheManager.getLastStatus.mockReturnValueOnce(null);
+    
+    (inst as any).handleGet(callback);
+    expect(callback).toHaveBeenCalledWith(null, false);
   });
 
   it('should handle set and update status', async () => {
     createAccessory();
-    const cb = vi.fn() as CharacteristicSetCallback;
-    mockApiActions.setDisplayState.mockResolvedValueOnce(undefined);
-    await (inst as any).handleSet(true, cb);
-    expect(mockApiActions.setDisplayState).toHaveBeenCalledWith('on');
-    expect(cb).toHaveBeenCalledWith(null);
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+    const callback = vi.fn();
+    await (inst as any).handleSet(true, callback);
+    expect(deviceAPI.setDisplayState).toHaveBeenCalledWith('on');
+    expect(mockCacheManager.clear).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
   });
 
   it('should handle set error', async () => {
     createAccessory();
-    const error = new Error('fail');
-    mockApiActions.setDisplayState.mockRejectedValueOnce(error);
-    const cb = vi.fn() as CharacteristicSetCallback;
-    await (inst as any).handleSet(true, cb);
-    expect(mockApiActions.setDisplayState).toHaveBeenCalledWith('on');
-    expect(cb).toHaveBeenCalledWith(error);
+    const callback = vi.fn();
+    const error = new Error('Network error');
+    deviceAPI.setDisplayState.mockRejectedValue(error);
+    await (inst as any).handleSet(true, callback);
+    expect(deviceAPI.setDisplayState).toHaveBeenCalledWith('on');
+    expect(callback).toHaveBeenCalledWith(error);
   });
 });

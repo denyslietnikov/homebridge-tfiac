@@ -1,7 +1,8 @@
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
-import { PlatformAccessory, Service, Characteristic } from 'homebridge';
+import { PlatformAccessory, Service, Characteristic, CharacteristicValue, CharacteristicSetCallback } from 'homebridge';
 import { TfiacDeviceConfig } from '../settings.js';
 import { AirConditionerStatus } from '../AirConditionerAPI.js';
+import { createMockCacheManager } from './testUtils';
 
 // Mock implementations before imports to avoid hoisting issues
 vi.mock('../AirConditionerAPI.js', () => {
@@ -23,33 +24,73 @@ import { TfiacPlatform } from '../platform.js';
 import { BaseSwitchAccessory } from '../BaseSwitchAccessory.js';
 import { CacheManager } from '../CacheManager.js';
 
-// Concrete class for testing BaseSwitchAccessory
+// Define the TestSwitchAccessory class for testing
 class TestSwitchAccessory extends BaseSwitchAccessory {
   constructor(
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
-    getStatusValue: (status: Partial<AirConditionerStatus>) => boolean,
-    setApiState: (value: boolean) => Promise<void>,
+    getStatusValueFn?: (status: Partial<AirConditionerStatus>) => boolean,
+    setApiStateFn?: (value: boolean) => Promise<void>
   ) {
+    const getStatusValue = getStatusValueFn || ((status: Partial<AirConditionerStatus>) => {
+      // Using a type assertion because this is just a test helper
+      return (status as any).opt_test === 'on';
+    });
+    const setApiState = setApiStateFn || (async (value: boolean) => {
+      // Default empty implementation
+    });
+
     super(
       platform,
       accessory,
-      'Test Switch', // serviceName
-      'testswitch', // serviceSubtype
-      getStatusValue, // getStatusValue function
-      setApiState, // setApiState function
-      'TestSwitch', // logPrefix
+      'Test Switch',
+      'testswitch',
+      getStatusValue,
+      setApiState,
+      'Test Switch' // Need to explicitly set the logPrefix
     );
+
+    // Override the CacheManager with our mock version
+    this.cacheManager = {
+      getStatus: vi.fn().mockResolvedValue(null),
+      getLastStatus: vi.fn().mockReturnValue(null),
+      clear: vi.fn(),
+      cleanup: vi.fn(),
+      api: { 
+        on: vi.fn(), 
+        off: vi.fn(),
+        emit: vi.fn(),
+        // Other required properties for the AirConditionerAPI
+        ip: '192.168.1.100',
+        port: 8080,
+        available: true,
+        lastSeq: 0,
+        setTurboState: vi.fn(),
+        setBeepState: vi.fn(),
+        setDisplayState: vi.fn(),
+        setAirConditionerState: vi.fn(),
+        turnOn: vi.fn(),
+        turnOff: vi.fn(),
+        updateState: vi.fn(),
+        setSwingMode: vi.fn(),
+        setFanSpeed: vi.fn(),
+        setSleepState: vi.fn(),
+        setEcoState: vi.fn(),
+        cleanup: vi.fn()
+      } as any
+    } as unknown as CacheManager;
   }
-  // Expose protected methods for testing
-  public testHandleGet(callback: ReturnType<typeof vi.fn>) {
+
+  public handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
     return super.handleGet(callback);
   }
-  public async testHandleSet(value: boolean, callback: ReturnType<typeof vi.fn>) {
-    await super.handleSet(value, callback);
+
+  public async handleSet(value: CharacteristicValue, callback?: CharacteristicSetCallback): Promise<void> {
+    await super.handleSet(value, callback as any);
   }
-  public async testUpdateCachedStatus() {
-    await super.updateCachedStatus();
+
+  public async updateCachedStatus(): Promise<void> {
+    return super.updateCachedStatus();
   }
 }
 
@@ -116,21 +157,28 @@ describe('BaseSwitchAccessory', () => {
         },
       },
       Service: {
-        Switch: service, // Use the mocked service instance
+        Switch: {
+          UUID: 'switch-uuid',
+        },
       },
       Characteristic: {
-        On: characteristic, // Use the mocked characteristic instance
-        Name: vi.fn(),
+        On: 'On',
+        Name: 'Name',
       },
     } as unknown as TfiacPlatform;
 
     // Mock CacheManager
     // Ensure getInstance returns a mock with the getStatus method and api event methods
     mockCacheManager = {
-      getStatus: vi.fn(),
+      getStatus: vi.fn().mockResolvedValue(null),
+      getLastStatus: vi.fn().mockReturnValue(null),
       clear: vi.fn(),
       cleanup: vi.fn(),
-      api: { on: vi.fn(), off: vi.fn() },
+      api: { 
+        on: vi.fn(), 
+        off: vi.fn(),
+        emit: vi.fn()
+      }
     };
     
     (CacheManager.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockCacheManager);
@@ -143,9 +191,13 @@ describe('BaseSwitchAccessory', () => {
     inst = new TestSwitchAccessory(
       platform,
       accessory,
-      mockGetStatusValue as (status: Partial<AirConditionerStatus>) => boolean,
-      mockSetApiState as (value: boolean) => Promise<void>,
+      mockGetStatusValue,
+      mockSetApiState
     );
+    
+    // Replace the cacheManager with our mock
+    (inst as any).cacheManager = mockCacheManager;
+    
     // Prevent actual polling during tests
     inst.stopPolling();
     (inst as any).pollingInterval = null; // Ensure interval is cleared
@@ -157,32 +209,44 @@ describe('BaseSwitchAccessory', () => {
     expect(service.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
     expect(characteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
     expect(characteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
-    expect(platform.log.debug).toHaveBeenCalledWith(expect.stringContaining('TestSwitch accessory initialized'));
+    // Update to match the actual log message format
+    expect(platform.log.debug).toHaveBeenCalledWith(
+      expect.stringContaining('Test Switch accessory initialized for Test AC Display Name')
+    );
   });
 
   describe('handleGet', () => {
     it('should return false when cachedStatus is null', async () => {
       (inst as any).cachedStatus = null;
       const callback = vi.fn();
-      await inst.testHandleGet(callback);
+      await inst.handleGet(callback);
       expect(mockGetStatusValue).not.toHaveBeenCalled();
       expect(callback).toHaveBeenCalledWith(null, false);
     });
 
     it('should return value from getStatusValue when cachedStatus exists', async () => {
-      (inst as any).cachedStatus = { opt_test: 'on' };
+      // Set up our mocks correctly
+      mockCacheManager.getLastStatus.mockReturnValue({ opt_test: 'on' });
+      
+      // Make sure the mock function returns the expected value
       mockGetStatusValue.mockReturnValue(true);
+      
       const callback = vi.fn();
-      await inst.testHandleGet(callback);
-      expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'on' });
+      inst.handleGet(callback);
+      
+      // The test shouldn't expect mockGetStatusValue to be called with the cached status
+      // because in handleGet we use getLastStatus from the cacheManager instead of the instance variable
+      expect(mockCacheManager.getLastStatus).toHaveBeenCalled();
       expect(callback).toHaveBeenCalledWith(null, true);
 
+      // Test the opposite case
       vi.clearAllMocks();
-      (inst as any).cachedStatus = { opt_test: 'off' };
+      mockCacheManager.getLastStatus.mockReturnValue({ opt_test: 'off' });
       mockGetStatusValue.mockReturnValue(false);
+      
       const callback2 = vi.fn();
-      await inst.testHandleGet(callback2);
-      expect(mockGetStatusValue).toHaveBeenCalledWith({ opt_test: 'off' });
+      inst.handleGet(callback2);
+      expect(mockCacheManager.getLastStatus).toHaveBeenCalled();
       expect(callback2).toHaveBeenCalledWith(null, false);
     });
   });
@@ -190,7 +254,7 @@ describe('BaseSwitchAccessory', () => {
   describe('handleSet', () => {
     it('should call setApiState and update characteristic', async () => {
       const callback = vi.fn();
-      await inst.testHandleSet(true, callback);
+      await inst.handleSet(true, callback);
       expect(mockSetApiState).toHaveBeenCalledWith(true);
       expect(mockCacheManager.clear).toHaveBeenCalled();
       expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
@@ -202,20 +266,23 @@ describe('BaseSwitchAccessory', () => {
       const callback = vi.fn();
       const error = new Error('API Set Error');
       mockSetApiState.mockRejectedValue(error);
-      await inst.testHandleSet(false, callback);
+      await inst.handleSet(false, callback);
       expect(mockSetApiState).toHaveBeenCalledWith(false);
       expect(mockCacheManager.clear).not.toHaveBeenCalled(); // Should not clear cache on error
       expect(service.updateCharacteristic).not.toHaveBeenCalled(); // Should not update characteristic on error
       expect(callback).toHaveBeenCalledWith(error);
-      expect(platform.log.error).toHaveBeenCalledWith(expect.stringContaining('Error setting TestSwitch'), error);
+      // Update to match the actual log message format
+      expect(platform.log.error).toHaveBeenCalledWith(
+        expect.stringContaining('Error setting Test Switch to off for Test AC Display Name'),
+        error
+      );
     });
   });
 
-  // Tests for updateCachedStatus method
   describe('updateCachedStatus', () => {
     it('should update cachedStatus from CacheManager', async () => {
       mockCacheManager.getStatus.mockResolvedValue({ opt_test: 'on', other_prop: 'value' });
-      await inst.testUpdateCachedStatus();
+      await inst.updateCachedStatus();
       expect(mockCacheManager.getStatus).toHaveBeenCalled();
       expect((inst as any).cachedStatus).toEqual({ opt_test: 'on', other_prop: 'value' });
     });
@@ -223,9 +290,9 @@ describe('BaseSwitchAccessory', () => {
     it('should handle errors during status update', async () => {
       const error = new Error('Failed to get status');
       mockCacheManager.getStatus.mockRejectedValue(error);
-      await inst.testUpdateCachedStatus();
+      await inst.updateCachedStatus();
       expect(platform.log.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error updating TestSwitch status'),
+        expect.stringContaining('Error updating Test Switch status for Test AC Display Name'),
         error
       );
       expect((inst as any).cachedStatus).toBeNull();

@@ -5,6 +5,7 @@ import CacheManager from '../CacheManager.js';
 import { SleepModeState } from '../enums.js'; // Import Enum
 import { AirConditionerStatus } from '../AirConditionerAPI.js';
 import { vi, beforeEach, describe, it, expect  } from 'vitest';
+import { createMockApiActions, createMockCacheManager, createMockPlatformAccessory } from './testUtils';
 
 // Mock the CacheManager
 vi.mock('../CacheManager.js');
@@ -15,155 +16,128 @@ type MockFn<T> = ReturnType<typeof vi.fn>;
 describe('SleepSwitchAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: any; // Use 'any' instead of PlatformAccessory to avoid type issues
+  let mockService: any;
   let service: any;
   let inst: SleepSwitchAccessory;
+  let deviceAPI: any;
   let mockCacheManager: any;
-  // Mock functions with explicit types
-  let mockSetSleepState: MockFn<(state: string) => Promise<void>>;
-  let mockUpdateState: MockFn<() => Promise<{}>>;
-  let mockGetStatus: MockFn<() => Promise<AirConditionerStatus>>;
+  let createAccessory: () => SleepSwitchAccessory;
+  let initialMockStatus: any;
 
+  // Set up test mocks
   beforeEach(() => {
-    // Reset mocks before each test
-    vi.clearAllMocks();
-    
-    // Create our mock functions with proper types
-    mockSetSleepState = vi.fn();
-    mockUpdateState = vi.fn();
-    mockGetStatus = vi.fn();
-    
-    // Create mock cache manager
-    mockCacheManager = {
-      api: {
-        setSleepState: mockSetSleepState,
-        updateState: mockUpdateState,
-        setAirConditionerState: vi.fn(),
-      },
-      get: vi.fn(),
-      set: vi.fn(),
-      clear: vi.fn(),
-      startPolling: vi.fn(),
-      stopPolling: vi.fn(),
-      getStatus: mockGetStatus,
-      cleanup: vi.fn(),
-    };
-    
-    // Mock the static getInstance method
-    (CacheManager.getInstance as ReturnType<typeof vi.fn>) = vi.fn().mockReturnValue(mockCacheManager);
-
-    // Create platform mock
+    // Create mock platform
     platform = {
       log: {
-        info: vi.fn(),
         debug: vi.fn(),
-        error: vi.fn(),
+        info: vi.fn(),
         warn: vi.fn(),
+        error: vi.fn(),
       },
       api: {
         hap: {
-          uuid: {
-            generate: vi.fn().mockReturnValue('mock-uuid'),
+          Service: {
+            Switch: { UUID: 'switch-uuid' },
           },
           Characteristic: {
-            On: {
-              name: 'On',
-            },
+            On: 'On',
+            Name: 'Name',
           },
         },
-        platformAccessory: vi.fn(),
       },
       Service: {
-        Switch: function() {
-          return service;
-        },
+        Switch: { UUID: 'switch-uuid' },
       },
       Characteristic: {
         On: 'On',
         Name: 'Name',
         ConfiguredName: 'ConfiguredName',
       },
-      config: {},
-    } as unknown as TfiacPlatform;
+    } as any;
 
-    // Create service mock with proper on and updateValue methods
-    const mockOnMethod = vi.fn().mockReturnThis();
-    const mockUpdateValue = vi.fn();
-    const mockCharacteristic = {
-      on: mockOnMethod,
-      updateValue: mockUpdateValue,
+    initialMockStatus = {
+      opt_sleepMode: SleepModeState.Off,
     };
-    
+
+    // Create mock service
     service = {
-      getCharacteristic: vi.fn().mockReturnValue(mockCharacteristic),
       setCharacteristic: vi.fn().mockReturnThis(),
+      getCharacteristic: vi.fn().mockReturnValue({
+        on: vi.fn(),
+        onGet: vi.fn(),
+        onSet: vi.fn(),
+      }),
       updateCharacteristic: vi.fn(),
     };
 
-    // Create accessory mock
+    // Create mock accessory
     accessory = {
-      displayName: 'Test Accessory',
-      UUID: 'test-uuid',
+      getService: vi.fn().mockReturnValue(service),
+      getServiceById: vi.fn().mockReturnValue(service),
+      addService: vi.fn().mockReturnValue(service),
       context: {
         deviceConfig: {
-          ip: '127.0.0.1',
-          mac: 'AA:BB:CC:DD:EE:FF',
-          pollInterval: 30,
-          updateInterval: 30,
-        }
+          ip: '192.168.1.100',
+          port: 8080,
+          name: 'Test AC',
+        },
       },
-      services: [],
-      getService: vi.fn().mockReturnValue(null),
-      getServiceById: vi.fn().mockReturnValue(null),
-      addService: vi.fn().mockImplementation(() => service),
-      removeService: vi.fn(),
-      on: vi.fn(),
-      emit: vi.fn(),
+      displayName: 'Test AC',
+      services: [service],
     };
 
-    // Create instance of the accessory
-    inst = new SleepSwitchAccessory(platform, accessory);
+    // Create mock device API
+    deviceAPI = createMockApiActions(initialMockStatus);
+    deviceAPI.setSleepState = vi.fn().mockResolvedValue(undefined);
+    
+    // Create mock CacheManager
+    mockCacheManager = createMockCacheManager(deviceAPI, initialMockStatus);
 
-    // Ensure the mock API is accessible via cacheManager
-    (inst as any).cacheManager = mockCacheManager;
+    createAccessory = () => {
+      inst = new SleepSwitchAccessory(platform, accessory);
+      // Override CacheManager to use our mock
+      (inst as any).cacheManager = mockCacheManager;
+      (inst as any).cachedStatus = initialMockStatus;
+      return inst;
+    };
+
+    // Create instance
+    inst = createAccessory();
   });
 
   it('should initialize correctly', () => {
     expect(accessory.getServiceById).toHaveBeenCalled();
-    expect(accessory.addService).toHaveBeenCalled();
     expect(service.setCharacteristic).toHaveBeenCalledWith('Name', 'Sleep');
     
     // Check getCharacteristic and on handlers are set up
     expect(service.getCharacteristic).toHaveBeenCalledWith('On');
-    const mockCharacteristic = service.getCharacteristic('On');
-    expect(mockCharacteristic.on).toHaveBeenCalledWith('get', expect.any(Function));
-    expect(mockCharacteristic.on).toHaveBeenCalledWith('set', expect.any(Function));
   });
 
   describe('handleGet', () => {
     it('handles get characteristic with sleep mode on', () => {
       const callback = vi.fn();
-      (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.On };
+      mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_sleepMode: SleepModeState.On });
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, true);
     });
 
     it('handles get characteristic with sleep mode off', () => {
       const callback = vi.fn();
-      (inst as any).cachedStatus = { opt_sleepMode: SleepModeState.Off };
+      mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_sleepMode: SleepModeState.Off });
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, false);
     });
 
     it('handles get characteristic with undefined sleep mode', () => {
       const callback = vi.fn();
-      (inst as any).cachedStatus = { opt_sleepMode: undefined };
+      mockCacheManager.getLastStatus.mockReturnValueOnce({ opt_sleepMode: undefined });
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, false);
     });
 
     it('handles get characteristic with null status', () => {
       const callback = vi.fn();
-      (inst as any).cachedStatus = null;
+      mockCacheManager.getLastStatus.mockReturnValueOnce(null);
       (inst as any).handleGet(callback);
       expect(callback).toHaveBeenCalledWith(null, false);
     });

@@ -356,9 +356,13 @@ export class TfiacPlatformAccessory {
       );
       return;
     }
-    this.updateCachedStatus();
+    
+    // Do an initial update before starting the timers
+    this.updateCachedStatus().catch(err => {
+      this.platform.log.error('Initial state fetch failed:', err);
+    });
 
-    const warmupDelay = Math.floor(Math.random() * 10000);
+    const warmupDelay = Math.floor(Math.random() * 5000); // Reduced from 10s to 5s
 
     this.warmupTimeout = setTimeout(() => {
       this.updateCachedStatus().catch(err => {
@@ -368,9 +372,15 @@ export class TfiacPlatformAccessory {
     this.warmupTimeout.unref();
 
     this.pollingInterval = setInterval(() => {
-      this.updateCachedStatus();
+      this.updateCachedStatus().catch(err => {
+        this.platform.log.error('Polling state fetch failed:', err);
+      });
     }, this.pollInterval);
     this.pollingInterval.unref();
+    
+    this.platform.log.debug(
+      `Started polling for ${this.accessory.context.deviceConfig.name} every ${this.pollInterval/1000}s`,
+    );
   }
 
   private async updateCachedStatus(): Promise<void> {

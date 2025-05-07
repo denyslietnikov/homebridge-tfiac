@@ -34,10 +34,10 @@ export enum FanSpeed {
  * Mapping from FanSpeed modes to HomeKit RotationSpeed percentages.
  */
 export const FanSpeedPercentMap: Record<FanSpeed, number> = {
-  [FanSpeed.Low]: 25,
-  [FanSpeed.Middle]: 50,
-  [FanSpeed.High]: 75,
-  [FanSpeed.Auto]: 50,
+  [FanSpeed.Low]: 33,
+  [FanSpeed.Middle]: 66,
+  [FanSpeed.High]: 100,
+  [FanSpeed.Auto]: 66,
 };
 
 /**

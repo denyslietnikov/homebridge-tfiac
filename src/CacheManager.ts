@@ -1,23 +1,44 @@
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
+import { EventEmitter } from 'events';
 
+/**
+ * CacheManager implements caching for API responses and centralizes status updates.
+ * It follows the singleton pattern to ensure only one instance exists per device.
+ */
 export class CacheManager {
   private static instances = new Map<string, CacheManager>();
-  public api: AirConditionerAPI; // Changed from private to public
+  public api: AirConditionerAPI & EventEmitter; // Ensure API has EventEmitter capabilities
   private cache: AirConditionerStatus | null = null;
   private lastFetch = 0;
   private ttl: number;
 
   private constructor(private config: TfiacDeviceConfig) {
-    this.api = new AirConditionerAPI(config.ip, config.port);
-    // Ensure API instance supports event subscription methods
-    const apiEvents = this.api as unknown as Record<string, unknown>;
-    if (typeof apiEvents.on !== 'function') {
-      apiEvents.on = () => { /** no-op */ };
+    // Create the API instance
+    const baseApi = new AirConditionerAPI(config.ip, config.port);
+    
+    // Add EventEmitter capabilities to the API instance if not already present
+    if (!('emit' in baseApi)) {
+      // Mix in EventEmitter methods so they become own properties
+      const emitter = new EventEmitter();
+      const proto = EventEmitter.prototype as unknown;
+      const eventKeys = Object.getOwnPropertyNames(EventEmitter.prototype);
+      eventKeys.forEach((key: string) => {
+        if (key === 'constructor') {
+          return;
+        }
+        const prop = (proto as Record<string, unknown>)[key];
+        if (typeof prop === 'function') {
+          const fn = prop as (...args: unknown[]) => unknown;
+          (baseApi as Record<string, unknown>)[key] = fn.bind(emitter);
+        }
+      });
     }
-    if (typeof apiEvents.off !== 'function') {
-      apiEvents.off = () => { /** no-op */ };
-    }
+    
+    // Cast to the combined type
+    this.api = baseApi as AirConditionerAPI & EventEmitter;
+    
+    // Set TTL based on config
     this.ttl = (config.updateInterval || 30) * 1000;
   }
 
@@ -33,6 +54,9 @@ export class CacheManager {
     return this.instances.get(key)!;
   }
 
+  /**
+   * Gets the status from cache if available and not expired, otherwise fetches from API.
+   */
   async getStatus(): Promise<AirConditionerStatus> {
     const now = Date.now();
     if (this.cache && now - this.lastFetch < this.ttl) {
@@ -41,7 +65,19 @@ export class CacheManager {
     const status = await this.api.updateState();
     this.cache = status;
     this.lastFetch = now;
+    
+    // Emit status update for subscribers
+    this.api.emit('status', status);
+    
     return status;
+  }
+
+  /**
+   * Returns the last cached status without making an API call,
+   * useful for synchronous status checks.
+   */
+  getLastStatus(): AirConditionerStatus | null {
+    return this.cache;
   }
 
   /**
@@ -58,6 +94,11 @@ export class CacheManager {
   cleanup(): void {
     if (this.api && typeof this.api.cleanup === 'function') {
       this.api.cleanup();
+    }
+    
+    // Remove all listeners to prevent memory leaks
+    if (this.api && typeof this.api.removeAllListeners === 'function') {
+      this.api.removeAllListeners();
     }
   }
 }
