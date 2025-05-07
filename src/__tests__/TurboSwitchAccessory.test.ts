@@ -34,6 +34,9 @@ describe('TurboSwitchAccessory', () => {
         warn: vi.fn(),
         error: vi.fn(),
       },
+      config: {
+        debug: false, // Add this property to fix the test
+      },
       api: {
         hap: {
           Service: {

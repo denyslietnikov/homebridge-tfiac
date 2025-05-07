@@ -34,6 +34,9 @@ describe('DisplaySwitchAccessory', () => {
         warn: vi.fn(),
         error: vi.fn(),
       },
+      config: {
+        debug: false, // Add this configuration property
+      },
       api: {
         hap: {
           Service: {
