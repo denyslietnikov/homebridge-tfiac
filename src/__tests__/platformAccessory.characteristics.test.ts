@@ -554,6 +554,7 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       expect(helpers.mapFanModeToRotationSpeed('High')).toBe(75);
       expect(helpers.mapFanModeToRotationSpeed('Middle')).toBe(50);
       expect(helpers.mapFanModeToRotationSpeed('Low')).toBe(25);
+      // Auto maps to 0 as defined in FanSpeedPercentMap
       expect(helpers.mapFanModeToRotationSpeed('Auto')).toBe(0);
       expect(helpers.mapFanModeToRotationSpeed('Unknown')).toBe(50);
     });

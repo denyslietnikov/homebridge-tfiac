@@ -14,6 +14,8 @@ export class FanSpeedAccessory {
   private deviceAPI: AirConditionerAPI;
   private cacheManager: CacheManager;
   private statusListener: (status: AirConditionerStatus | null) => void;
+  private userSetFanMode: FanSpeed | null = null; // Track the user's manually set fan mode
+  private lastUpdateTime: number = 0; // Track when the user last set the fan speed
 
   constructor(
     private readonly platform: TfiacPlatform,
@@ -69,8 +71,11 @@ export class FanSpeedAccessory {
    * Update fan speed based on centralized status
    */
   private updateStatus(status: AirConditionerStatus | null): void {
-    // Update Active state
-    const activeValue = status && status.is_on === PowerState.On
+    // First check if AC is on
+    const isAcOn = status && status.is_on === PowerState.On;
+    
+    // Update Active state - the fan speed accessory should be inactive when AC is off
+    const activeValue = isAcOn
       ? this.platform.Characteristic.Active.ACTIVE
       : this.platform.Characteristic.Active.INACTIVE;
     this.service.updateCharacteristic(
@@ -78,15 +83,38 @@ export class FanSpeedAccessory {
       activeValue,
     );
 
-    // Update RotationSpeed
+    // Update RotationSpeed - only show accurate speed when AC is on
     let value: number;
-    if (status && status.opt_turbo === PowerState.On) {
+    if (!isAcOn) {
+      // When AC is off, set the rotation speed to 0
+      value = 0;
+      this.userSetFanMode = null; // Reset user settings when AC is off
+    } else if (status && status.opt_turbo === PowerState.On) {
       value = FanSpeedPercentMap[FanSpeed.Turbo];
     } else if (status && typeof status.fan_mode === 'string') {
-      value = FanSpeedPercentMap[status.fan_mode as FanSpeed] ?? FanSpeedPercentMap[FanSpeed.Auto];
+      // If user manually set the fan speed recently (within 30 seconds), preserve that setting
+      // instead of using what the air conditioner reports
+      const currentTime = Date.now();
+      const userSetRecently = (currentTime - this.lastUpdateTime) < 30000; // 30 seconds threshold
+      
+      if (this.userSetFanMode !== null && userSetRecently) {
+        // Use the user's setting instead of the one from the AC
+        value = FanSpeedPercentMap[this.userSetFanMode] ?? FanSpeedPercentMap[FanSpeed.Auto];
+        this.platform.log.debug(`Using user-set fan mode: ${this.userSetFanMode} (${value}%) instead of reported: ${status.fan_mode}`);
+      } else {
+        // Otherwise use what the AC reports
+        value = FanSpeedPercentMap[status.fan_mode as FanSpeed] ?? FanSpeedPercentMap[FanSpeed.Auto];
+        
+        // If the value differs from our last setting, log it for debugging
+        if (this.userSetFanMode !== null) {
+          this.platform.log.debug(`Fan mode changed from user setting: was ${this.userSetFanMode}, now ${status.fan_mode} (${value}%)`);
+          this.userSetFanMode = null; // Clear the user setting since it's been overridden
+        }
+      }
     } else {
       value = FanSpeedPercentMap[FanSpeed.Auto];
     }
+    
     this.service.updateCharacteristic(
       this.platform.Characteristic.RotationSpeed,
       value,
@@ -94,17 +122,20 @@ export class FanSpeedAccessory {
   }
 
   private handleActiveGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
-    // Read current characteristic value
-    const current = this.service.getCharacteristic(
-      this.platform.Characteristic.Active,
-    ).value as number;
+    // Get the current status directly from the cache manager
+    const status = this.cacheManager.getLastStatus();
+    
+    // Only return active if AC is on
+    const isActive = status && status.is_on === PowerState.On
+      ? this.platform.Characteristic.Active.ACTIVE
+      : this.platform.Characteristic.Active.INACTIVE;
     
     if (callback && typeof callback === 'function') {
-      callback(null, current ?? this.platform.Characteristic.Active.INACTIVE);
-      return current ?? this.platform.Characteristic.Active.INACTIVE;
+      callback(null, isActive);
+      return isActive;
     }
     
-    return Promise.resolve(current ?? this.platform.Characteristic.Active.INACTIVE);
+    return Promise.resolve(isActive);
   }
 
   private async handleActiveSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
@@ -128,7 +159,20 @@ export class FanSpeedAccessory {
   }
 
   private handleGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
-    // Read current characteristic value
+    // Get current AC status first
+    const status = this.cacheManager.getLastStatus();
+    const isAcOn = status && status.is_on === PowerState.On;
+    
+    // If AC is off, always return 0 rotation speed
+    if (!isAcOn) {
+      if (callback && typeof callback === 'function') {
+        callback(null, 0);
+        return 0;
+      }
+      return Promise.resolve(0);
+    }
+    
+    // Otherwise, return the current rotation speed value
     const current = this.service.getCharacteristic(
       this.platform.Characteristic.RotationSpeed,
     ).value as number;
@@ -143,7 +187,17 @@ export class FanSpeedAccessory {
 
   private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
     try {
-      await this.deviceAPI.setFanSpeed(String(value as number));
+      // Determine what fan mode the user is setting based on the percentage
+      const fanMode = this.mapRotationSpeedToFanMode(value as number);
+      
+      // Store the user's choice and update the timestamp
+      this.userSetFanMode = fanMode;
+      this.lastUpdateTime = Date.now();
+      
+      this.platform.log.debug(`User set fan speed to ${value}%, mapped to mode: ${fanMode}`);
+      
+      // Send the fan mode string to the air conditioner instead of the raw percentage
+      await this.deviceAPI.setFanSpeed(fanMode);
       this.cacheManager.clear();
       if (callback && typeof callback === 'function') {
         callback(null);
@@ -154,6 +208,22 @@ export class FanSpeedAccessory {
       } else {
         throw err;
       }
+    }
+  }
+
+  /**
+   * Convert rotation speed percentage to fan mode
+   * @private
+   */
+  private mapRotationSpeedToFanMode(speed: number): FanSpeed {
+    if (speed <= 25) {
+      return FanSpeed.Low;
+    } else if (speed <= 50) {
+      return FanSpeed.Middle;
+    } else if (speed <= 75) {
+      return FanSpeed.High;
+    } else {
+      return FanSpeed.Auto;
     }
   }
 
