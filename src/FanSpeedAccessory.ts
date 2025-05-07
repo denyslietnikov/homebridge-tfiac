@@ -224,15 +224,19 @@ export class FanSpeedAccessory {
    * @private
    */
   private mapRotationSpeedToFanMode(speed: number): FanSpeed {
-    if (speed <= 25) {
+    if (speed === 0) {
+      return FanSpeed.Auto;  
+    } else if (speed <= 25) {
       return FanSpeed.Low;
     } else if (speed <= 50) {
       return FanSpeed.Middle;
     } else if (speed <= 75) {
       return FanSpeed.High;
-    } else {
-      return FanSpeed.Auto;
+    } else if (speed > 75) {
+      return FanSpeed.Turbo;
     }
+    // Default case (should never happen with the conditions above, but needed for TypeScript)
+    return FanSpeed.Auto;
   }
 
   /**

@@ -675,12 +675,58 @@ describe('AirConditionerAPI extra coverage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    
+    // Create a proper mock for dgram.createSocket
+    const mockSocket = {
+      on: vi.fn(),
+      bind: vi.fn(),
+      setBroadcast: vi.fn(),
+      send: vi.fn(),
+      close: vi.fn(),
+      address: vi.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
+      removeAllListeners: vi.fn(),
+      unref: vi.fn(),
+    };
+    
+    // Mock dgram.createSocket to return our mockSocket
+    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocket);
+    
+    // Implement send behavior
+    mockSocket.send.mockImplementation((...args: unknown[]) => {
+      const callback = args[3] as SendCallback;
+      if (callback) {
+        // Call callback without error
+        callback();
+        // Simulate a response to keep the test moving
+        setTimeout(() => {
+          const handlers = (mockSocket.on.mock.calls as ['message' | 'error', MessageCallback | ErrorCallback][])
+            .filter(([event]) => event === 'message')
+            .map(([, handler]) => handler as MessageCallback);
+            
+          handlers.forEach(handler => handler(Buffer.from(mockResponseXML)));
+        }, 10);
+      }
+    });
+    
     api = new AirConditionerAPI(ip, port);
+    
+    // Also mock the updateState method to prevent actual API calls
+    vi.spyOn(api, 'updateState').mockResolvedValue({
+      is_on: 'on',
+      operation_mode: 'auto',
+      current_temp: 25,
+      target_temp: 25,
+      fan_mode: 'auto',
+      swing_mode: 'off',
+      opt_turbo: PowerState.Off,
+      opt_sleepMode: SleepModeState.Off
+    });
   });
 
   afterEach(() => {
     vi.clearAllTimers();
     vi.useRealTimers();
+    api.cleanup();
   });
 
   it('should reject on sendCommand timeout', async () => {
@@ -756,8 +802,25 @@ describe('AirConditionerAPI extra coverage', () => {
   });
 
   it('should handle XML parse error in updateState', async () => {
+    // Temporarily remove the existing updateState mock
+    vi.mocked(api.updateState).mockRestore();
+    
+    // Now mock the sendCommand method to return bad XML
     vi.spyOn(api as any, 'sendCommand').mockResolvedValue('<badxml>');
+    
     await expect(api.updateState()).rejects.toThrow();
+    
+    // Reinstate the updateState mock for other tests
+    vi.spyOn(api, 'updateState').mockResolvedValue({
+      is_on: 'on',
+      operation_mode: 'auto',
+      current_temp: 25,
+      target_temp: 25,
+      fan_mode: 'auto',
+      swing_mode: 'off',
+      opt_turbo: PowerState.Off,
+      opt_sleepMode: SleepModeState.Off
+    });
   });
 
   it('should handle error in setAirConditionerState if updateState fails', async () => {
@@ -789,9 +852,10 @@ describe('AirConditionerAPI extra coverage', () => {
   });
 
   it('should call setTurboState for on and off', async () => {
-    // Mock setOptionState instead of setAirConditionerState
+    // Mock setOptionState instead of using the actual implementation
     const spy = vi.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
     
+    // Call the methods
     await api.setTurboState(PowerState.On);
     await api.setTurboState(PowerState.Off);
     
@@ -802,9 +866,10 @@ describe('AirConditionerAPI extra coverage', () => {
   });
 
   it('should call setSleepState for on and off', async () => {
-    // Mock setOptionState instead of setAirConditionerState
+    // Mock setOptionState instead of using the actual implementation
     const spy = vi.spyOn(api as any, 'setOptionState').mockResolvedValue(undefined);
     
+    // Call the methods
     await api.setSleepState(SleepModeState.On);
     await api.setSleepState(SleepModeState.Off);
     

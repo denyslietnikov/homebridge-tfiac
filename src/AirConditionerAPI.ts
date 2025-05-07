@@ -3,7 +3,7 @@
 import { EventEmitter } from 'events';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
-import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from './enums.js';
+import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState, FanSpeedPercentMap } from './enums.js';
 
 export interface AirConditionerStatus {
   is_on: PowerState | string; // Allow string for test compatibility
@@ -230,11 +230,29 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   async turnOff(): Promise<void> {
-    // Turn off and reset Sleep Mode in a single command to avoid double beep
+    // Turn off and reset all modes in a single command to avoid multiple beeps
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
-      <SetMessage><TurnOn>off</TurnOn><Opt_sleepMode>off</Opt_sleepMode></SetMessage>
+      <SetMessage>
+        <TurnOn>off</TurnOn>
+        <Opt_sleepMode>off</Opt_sleepMode>
+        <Opt_super>off</Opt_super>
+        <WindSpeed>Auto</WindSpeed>
+        <BaseMode>auto</BaseMode>
+      </SetMessage>
     </msg>`;
     await this.sendCommandWithRetry(command);
+    
+    // Make sure the cached status reflects these changes
+    if (this.lastStatus) {
+      this.lastStatus.is_on = PowerState.Off;
+      this.lastStatus.opt_sleepMode = SleepModeState.Off;
+      this.lastStatus.opt_turbo = PowerState.Off;
+      this.lastStatus.fan_mode = FanSpeed.Auto;
+      this.lastStatus.operation_mode = OperationMode.Auto; // Reset operation mode to Auto
+      
+      // Emit the updated status
+      this.emit('status', this.lastStatus);
+    }
   }
 
   private mapWindDirectionToSwingMode(status: StatusUpdateMsg): string {
@@ -268,11 +286,23 @@ export class AirConditionerAPI extends EventEmitter {
     try {
       const xmlObject = await xml2js.parseStringPromise(response);
       const statusUpdateMsg = xmlObject.msg.statusUpdateMsg[0] as StatusUpdateMsg;
+
+      // Normalize fan_mode: convert numeric strings to FanSpeed enum
+      const rawFan = statusUpdateMsg.WindSpeed[0];
+      let fanMode: FanSpeed | string;
+      if (/^\d+$/.test(rawFan)) {
+        const pct = parseInt(rawFan, 10);
+        // find enum key by matching percentage
+        fanMode = ((Object.entries(FanSpeedPercentMap) as [FanSpeed, number][]) .find(([, v]) => v === pct) || [FanSpeed.Auto])[0];
+      } else {
+        fanMode = rawFan as FanSpeed;
+      }
+
       const status: AirConditionerStatus = {
         current_temp: parseFloat(statusUpdateMsg.IndoorTemp[0]),
         target_temp: parseFloat(statusUpdateMsg.SetTemp[0]),
         operation_mode: statusUpdateMsg.BaseMode[0] as OperationMode, // Assume API sends valid OperationMode strings
-        fan_mode: statusUpdateMsg.WindSpeed[0] as FanSpeed, // Assume API sends valid FanSpeed strings
+        fan_mode: fanMode,
         is_on: statusUpdateMsg.TurnOn[0] as PowerState, // Cast string 'on'/'off' to PowerState
         swing_mode: this.mapWindDirectionToSwingMode(statusUpdateMsg) as SwingMode, // mapWindDirection returns string matching SwingMode
         opt_display: statusUpdateMsg.Opt_display ? statusUpdateMsg.Opt_display[0] as PowerState : undefined, // Cast 'on'/'off'
@@ -281,6 +311,12 @@ export class AirConditionerAPI extends EventEmitter {
         outdoor_temp: statusUpdateMsg.OutdoorTemp && statusUpdateMsg.OutdoorTemp[0] !== undefined ? parseFloat(statusUpdateMsg.OutdoorTemp[0]) : undefined,
         // opt_eco and opt_beep might need similar handling if present in statusUpdateMsg
       };
+
+      // Derive turbo state when fan_mode indicates Turbo
+      if (status.fan_mode === FanSpeed.Turbo) {
+        status.opt_turbo = PowerState.On;
+      }
+
       this.emit('debug', `Parsed status: ${JSON.stringify(status)}`);
       this.lastSyncTime = Date.now();
       this.lastStatus = status;
@@ -344,7 +380,20 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   async setFanSpeed(speed: FanSpeed | string): Promise<void> {
-    await this.setAirConditionerState('fan_mode', speed);
+    // Special handling for Turbo mode
+    if (speed === FanSpeed.Turbo) {
+      // First set Turbo option to 'on'
+      await this.setTurboState(PowerState.On);
+      // Also set fan_mode to ensure consistency
+      await this.setAirConditionerState('fan_mode', speed);
+    } else {
+      // For non-Turbo speeds, turn off Turbo mode if it was on
+      const status = await this.updateState();
+      if (status.opt_turbo === PowerState.On) {
+        await this.setTurboState(PowerState.Off);
+      }
+      await this.setAirConditionerState('fan_mode', speed);
+    }
   }
 
   /**
@@ -377,6 +426,16 @@ export class AirConditionerAPI extends EventEmitter {
    * Uses the generic <Opt_super> tag in the device's XML protocol.
    */
   async setTurboState(state: PowerState): Promise<void> {
+    // If Turbo mode is being enabled, need to disable Sleep mode
+    if (state === PowerState.On) {
+      // Check current status
+      const status = await this.updateState();
+      // If Sleep is active, disable it
+      if (status.opt_sleepMode === SleepModeState.On || 
+          (typeof status.opt_sleepMode === 'string' && status.opt_sleepMode !== 'off')) {
+        await this.setSleepState(SleepModeState.Off);
+      }
+    }
     await this.setOptionState('Opt_super', state);
   }
 
@@ -389,6 +448,17 @@ export class AirConditionerAPI extends EventEmitter {
     const isOn = 
       (typeof state === 'string' && state.toLowerCase() !== 'off') ||
       state === SleepModeState.On;
+
+    // If sleep mode is being enabled
+    if (isOn) {
+      // Get current status
+      
+      // If Turbo mode is active, disable it
+      const status = await this.updateState();
+      if (status.opt_turbo === PowerState.On) {
+        await this.setOptionState('Opt_super', PowerState.Off);
+      }
+    }
 
     const sleepValue = isOn
       ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'

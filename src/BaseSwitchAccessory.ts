@@ -109,6 +109,12 @@ export abstract class BaseSwitchAccessory {
         this.cacheManager.api.on('status', this.statusListener);
         this.cacheManager.api.on('statusChanged', this.statusListener);
       }
+      // Subscribe to API debug events when debug mode is enabled
+      if (this.platform.config?.debug && this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
+        this.cacheManager.api.on('debug', (msg: string) => {
+          this.platform.log.debug(`API debug: ${msg}`);
+        });
+      }
     } else {
       this.platform.log.error(`Failed to initialize ${this.logPrefix} accessory for ${this.accessory.displayName}: no service available`);
     }
