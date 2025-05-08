@@ -5,7 +5,7 @@
  * @param fahrenheit Temperature in Fahrenheit.
  * @returns Temperature in Celsius.
  */
-export function fahrenheitToCelsius(fahrenheit: any): number {
+export function fahrenheitToCelsius(fahrenheit: number | string | null | undefined): number {
   if (fahrenheit == null) {
     return NaN;
   }
