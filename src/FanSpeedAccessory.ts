@@ -7,7 +7,7 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
-import { PowerState, FanSpeed, FanSpeedPercentMap, SleepModeState } from './enums.js';
+import { PowerState, OperationMode, FanSpeed, FanSpeedPercentMap, SleepModeState } from './enums.js';
 
 export class FanSpeedAccessory {
   private service: Service;
@@ -40,13 +40,7 @@ export class FanSpeedAccessory {
       this.cacheManager.api.on('status', this.statusListener);
     }
     
-    // Add debug event listener with Fan Speed API prefix
-    if (this.platform.config.debug) {
-      this.platform.log.debug(`[${this.accessory.displayName}] Fan Speed API: debug listener attached`);
-      this.cacheManager.api.on('debug', msg =>
-        this.platform.log.debug(`[${this.accessory.displayName}] Fan Speed API: ${msg}`),
-      );
-    }
+    // Debug logging is now centralized in platformAccessory.ts
 
     // Get the Active characteristic
     const activeChar = this.service.getCharacteristic(this.platform.Characteristic.Active);
@@ -82,10 +76,15 @@ export class FanSpeedAccessory {
     // First check if AC is on
     const isAcOn = status && status.is_on === PowerState.On;
     
-    // Update Active state - the fan speed accessory should be inactive when AC is off
-    const activeValue = isAcOn
+    // Check operation mode to determine if fan speed should be active
+    const operationMode = status?.operation_mode as OperationMode;
+    const isFanControlAllowed = this.isFanControlAllowedForMode(operationMode);
+
+    // Update Active state
+    const activeValue = (isAcOn && isFanControlAllowed)
       ? this.platform.Characteristic.Active.ACTIVE
       : this.platform.Characteristic.Active.INACTIVE;
+    
     this.service.updateCharacteristic(
       this.platform.Characteristic.Active,
       activeValue,
@@ -93,10 +92,10 @@ export class FanSpeedAccessory {
 
     // Update RotationSpeed - only show accurate speed when AC is on
     let value: number;
-    if (!isAcOn) {
-      // When AC is off, set the rotation speed to 0
+    if (!isAcOn || !isFanControlAllowed) {
+      // When AC is off or mode doesn't support fan control, set the rotation speed to 0
       value = 0;
-      this.userSetFanMode = null; // Reset user settings when AC is off
+      this.userSetFanMode = null; // Reset user settings when fan control is not allowed
     } else if (status && status.opt_turbo === PowerState.On) {
       value = FanSpeedPercentMap[FanSpeed.Turbo];
     } else if (status && typeof status.fan_mode === 'string') {
@@ -129,12 +128,32 @@ export class FanSpeedAccessory {
     );
   }
 
+  /**
+   * Check if fan control is allowed for the given operation mode
+   */
+  private isFanControlAllowedForMode(mode: OperationMode | string | undefined): boolean {
+    if (!mode) {
+      return false;
+    }
+    
+    // Auto mode typically manages fan speed automatically, so users shouldn't control it
+    if (mode === OperationMode.Auto) {
+      return false; // Fan control not allowed in Auto mode
+    }
+    
+    // All other modes should allow fan control
+    return true;
+  }
+
   private handleActiveGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
     // Get the current status directly from the cache manager
     const status = this.cacheManager.getLastStatus();
     
-    // Only return active if AC is on
-    const isActive = status && status.is_on === PowerState.On
+    // Only return active if AC is on and operation mode allows fan control
+    const isAcOn = status && status.is_on === PowerState.On;
+    const isFanControlAllowed = this.isFanControlAllowedForMode(status?.operation_mode as OperationMode);
+    
+    const isActive = (isAcOn && isFanControlAllowed)
       ? this.platform.Characteristic.Active.ACTIVE
       : this.platform.Characteristic.Active.INACTIVE;
     
@@ -153,6 +172,15 @@ export class FanSpeedAccessory {
       if (value === this.platform.Characteristic.Active.ACTIVE) {
         // Turn on AC with current settings
         await this.deviceAPI.turnOn();
+        
+        // Get current status to check operation mode
+        const status = await this.deviceAPI.updateState();
+        
+        // If current mode is Auto, switch to a mode that allows fan control
+        if (status.operation_mode === OperationMode.Auto) {
+          this.platform.log.info('Switching from Auto to Cool mode to allow fan control');
+          await this.deviceAPI.setAirConditionerState('operation_mode', OperationMode.Cool);
+        }
       } else {
         // Turn off AC
         await this.deviceAPI.turnOff();
@@ -176,9 +204,10 @@ export class FanSpeedAccessory {
     // Get current AC status first
     const status = this.cacheManager.getLastStatus();
     const isAcOn = status && status.is_on === PowerState.On;
+    const isFanControlAllowed = this.isFanControlAllowedForMode(status?.operation_mode as OperationMode);
     
-    // If AC is off, always return 0 rotation speed
-    if (!isAcOn) {
+    // If AC is off or fan control not allowed for current mode, always return 0 rotation speed
+    if (!isAcOn || !isFanControlAllowed) {
       if (callback && typeof callback === 'function') {
         callback(null, 0);
         return 0;
@@ -201,6 +230,15 @@ export class FanSpeedAccessory {
 
   private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
     try {
+      // Get current status to check operation mode
+      const status = await this.deviceAPI.updateState();
+      
+      // If current mode doesn't allow fan control, switch to a mode that does
+      if (!this.isFanControlAllowedForMode(status.operation_mode as OperationMode)) {
+        this.platform.log.info(`Current mode ${status.operation_mode} doesn't support fan control, switching to Cool mode`);
+        await this.deviceAPI.setAirConditionerState('operation_mode', OperationMode.Cool);
+      }
+      
       // Determine what fan mode the user is setting based on the percentage
       const fanMode = this.mapRotationSpeedToFanMode(value as number);
       

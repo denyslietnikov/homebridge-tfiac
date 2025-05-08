@@ -56,6 +56,8 @@ export abstract class BaseSwitchAccessory {
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig);
+    // Debug logging is now centralized in platformAccessory.ts
+    // No need to subscribe to API debug events here
 
     // 1) Try by UUID + subtype, 2) fall back to service name
     this.service =
@@ -108,12 +110,6 @@ export abstract class BaseSwitchAccessory {
         // Subscribe to both new and legacy status events
         this.cacheManager.api.on('status', this.statusListener);
         this.cacheManager.api.on('statusChanged', this.statusListener);
-      }
-      // Subscribe to API debug events when debug mode is enabled
-      if (this.platform.config?.debug && this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
-        this.cacheManager.api.on('debug', (msg: string) => {
-          this.platform.log.info(`[${this.logPrefix}] API: ${msg}`);
-        });
       }
     } else {
       this.platform.log.error(`Failed to initialize ${this.logPrefix} accessory for ${this.accessory.displayName}: no service available`);

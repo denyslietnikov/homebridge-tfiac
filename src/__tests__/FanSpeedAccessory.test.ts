@@ -11,7 +11,7 @@ import {
   createMockAPI,
   createMockApiActions
 } from './testUtils.js';
-import { FanSpeed, PowerState } from '../enums.js';
+import { FanSpeed, PowerState, OperationMode } from '../enums.js';
 
 // Use type assertion to fix the ReturnType<typeof vi.fn> compatibility issue
 import AirConditionerAPI from '../AirConditionerAPI.js';
@@ -117,9 +117,13 @@ describe('FanSpeedAccessory', () => {
       };
     });
     
-    // Mock a cached status with fan_mode
+    // Mock a cached status with fan_mode and a valid operation mode that allows fan control
     (inst as any).cacheManager = {
-      getLastStatus: vi.fn().mockReturnValue({ is_on: 'on', fan_mode: 'Middle' }),
+      getLastStatus: vi.fn().mockReturnValue({ 
+        is_on: PowerState.On, 
+        fan_mode: 'Middle',
+        operation_mode: 'Cool' // Add a valid operation mode that allows fan control
+      }),
     };
     
     const result = await new Promise((resolve) => {
@@ -188,8 +192,9 @@ describe('FanSpeedAccessory', () => {
 
   it('should updateStatus and update characteristic with valid fan_mode', () => {
     const inst = new FanSpeedAccessory(platform, accessory);
-    // simulate status event
-    inst['updateStatus']({ fan_mode: '25', is_on: 'on' } as any);
+    // simulate status event with a valid operation mode that allows fan control
+    // Use a valid enum value for fan_mode instead of '25'
+    inst['updateStatus']({ fan_mode: FanSpeed.Low, is_on: PowerState.On, operation_mode: OperationMode.Cool } as any);
     
     // First call updates Active characteristic
     expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
@@ -202,7 +207,7 @@ describe('FanSpeedAccessory', () => {
     expect(service.updateCharacteristic).toHaveBeenNthCalledWith(
       2,
       platform.Characteristic.RotationSpeed,
-      0 // Current behavior now returns 0 instead of 25
+      25 // Now 25 for FanSpeed.Low
     );
   });
 

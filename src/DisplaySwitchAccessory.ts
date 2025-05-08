@@ -22,13 +22,7 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       'Display',
     );
     
-    // Add debug event listener with Display API prefix
-    if (this.platform.config.debug) {
-      this.platform.log.debug(`[${this.accessory.displayName}] Display API: debug listener attached`);
-      this.cacheManager.api.on('debug', msg =>
-        this.platform.log.debug(`[${this.accessory.displayName}] Display API: ${msg}`),
-      );
-    }
+    // Debug logging is now centralized in platformAccessory.ts
   }
 
   /**
