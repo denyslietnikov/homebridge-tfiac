@@ -75,6 +75,15 @@ describe('TfiacPlatformAccessory extra tests', () => {
 
     // Create mock platform
     platform = createMockPlatform();
+    // Add spy methods to the existing log object rather than replacing it
+    Object.defineProperties(platform.log!, {
+      'debug': { value: vi.fn() },
+      'info': { value: vi.fn() },
+      'warn': { value: vi.fn() },
+      'error': { value: vi.fn() },
+      'log': { value: vi.fn() },
+      'success': { value: vi.fn() }
+    });
 
     // Make Service / Characteristic maps typeless to avoid TS clashes in unit tests
     (platform as any).Service = {
@@ -233,10 +242,12 @@ describe('TfiacPlatformAccessory extra tests', () => {
     expect(inst['mapFanModeToRotationSpeed']('X' as FanSpeed)).toBe(50); // Updated to match actual behavior (50 not 0)
 
     // Updated expectations for rotation speed to fan mode mapping
-    expect(inst['mapRotationSpeedToFanMode'](10)).toBe(FanSpeed.Auto); // Updated to match actual behavior
-    expect(inst['mapRotationSpeedToFanMode'](40)).toBe(FanSpeed.Middle);
-    expect(inst['mapRotationSpeedToFanMode'](60)).toBe(FanSpeed.Middle); // Updated to match actual behavior
-    expect(inst['mapRotationSpeedToFanMode'](90)).toBe(FanSpeed.Turbo); // Updated to match actual behavior
+    expect(inst['mapRotationSpeedToFanMode'](0)).toBe(FanSpeed.Auto);    // 0-15% → Auto
+    expect(inst['mapRotationSpeedToFanMode'](10)).toBe(FanSpeed.Auto);   // 0-15% → Auto
+    expect(inst['mapRotationSpeedToFanMode'](20)).toBe(FanSpeed.Low);    // >15% closer to Low (25%)
+    expect(inst['mapRotationSpeedToFanMode'](40)).toBe(FanSpeed.Middle); // >15% closer to Middle (50%)
+    expect(inst['mapRotationSpeedToFanMode'](60)).toBe(FanSpeed.Middle); // >15% closer to Middle (50%), NOT to High (75%)
+    expect(inst['mapRotationSpeedToFanMode'](90)).toBe(FanSpeed.Turbo);  // >15% closer to Turbo (100%)
 
     expect(inst.fahrenheitToCelsius(32)).toBe(0);
     expect(inst.celsiusToFahrenheit(0)).toBe(32);

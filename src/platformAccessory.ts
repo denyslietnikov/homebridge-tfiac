@@ -71,7 +71,7 @@ export class TfiacPlatformAccessory {
     // Shared API instance for all accessory services
     this.deviceAPI = this.cacheManager.api;
     
-    // Подписка на debug события API если включен режим отладки
+    // Subscribe to debug API events if debug mode is enabled
     if (this.platform.config?.debug && this.deviceAPI && typeof this.deviceAPI.on === 'function') {
       this.deviceAPI.on('debug', (msg: string) => {
         this.platform.log.debug(`[${deviceConfig.name}] API: ${msg}`);
@@ -387,7 +387,9 @@ export class TfiacPlatformAccessory {
         this.platform.log.error('Polling state fetch failed:', err);
       });
     }, this.pollInterval);
-    this.pollingInterval.unref();
+    if (this.pollingInterval && typeof this.pollingInterval.unref === 'function') {
+      this.pollingInterval.unref();
+    }
     
     this.platform.log.debug(
       `Started polling for ${this.accessory.context.deviceConfig.name} every ${this.pollInterval/1000}s`,
@@ -731,9 +733,21 @@ export class TfiacPlatformAccessory {
   }
 
   private mapRotationSpeedToFanMode(speed: number): FanSpeed {
+    // Special handling for very low values (0-15%) -> FanSpeed.Auto
+    if (speed <= 15) {
+      return FanSpeed.Auto;
+    }
+    
+    // For all other values, use nearest mode lookup
     let nearestMode: FanSpeed = FanSpeed.Auto;
     let minDiff = Infinity;
+    
+    // Exclude Auto from comparison for non-zero speeds
     for (const [mode, percent] of Object.entries(FanSpeedPercentMap) as [FanSpeed, number][]) {
+      if (mode === FanSpeed.Auto) {
+        continue;
+      } // Skip Auto for non-zero speeds
+      
       const diff = Math.abs(speed - percent);
       if (diff < minDiff) {
         minDiff = diff;

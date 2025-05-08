@@ -144,6 +144,12 @@ export class StandaloneFanAccessory {
   }
 
   private mapRotationSpeedToFanMode(speed: number): FanSpeed {
+    // Special handling for 0% -> FanSpeed.Auto
+    if (speed === 0) {
+      return FanSpeed.Auto;
+    }
+    
+    // For other values use ranges
     if (speed <= 25) {
       return FanSpeed.Low;
     } else if (speed <= 50) {

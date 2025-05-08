@@ -29,8 +29,15 @@ import {
   mockPlatformAccessory
 } from './testUtils.js';
 
-// Create a mockLogger instance
-const mockLogger = createMockLogger();
+// Ensure this mockLogger is a full vi.fn mock to enable spy checking
+const mockLogger = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn(),
+  log: vi.fn(),
+  success: vi.fn()
+};
 
 // Collection to store TfiacPlatformAccessory instances for cleanup
 const tfiacAccessoryInstances: TfiacPlatformAccessory[] = [];
@@ -188,16 +195,10 @@ describe('TfiacPlatform', () => {
 
   beforeEach(() => {
     // Reset all mocks
+    // Clear all mocks
     vi.clearAllMocks();
 
-    // Use the didFinishLaunchingCallback variable declared at module level
-    didFinishLaunchingCallback = () => {};
-
-    // Reset logger mocks
-    (mockLogger.debug as ReturnType<typeof vi.fn>).mockReset();
-    (mockLogger.info as ReturnType<typeof vi.fn>).mockReset();
-    (mockLogger.warn as ReturnType<typeof vi.fn>).mockReset();
-    (mockLogger.error as ReturnType<typeof vi.fn>).mockReset();
+    // Logger mocks are cleared globally via clearAllMocks
 
     // Reset API mocks specifically
     (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockReset();
@@ -245,10 +246,8 @@ describe('TfiacPlatform', () => {
 
     platform = new TfiacPlatform(mockLogger, config, mockAPI);
 
-    // Clear logger mocks for subsequent tests
-    (mockLogger.debug as ReturnType<typeof vi.fn>).mockClear();
-    (mockLogger.info as ReturnType<typeof vi.fn>).mockClear();
-    (mockLogger.warn as ReturnType<typeof vi.fn>).mockClear();
+    // Use vi.clearAllMocks() instead of individual mockClear calls
+    // This already happened at the beginning of beforeEach
   });
 
   // Clean up after each test

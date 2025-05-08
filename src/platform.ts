@@ -89,8 +89,16 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
 
+    // Wrap the log.debug method to respect the config.debug flag
+    const originalDebug = this.log.debug.bind(this.log);
+    this.log.debug = (...args: [message: string, ...optionalParams: unknown[]]) => {
+      if (this.config.debug) {
+        originalDebug(...args);
+      }
+    };
+
     this.log.debug('TfiacPlatform constructor called');
-    
+
     // Initialize accessory configs
     this.initializeAccessoryConfigs();
 

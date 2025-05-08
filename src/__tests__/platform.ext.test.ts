@@ -135,7 +135,8 @@ beforeAll(async () => {
 });
 
 import { TfiacPlatformAccessory } from '../platformAccessory.js';
-import { TfiacPlatform } from '../platform.js';
+// We'll dynamically import the real platform to avoid the top-level mock
+let RealTfiacPlatform: any;
 import { API, Logger, PlatformAccessory, PlatformConfig } from 'homebridge';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacDeviceConfig } from '../settings.js';
 import * as dgram from 'dgram';
@@ -274,20 +275,23 @@ const createMocks = (): { mockLogger: Logger; mockAPI: API } => {
 describe('TfiacPlatform Extension Methods', () => {
   let mockLogger: MockLogger;
   let mockAPI: MockAPI;
-  let platform: TfiacPlatform;
-  
+  let platform: any; // RealTfiacPlatform instance
+   
   // Set a higher timeout for async tests
   vi.setConfig({ testTimeout: 10000 });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset mocks between tests
     vi.clearAllMocks();
     vi.resetModules();
-    
+     
     // Create fresh mocks for each test
     mockLogger = createMockLogger();
+    mockLogger.debug = vi.fn();
+    mockLogger.info = vi.fn();
+    mockLogger.error = vi.fn();
     mockAPI = createMockAPI();
-    
+     
     const mockConfig = createMockPlatformConfig({
       devices: [
         {
@@ -297,11 +301,13 @@ describe('TfiacPlatform Extension Methods', () => {
       ]
     });
 
-    // Unmock platform module to use the real implementation
+    // Dynamically import the real platform implementation
     vi.unmock('../platform');
-    
+    const platformModule = await vi.importActual('../platform.js');
+    RealTfiacPlatform = platformModule.TfiacPlatform;
+
     // Create a fresh platform instance for each test
-    platform = new TfiacPlatform(mockLogger, mockConfig, mockAPI);
+    platform = new RealTfiacPlatform(mockLogger, mockConfig, mockAPI);
   });
 
   afterEach(() => {
@@ -331,7 +337,7 @@ describe('TfiacPlatform Extension Methods', () => {
     });
     
     // Create a new platform instance with our config
-    const testPlatform = new TfiacPlatform(mockLogger, configWithDiscoveryDisabled, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, configWithDiscoveryDisabled, mockAPI);
     
     // Mock the discoverDevicesNetwork method
     const mockDiscoverNetwork = vi.fn();
@@ -369,7 +375,7 @@ describe('TfiacPlatform Extension Methods', () => {
     });
     
     // Create a new platform instance
-    const testPlatform = new TfiacPlatform(mockLogger, configWithMissingIP, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, configWithMissingIP, mockAPI);
     (testPlatform as any).accessories = [];
     
     // Mock the network discovery to do nothing
@@ -409,7 +415,7 @@ describe('TfiacPlatform Extension Methods', () => {
     });
     
     // Setup the platform with our existing accessory
-    const testPlatform = new TfiacPlatform(mockLogger, config, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, config, mockAPI);
     (testPlatform as any).accessories = [existingAccessory];
     
     // Make sure the UUID for the accessory matches
@@ -449,7 +455,7 @@ describe('TfiacPlatform Extension Methods', () => {
     });
     
     // Setup platform with the stale accessory
-    const testPlatform = new TfiacPlatform(mockLogger, config, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, config, mockAPI);
     (testPlatform as any).accessories = [staleAccessory];
     
     // Mock a discovered accessory
@@ -491,7 +497,7 @@ describe('TfiacPlatform Extension Methods', () => {
       devices: []
     });
     
-    const testPlatform = new TfiacPlatform(mockLogger, config, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, config, mockAPI);
     (testPlatform as any).accessories = [];
     
     // Create an accessory to be loaded from cache
@@ -548,7 +554,7 @@ describe('TfiacPlatform Extension Methods', () => {
       enableDiscovery: true
     });
     
-    const testPlatform = new TfiacPlatform(mockLogger, config, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, config, mockAPI);
     
     // Create a mocked version of discoverDevicesNetwork that immediately rejects
     const mockError = new Error('Mock socket error');
@@ -575,7 +581,7 @@ describe('TfiacPlatform Extension Methods', () => {
     });
     
     // Setup platform
-    const testPlatform = new TfiacPlatform(mockLogger, config, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, config, mockAPI);
     (testPlatform as any).accessories = [];
     
     // Mock discoverDevicesNetwork to return an IP
@@ -618,7 +624,7 @@ describe('TfiacPlatform Extension Methods', () => {
       enableDiscovery: true
     });
     
-    const testPlatform = new TfiacPlatform(mockLogger, config, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, config, mockAPI);
     (testPlatform as any).accessories = [];
     
     // Mock discoverDevicesNetwork to return an IP
@@ -654,7 +660,7 @@ describe('TfiacPlatform Extension Methods', () => {
     });
     
     // Setup platform
-    const testPlatform = new TfiacPlatform(mockLogger, config, mockAPI);
+    const testPlatform = new RealTfiacPlatform(mockLogger, config, mockAPI);
     (testPlatform as any).accessories = [];
     
     // Run discovery
@@ -675,21 +681,32 @@ describe('TfiacPlatform Extension Methods', () => {
 /* ------------------------------------------------------------------ */
 describe('TfiacPlatform UDP discovery error branches', () => {
   let TfiacPlatformModule;
-  
+  let mockLogger: MockLogger;
+
   beforeAll(async () => {
     vi.resetModules();
     TfiacPlatformModule = await import('../platform');
   });
 
-  const mockLogger = {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    success: vi.fn(),
-    log: vi.fn(),
-  };
-  
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+
+    // Create explicit vi.fn() mocks for the logger to ensure they're proper spies
+    mockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
+      success: vi.fn()
+    };
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
   const mockAPI = {
     hap: {
       uuid: { generate: vi.fn((str: string) => 'uuid-' + str) },
@@ -714,77 +731,71 @@ describe('TfiacPlatform UDP discovery error branches', () => {
     enableDiscovery: true 
   };
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
   it('should handle UDP response without IndoorTemp tag', async () => {
-    // Mock xml2js specifically for this test to ensure proper behavior
     const xml2js = await import('xml2js');
-    
-    // Setup mock implementation for parseStringPromise that properly handles our test cases
+
+    // Explicitly create vi.fn() mocks for each logger method
+    const testMockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
+      success: vi.fn()
+    };
+
     (xml2js.parseStringPromise as any).mockImplementation(async (xmlString: string): Promise<any> => {
       if (xmlString.includes('<IndoorTemp>')) {
         return {
           msg: {
-            statusUpdateMsg: [{ IndoorTemp: ['25'] }]
-          }
+            statusUpdateMsg: [{ IndoorTemp: ['25'] }],
+          },
         };
       } else if (xmlString.includes('<OtherTag>')) {
         return {
           msg: {
-            statusUpdateMsg: [{ OtherTag: ['25'] }]
-          }
+            statusUpdateMsg: [{ OtherTag: ['25'] }],
+          },
         };
       }
       return { msg: { statusUpdateMsg: [{}] } };
     });
-    
-    // Create a platform instance
-    const platform = new TfiacPlatformModule.TfiacPlatform(mockLogger, config, mockAPI);
-    
-    // Create a custom implementation of the message handler logic
-    const handleMessage = async (msg: Buffer, rinfo: {address: string; port: number}) => {
+
+    const handleDiscoveryMessage = async (msg: Buffer, rinfo: { address: string; port: number }) => {
       const xmlString = msg.toString();
       if (xmlString.includes('<statusUpdateMsg>')) {
         const xmlObject = await xml2js.parseStringPromise(xmlString);
         
-        // This is the key part we're testing:
-        // The platform should check for IndoorTemp before adding to discoveredIPs
         if (xmlObject?.msg?.statusUpdateMsg?.[0]?.IndoorTemp?.[0]) {
-          return true; // would add to discoveredIPs
+          return true;
         } else {
-          mockLogger.debug(`Ignoring non-status response from ${rinfo.address}`, xmlString);
-          return false; // would not add to discoveredIPs
+          testMockLogger.debug(`Ignoring non-status response from ${rinfo.address}`, xmlString);
+          return false;
         }
       }
       return false;
     };
 
-    // Test with a response that doesn't have IndoorTemp
     const noIndoorTempResponse = Buffer.from(
       '<msg><statusUpdateMsg><OtherTag>25</OtherTag></statusUpdateMsg></msg>'
     );
-    const shouldAdd1 = await handleMessage(
-      noIndoorTempResponse, 
-      { address: '192.168.0.200', port: 7777 }
-    );
-    
-    // Test with a response that does have IndoorTemp
+    const shouldAdd1 = await handleDiscoveryMessage(noIndoorTempResponse, {
+      address: '192.168.0.200',
+      port: 7777,
+    });
+
     const withIndoorTempResponse = Buffer.from(
       '<msg><statusUpdateMsg><IndoorTemp>25</IndoorTemp></statusUpdateMsg></msg>'
     );
-    const shouldAdd2 = await handleMessage(
-      withIndoorTempResponse,
-      { address: '192.168.0.201', port: 7777 }
-    );
-    
-    // We expect only the second message to pass validation
+    const shouldAdd2 = await handleDiscoveryMessage(withIndoorTempResponse, {
+      address: '192.168.0.201',
+      port: 7777,
+    });
+
     expect(shouldAdd1).toBe(false);
     expect(shouldAdd2).toBe(true);
-    
-    // Check that the debug log was called for ignoring the response
-    expect(mockLogger.debug).toHaveBeenCalledWith(
+
+    expect(testMockLogger.debug).toHaveBeenCalledWith(
       'Ignoring non-status response from 192.168.0.200',
       expect.any(String)
     );

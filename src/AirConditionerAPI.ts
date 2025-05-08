@@ -230,14 +230,19 @@ export class AirConditionerAPI extends EventEmitter {
   }
 
   async turnOff(): Promise<void> {
-    // Turn off and reset all modes in a single command to avoid multiple beeps
+    // Save current operation mode before turning off
+    let currentOperationMode = OperationMode.Auto;
+    if (this.lastStatus && this.lastStatus.operation_mode) {
+      currentOperationMode = this.lastStatus.operation_mode as OperationMode;
+    }
+    
+    // Turn off and reset modes like sleepMode and turbo in a single command to avoid multiple beeps
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
       <SetMessage>
         <TurnOn>off</TurnOn>
         <Opt_sleepMode>off</Opt_sleepMode>
         <Opt_super>off</Opt_super>
         <WindSpeed>Auto</WindSpeed>
-        <BaseMode>auto</BaseMode>
       </SetMessage>
     </msg>`;
     
@@ -255,7 +260,8 @@ export class AirConditionerAPI extends EventEmitter {
       this.lastStatus.opt_sleepMode = SleepModeState.Off;
       this.lastStatus.opt_turbo = PowerState.Off;
       this.lastStatus.fan_mode = FanSpeed.Auto;
-      this.lastStatus.operation_mode = OperationMode.Auto; // Reset operation mode to Auto
+      // Preserve current operation mode instead of resetting to Auto
+      this.lastStatus.operation_mode = currentOperationMode;
       
       // Emit the updated status
       this.emit('status', this.lastStatus);

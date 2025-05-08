@@ -318,9 +318,15 @@ describe('StandaloneFanAccessory', () => {
 
   it('should map rotation speeds to fan modes correctly', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    expect((inst as any).mapRotationSpeedToFanMode(20)).toBe('Low');
+    // Exactly 0% → Auto
+    expect((inst as any).mapRotationSpeedToFanMode(0)).toBe('Auto');
+    // 1-25% → Low
+    expect((inst as any).mapRotationSpeedToFanMode(10)).toBe('Low');
+    // 26-50% → Middle
     expect((inst as any).mapRotationSpeedToFanMode(40)).toBe('Middle');
-    expect((inst as any).mapRotationSpeedToFanMode(70)).toBe('High');
-    expect((inst as any).mapRotationSpeedToFanMode(100)).toBe('Auto');
+    // 51-75% → High
+    expect((inst as any).mapRotationSpeedToFanMode(60)).toBe('High');
+    // 76-100% → Auto (code returns Auto for values > 75%)
+    expect((inst as any).mapRotationSpeedToFanMode(90)).toBe('Auto');
   });
 });

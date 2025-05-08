@@ -561,10 +561,14 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     
     it('should map all rotation speeds to correct fan mode', () => {
       const helpers = getHelpers(accessory);
+      // 0-15% → Auto
+      expect(helpers.mapRotationSpeedToFanMode(0)).toBe('Auto');
       expect(helpers.mapRotationSpeedToFanMode(10)).toBe('Auto');
-      expect(helpers.mapRotationSpeedToFanMode(30)).toBe('Low');
-      expect(helpers.mapRotationSpeedToFanMode(60)).toBe('Middle');
-      expect(helpers.mapRotationSpeedToFanMode(80)).toBe('High');
+      // >15% - find nearest mode
+      expect(helpers.mapRotationSpeedToFanMode(20)).toBe('Low');    // closer to Low (25%)
+      expect(helpers.mapRotationSpeedToFanMode(40)).toBe('Middle'); // closer to Middle (50%)
+      expect(helpers.mapRotationSpeedToFanMode(60)).toBe('Middle'); // closer to Middle (50%), NOT to High (75%)
+      expect(helpers.mapRotationSpeedToFanMode(90)).toBe('Turbo');  // closer to Turbo (100%)
     });
   });
 
