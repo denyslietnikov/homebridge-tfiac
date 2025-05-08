@@ -21,18 +21,17 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
         const state = value ? SleepModeState.On : SleepModeState.Off;
         
         if (value) {
-          // If Sleep is being enabled, check and turn off Turbo if necessary
+          // If Sleep is being enabled
           const status = await this.cacheManager.api.updateState();
+          
           if (status.opt_turbo === PowerState.On) {
-            // Turn off Turbo when enabling Sleep
+            // First turn off Turbo mode if it's on
             await this.cacheManager.api.setTurboState(PowerState.Off);
           }
           
-          // Set sleep mode
-          await this.cacheManager.api.setSleepState(state);
-          
-          // Set fan to Low speed in Sleep mode
-          await this.cacheManager.api.setFanSpeed(FanSpeed.Low);
+          // Use combined command to set both sleep and fan speed at once
+          // This reduces the number of beeps from multiple commands
+          await this.cacheManager.api.setFanAndSleepState(FanSpeed.Low, state);
         } else {
           // Simply turn off Sleep mode
           await this.cacheManager.api.setSleepState(state);
@@ -40,7 +39,5 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
       },
       'Sleep',
     );
-    
-    // Debug logging is now centralized in platformAccessory.ts
   }
 }

@@ -3,7 +3,7 @@ import { SleepSwitchAccessory } from '../SleepSwitchAccessory.js';
 import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
 import { createMockApiActions, createMockCacheManager } from './testUtils';
-import { SleepModeState, PowerState } from '../enums.js';
+import { SleepModeState, PowerState, FanSpeed } from '../enums.js';
 
 // Create mock implementations
 vi.mock('../CacheManager.js', () => ({
@@ -89,6 +89,8 @@ describe('SleepSwitchAccessory', () => {
     // Create API mock with sleep methods
     mockApiActions = createMockApiActions({ opt_sleep: 'on' });
     mockApiActions.setSleepState = vi.fn().mockResolvedValue(undefined);
+    mockApiActions.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    mockApiActions.setTurboState = vi.fn().mockResolvedValue(undefined);
     
     // Create mock CacheManager
     mockCacheManager = createMockCacheManager(mockApiActions, { opt_sleep: 'on' });
@@ -146,10 +148,49 @@ describe('SleepSwitchAccessory', () => {
   it('handles set characteristic to turn sleep on', async () => {
     createAccessory();
     const callback = vi.fn();
+    // Mock a device status with Turbo off
+    mockApiActions.updateState = vi.fn().mockResolvedValue({ opt_turbo: 'off' });
+    
     await (inst as any).handleSet(true, callback);
-    expect(mockApiActions.setSleepState).toHaveBeenCalledWith(SleepModeState.On);
+    
+    // Check that setFanAndSleepState was called instead of setSleepState
+    expect(mockApiActions.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
     // Don't expect clear() to be called
     expect(mockCacheManager.clear).not.toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
+  });
+
+  it('handles set characteristic to turn sleep on when turbo is active', async () => {
+    createAccessory();
+    const callback = vi.fn();
+    
+    // Mock the API object with all required methods
+    const mockUpdateState = vi.fn().mockResolvedValue({ opt_turbo: PowerState.On });
+    const mockSetTurboState = vi.fn().mockResolvedValue(undefined);
+    const mockSetFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    
+    // Properly attach our mocks to the API object
+    mockApiActions.updateState = mockUpdateState;
+    mockApiActions.setTurboState = mockSetTurboState;
+    mockApiActions.setFanAndSleepState = mockSetFanAndSleepState;
+    
+    // Make sure our mocks are attached to the cacheManager
+    mockCacheManager.api = mockApiActions;
+    
+    // Ensure our accessory has these mocks
+    (inst as any).cacheManager = mockCacheManager;
+    
+    // Call the handleSet method directly (which simulates turning sleep ON)
+    await (inst as any).handleSet(true, callback);
+    
+    // Verify our updateState mock was called
+    expect(mockUpdateState).toHaveBeenCalled();
+    
+    // Now check that the turbo state was set to off
+    expect(mockSetTurboState).toHaveBeenCalledWith(PowerState.Off);
+    
+    // And also check the sleep state was set correctly
+    expect(mockSetFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -167,9 +208,12 @@ describe('SleepSwitchAccessory', () => {
     createAccessory();
     const callback = vi.fn();
     const error = new Error('Network error');
-    mockApiActions.setSleepState.mockRejectedValue(error);
+    mockApiActions.updateState = vi.fn().mockResolvedValue({ opt_turbo: 'off' });
+    mockApiActions.setFanAndSleepState.mockRejectedValue(error);
+    
     await (inst as any).handleSet(true, callback);
-    expect(mockApiActions.setSleepState).toHaveBeenCalledWith(SleepModeState.On);
+    
+    expect(mockApiActions.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
     expect(callback).toHaveBeenCalledWith(error);
     expect(platform.log.error).toHaveBeenCalledWith(
       expect.stringContaining('Error setting Sleep'),
