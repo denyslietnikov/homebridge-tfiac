@@ -11,6 +11,7 @@ import {
   createMockAPI,
   createMockApiActions
 } from './testUtils.js';
+import { FanSpeed, PowerState } from '../enums.js';
 
 // Use type assertion to fix the ReturnType<typeof vi.fn> compatibility issue
 import AirConditionerAPI from '../AirConditionerAPI.js';
@@ -254,5 +255,32 @@ describe('FanSpeedAccessory', () => {
     
     expect(accessory.addService).not.toHaveBeenCalled();
     expect(accessory.getServiceById).toHaveBeenCalled();
+  });
+
+  it('should handle get promise without callback when AC is off', async () => {
+    const inst = new FanSpeedAccessory(platform, accessory);
+    (inst as any).cacheManager = { getLastStatus: vi.fn().mockReturnValue({ is_on: PowerState.Off }) };
+    const result = await (inst as any).handleGet();
+    expect(result).toBe(0);
+  });
+
+  it('should handle set Auto mode (0%) using setFanAndSleepState', async () => {
+    const inst = new FanSpeedAccessory(platform, accessory);
+    (inst as any).deviceAPI = deviceAPI;
+    // Mock setFanAndSleepState on the API
+    (deviceAPI as any).setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    const cb = vi.fn();
+    await (inst as any).handleSet(0, cb);
+    expect((deviceAPI as any).setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Auto, expect.anything());
+    expect(cb).toHaveBeenCalledWith(null);
+  });
+
+  it('should map rotation speeds to fan modes correctly', () => {
+    const inst = new FanSpeedAccessory(platform, accessory);
+    expect((inst as any).mapRotationSpeedToFanMode(0)).toBe(FanSpeed.Auto);
+    expect((inst as any).mapRotationSpeedToFanMode(25)).toBe(FanSpeed.Low);
+    expect((inst as any).mapRotationSpeedToFanMode(50)).toBe(FanSpeed.Middle);
+    expect((inst as any).mapRotationSpeedToFanMode(75)).toBe(FanSpeed.High);
+    expect((inst as any).mapRotationSpeedToFanMode(100)).toBe(FanSpeed.Turbo);
   });
 });
