@@ -94,7 +94,7 @@ describe('SleepSwitchAccessory', () => {
     mockApiActions.setTurboAndSleep = vi.fn().mockResolvedValue(undefined);
     
     // Create mock CacheManager
-    mockCacheManager = createMockCacheManager(mockApiActions, { opt_sleep: 'on' });
+    mockCacheManager = createMockCacheManager(mockApiActions, { opt_sleepMode: SleepModeState.On });
 
     // No listener capture; tests will call updateStatus directly
   });
@@ -122,7 +122,7 @@ describe('SleepSwitchAccessory', () => {
     createAccessory();
     const callback = vi.fn();
     // Sleep is on AND AC is on
-    inst.updateStatus({ opt_sleep: 'on', is_on: 'on' } as any);
+    inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
     
     (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, true);
@@ -132,7 +132,7 @@ describe('SleepSwitchAccessory', () => {
     createAccessory();
     const callback = vi.fn();
     // Sleep is on but AC is off
-    inst.updateStatus({ opt_sleep: 'on', is_on: 'off' } as any);
+    inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.Off } as any);
     
     (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
@@ -141,7 +141,7 @@ describe('SleepSwitchAccessory', () => {
   it('handles get characteristic with sleep off', () => {
     createAccessory();
     const callback = vi.fn();
-    inst.updateStatus({ opt_sleep: 'off', is_on: 'on' } as any);
+    inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On } as any);
     
     (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, false);
@@ -276,10 +276,10 @@ describe('SleepSwitchAccessory', () => {
     it('updates characteristic when sleep state changes from off to on', () => {
       createAccessory();
       // AC is on for both cases
-      inst.updateStatus({ opt_sleep: 'off', is_on: 'on' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On } as any);
       mockService.updateCharacteristic.mockClear();
       
-      inst.updateStatus({ opt_sleep: 'on', is_on: 'on' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
       
       expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
     });
@@ -287,30 +287,30 @@ describe('SleepSwitchAccessory', () => {
     it('updates characteristic when sleep state changes from on to off', () => {
       createAccessory();
       // AC is on for both cases
-      inst.updateStatus({ opt_sleep: 'on', is_on: 'on' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
       mockService.updateCharacteristic.mockClear();
       
-      inst.updateStatus({ opt_sleep: 'off', is_on: 'on' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On } as any);
       
       expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
     });
 
     it('does not update characteristic if sleep state unchanged (on)', () => {
       createAccessory();
-      inst.updateStatus({ opt_sleep: 'on' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
       mockService.updateCharacteristic.mockClear();
       
-      inst.updateStatus({ opt_sleep: 'on' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
       
       expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
     });
 
     it('does not update characteristic if sleep state unchanged (off)', () => {
       createAccessory();
-      inst.updateStatus({ opt_sleep: 'off' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On } as any);
       mockService.updateCharacteristic.mockClear();
       
-      inst.updateStatus({ opt_sleep: 'off' } as any);
+      inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On } as any);
       
       expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
     });
