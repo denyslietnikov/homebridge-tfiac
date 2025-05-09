@@ -3,6 +3,7 @@ import { TurboSwitchAccessory } from '../TurboSwitchAccessory.js';
 import { PlatformAccessory, Service } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
 import { createMockApiActions, createMockCacheManager } from './testUtils';
+import { FanSpeed, SleepModeState } from '../enums.js';
 
 // Create mock implementations
 vi.mock('../CacheManager.js', () => ({
@@ -154,8 +155,18 @@ describe('TurboSwitchAccessory', () => {
   it('handles set characteristic to turn turbo off', async () => {
     createAccessory();
     const callback = vi.fn();
+    
+    // The mock API is injected into the cacheManager, so we need to set it there
+    mockCacheManager.api.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    
+    // Inject our mock cache manager into the instance
+    (inst as any).cacheManager = mockCacheManager;
+    
     await (inst as any).handleSet(false, callback);
-    expect(mockApiActions.setTurboState).toHaveBeenCalledWith('off');
+    
+    // Check that setFanAndSleepState was called with Auto fan speed and sleep off
+    expect(mockCacheManager.api.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Auto, SleepModeState.Off);
+    
     // Don't expect clear() to be called in the new implementation
     expect(mockCacheManager.clear).not.toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
@@ -165,7 +176,7 @@ describe('TurboSwitchAccessory', () => {
     createAccessory();
     const callback = vi.fn();
     const error = new Error('Network error');
-    mockApiActions.setTurboState.mockRejectedValue(error);
+    mockApiActions.setTurboState.mockRejectedValueOnce(error);
     await (inst as any).handleSet(true, callback);
     expect(mockApiActions.setTurboState).toHaveBeenCalledWith('on');
     expect(callback).toHaveBeenCalledWith(error);

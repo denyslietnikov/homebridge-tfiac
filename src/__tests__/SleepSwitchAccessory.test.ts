@@ -254,7 +254,7 @@ describe('SleepSwitchAccessory', () => {
     const error = new Error('Network error');
     
     // Ensure our mocks are properly defined
-    mockApiActions.setTurboAndSleep = vi.fn().mockRejectedValue(error);
+    mockApiActions.setTurboAndSleep = vi.fn().mockRejectedValueOnce(error);
     mockApiActions.updateState = vi.fn().mockResolvedValue({ 
       opt_turbo: 'off',
       is_on: PowerState.On
