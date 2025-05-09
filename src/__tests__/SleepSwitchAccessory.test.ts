@@ -91,6 +91,7 @@ describe('SleepSwitchAccessory', () => {
     mockApiActions.setSleepState = vi.fn().mockResolvedValue(undefined);
     mockApiActions.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
     mockApiActions.setTurboState = vi.fn().mockResolvedValue(undefined);
+    mockApiActions.setTurboAndSleep = vi.fn().mockResolvedValue(undefined);
     
     // Create mock CacheManager
     mockCacheManager = createMockCacheManager(mockApiActions, { opt_sleep: 'on' });
@@ -161,7 +162,7 @@ describe('SleepSwitchAccessory', () => {
     const callback = vi.fn();
     
     // Make sure the mock API methods are defined properly
-    mockApiActions.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    mockApiActions.setTurboAndSleep = vi.fn().mockResolvedValue(undefined);
     mockApiActions.updateState = vi.fn().mockResolvedValue({ 
       opt_turbo: 'off',
       is_on: PowerState.On 
@@ -171,8 +172,8 @@ describe('SleepSwitchAccessory', () => {
     
     await (inst as any).handleSet(true, callback);
     
-    // Check that setFanAndSleepState was called instead of setSleepState
-    expect(mockApiActions.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
+    // Check that setTurboAndSleep was called instead of setFanAndSleepState
+    expect(mockApiActions.setTurboAndSleep).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
     // Don't expect clear() to be called
     expect(mockCacheManager.clear).not.toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
@@ -195,8 +196,8 @@ describe('SleepSwitchAccessory', () => {
     
     await (inst as any).handleSet(true, callback);
     
-    // Verify that setFanAndSleepState was NOT called because AC is off
-    expect(mockApiActions.setFanAndSleepState).not.toHaveBeenCalled();
+    // Verify that setTurboAndSleep was NOT called because AC is off
+    expect(mockApiActions.setTurboAndSleep).not.toHaveBeenCalled();
     // Verify that service was updated to show actual state (false)
     expect(mockUpdateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
     // Verify callback was still called
@@ -212,13 +213,13 @@ describe('SleepSwitchAccessory', () => {
       opt_turbo: PowerState.On,
       is_on: PowerState.On 
     });
-    const mockSetTurboState = vi.fn().mockResolvedValue(undefined);
-    const mockSetFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    
+    // Use setTurboAndSleep instead of separate calls based on the implementation
+    const mockSetTurboAndSleep = vi.fn().mockResolvedValue(undefined);
     
     // Properly attach our mocks to the API object
     mockApiActions.updateState = mockUpdateState;
-    mockApiActions.setTurboState = mockSetTurboState;
-    mockApiActions.setFanAndSleepState = mockSetFanAndSleepState;
+    mockApiActions.setTurboAndSleep = mockSetTurboAndSleep;
     
     // Make sure our mocks are attached to the cacheManager
     mockCacheManager.api = mockApiActions;
@@ -232,11 +233,8 @@ describe('SleepSwitchAccessory', () => {
     // Verify our updateState mock was called
     expect(mockUpdateState).toHaveBeenCalled();
     
-    // Now check that the turbo state was set to off
-    expect(mockSetTurboState).toHaveBeenCalledWith(PowerState.Off);
-    
-    // And also check the sleep state was set correctly
-    expect(mockSetFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
+    // Check that setTurboAndSleep was called with correct params
+    expect(mockSetTurboAndSleep).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -256,7 +254,7 @@ describe('SleepSwitchAccessory', () => {
     const error = new Error('Network error');
     
     // Ensure our mocks are properly defined
-    mockApiActions.setFanAndSleepState = vi.fn().mockRejectedValue(error);
+    mockApiActions.setTurboAndSleep = vi.fn().mockRejectedValue(error);
     mockApiActions.updateState = vi.fn().mockResolvedValue({ 
       opt_turbo: 'off',
       is_on: PowerState.On
@@ -266,7 +264,7 @@ describe('SleepSwitchAccessory', () => {
     
     await (inst as any).handleSet(true, callback);
     
-    expect(mockApiActions.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
+    expect(mockApiActions.setTurboAndSleep).toHaveBeenCalledWith(FanSpeed.Low, SleepModeState.On);
     expect(callback).toHaveBeenCalledWith(error);
     expect(platform.log.error).toHaveBeenCalledWith(
       expect.stringContaining('Error setting Sleep'),

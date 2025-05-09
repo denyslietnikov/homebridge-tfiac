@@ -38,16 +38,9 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
             }
             return;
           }
-          
-          if (status.opt_turbo === PowerState.On) {
-            // First turn off Turbo mode if it's on
-            this.platform.log.debug('Turning off Turbo mode before enabling Sleep');
-            await this.cacheManager.api.setTurboState(PowerState.Off);
-          }
-          
-          // Use combined command to set both sleep and fan speed at once
-          // This reduces the number of beeps from multiple commands
-          await this.cacheManager.api.setFanAndSleepState(FanSpeed.Low, state);
+
+          // Disable Turbo and enable Sleep in one atomic command
+          await this.cacheManager.api.setTurboAndSleep(FanSpeed.Low, state);
         } else {
           // Simply turn off Sleep mode
           await this.cacheManager.api.setSleepState(state);

@@ -7,7 +7,7 @@ import { TfiacPlatform } from './platform.js';
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
-import { PowerState, OperationMode, FanSpeed, FanSpeedPercentMap, SleepModeState } from './enums.js';
+import { OperationMode, FanSpeed, SleepModeState, PowerState, FanSpeedPercentMap } from './enums.js';
 
 export class FanSpeedAccessory {
   private service: Service;
@@ -16,6 +16,7 @@ export class FanSpeedAccessory {
   private statusListener: (status: AirConditionerStatus | null) => void;
   private userSetFanMode: FanSpeed | null = null; // Track the user's manually set fan mode
   private lastUpdateTime: number = 0; // Track when the user last set the fan speed
+  private debounceTimer?: NodeJS.Timeout;
 
   constructor(
     private readonly platform: TfiacPlatform,
@@ -238,52 +239,35 @@ export class FanSpeedAccessory {
     return Promise.resolve(current ?? 50);
   }
 
-  private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
-    try {
-      // Get current status to check operation mode and sleep state
-      const status = await this.deviceAPI.updateState();
-      
-      // If current mode doesn't allow fan control, switch to a mode that does
-      if (!this.isFanControlAllowedForMode(status.operation_mode as OperationMode)) {
-        this.platform.log.info(`Current mode ${status.operation_mode} doesn't support fan control, switching to Cool mode`);
-        await this.deviceAPI.setAirConditionerState('operation_mode', OperationMode.Cool);
-      }
-      
-      // Determine what fan mode the user is setting based on the percentage
-      const fanMode = this.mapRotationSpeedToFanMode(value as number);
-      
-      // Store the user's choice and update the timestamp
-      this.userSetFanMode = fanMode;
-      this.lastUpdateTime = Date.now();
-      
-      this.platform.log.debug(`User set fan speed to ${value}%, mapped to mode: ${fanMode}`);
-      
-      // Check if Sleep mode is active
-      const sleepModeActive = 
-        status.opt_sleepMode === SleepModeState.On || 
-        (status.opt_sleep === PowerState.On);
-      
-      // For ANY fan speed that is manually set, turn off Sleep mode
-      // Always use combined command to minimize beeps from the air conditioner
-      if (sleepModeActive) {
-        this.platform.log.info('Turning off Sleep mode because fan speed was manually set');
-      } else {
-        this.platform.log.debug(`Setting ${fanMode} fan speed - ensuring Sleep mode is off`);
-      }
-      
-      // Use combined command for fan speed and sleep state to minimize beeps
-      await this.deviceAPI.setFanAndSleepState(fanMode, SleepModeState.Off);
-      
-      if (callback && typeof callback === 'function') {
-        callback(null);
-      }
-    } catch (err) {
-      if (callback && typeof callback === 'function') {
-        callback(err as Error);
-      } else {
-        throw err;
-      }
+  private handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): void {
+    const speed = value as number;
+    const fanMode = this.mapRotationSpeedToFanMode(speed);
+    this.userSetFanMode = fanMode;
+    this.lastUpdateTime = Date.now();
+    this.platform.log.debug(`User set fan speed to ${speed}%, mapped to mode: ${fanMode}`);
+    if (callback) {
+      callback(null);
     }
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+    }
+    this.debounceTimer = setTimeout(async () => {
+      try {
+        const status = await this.deviceAPI.updateState();
+        if (!this.isFanControlAllowedForMode(status.operation_mode as OperationMode)) {
+          this.platform.log.info(`Switching to Cool mode to allow fan control from mode ${status.operation_mode}`);
+          await this.deviceAPI.setAirConditionerState('operation_mode', OperationMode.Cool);
+        }
+        if (fanMode === FanSpeed.Turbo) {
+          this.platform.log.info('Enabling Turbo mode via fan speed slider');
+          await this.deviceAPI.setFanSpeed(FanSpeed.Turbo);
+        } else {
+          await this.deviceAPI.setFanAndSleepState(fanMode, SleepModeState.Off);
+        }
+      } catch (err) {
+        this.platform.log.error('Error applying debounced fan speed set:', err);
+      }
+    }, 500);
   }
 
   /**

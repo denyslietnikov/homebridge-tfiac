@@ -187,24 +187,44 @@ describe('FanSpeedAccessory', () => {
     // Should use the combined command method now
     expect(deviceAPI.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.High, SleepModeState.Off);
     expect(cb).toHaveBeenCalledWith(null);
+    
+    // Restore real timers
+    vi.useRealTimers();
   });
 
   it('should handle set error', async () => {
+    // Use fake timers for this test
+    vi.useFakeTimers();
+    
     const inst = new FanSpeedAccessory(platform, accessory);
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
     
-    // Mock the setFanAndSleepState method to reject with an error
-    deviceAPI.setFanAndSleepState = vi.fn().mockRejectedValueOnce(new Error('fail'));
+    // Mock updateState to succeed but setFanAndSleepState to fail
     deviceAPI.updateState = vi.fn().mockResolvedValue({
       operation_mode: OperationMode.Cool,
       is_on: PowerState.On,
       fan_mode: FanSpeed.Middle
     });
+    deviceAPI.setFanAndSleepState = vi.fn().mockRejectedValue(new Error('fail'));
     
     const cb = vi.fn();
-    await (inst as any).handleSet(30, cb);
-    expect(cb).toHaveBeenCalledWith(expect.any(Error));
+    (inst as any).handleSet(30, cb);
+    
+    // Immediate callback should succeed (it just sets UI state)
+    expect(cb).toHaveBeenCalledWith(null);
+    
+    // Fast-forward time to execute the debounced function
+    vi.runAllTimers();
+    
+    // Wait for any promises to resolve
+    await Promise.resolve();
+    
+    // Error should be logged, but not affect the callback (which already completed)
+    expect(platform.log.error).toHaveBeenCalled();
+    
+    // Restore real timers
+    vi.useRealTimers();
   });
 
   it('should updateStatus and update characteristic with valid fan_mode', () => {
@@ -287,11 +307,15 @@ describe('FanSpeedAccessory', () => {
   });
 
   it('should handle set Auto mode (0%) using combined command', async () => {
+    // Use fake timers for this test
+    vi.useFakeTimers();
+    
     const inst = new FanSpeedAccessory(platform, accessory);
     const service = createMockService();
     // Mock necessary methods
     (inst as any).deviceAPI = deviceAPI;
     (inst as any).service = service;
+    
     deviceAPI.updateState = vi.fn().mockResolvedValue({
       operation_mode: OperationMode.Cool,
       is_on: PowerState.On,
@@ -300,11 +324,22 @@ describe('FanSpeedAccessory', () => {
     deviceAPI.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
     
     const cb = vi.fn();
-    await (inst as any).handleSet(0, cb);
+    (inst as any).handleSet(0, cb);
     
-    // Should use the combined command method now for Auto mode
-    expect(deviceAPI.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Auto, SleepModeState.Off);
+    // Verify callback was invoked immediately
     expect(cb).toHaveBeenCalledWith(null);
+    
+    // Fast-forward time to execute the debounced function
+    vi.runAllTimers();
+    
+    // Wait for any promises to resolve
+    await Promise.resolve();
+    
+    // Should use the combined command method for Auto mode
+    expect(deviceAPI.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Auto, SleepModeState.Off);
+    
+    // Restore real timers
+    vi.useRealTimers();
   });
 
   it('should map rotation speeds to fan modes correctly', () => {
@@ -317,6 +352,9 @@ describe('FanSpeedAccessory', () => {
   });
 
   it('should turn off Sleep mode when setting ANY fan speed', async () => {
+    // Use fake timers for all speed tests
+    vi.useFakeTimers();
+    
     const inst = new FanSpeedAccessory(platform, accessory);
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
@@ -337,15 +375,28 @@ describe('FanSpeedAccessory', () => {
     const testSpeeds = [25, 50, 75, 100]; // Low, Middle, High, Turbo
     
     for (const speed of testSpeeds) {
+      deviceAPI.setFanAndSleepState.mockClear();
+      
       const cb = vi.fn();
-      await (inst as any).handleSet(speed, cb);
+      (inst as any).handleSet(speed, cb);
+      
+      // Verify callback was invoked immediately
+      expect(cb).toHaveBeenCalledWith(null);
+      
+      // Fast-forward time to execute the debounced function
+      vi.runAllTimers();
+      
+      // Wait for any promises to resolve
+      await Promise.resolve();
       
       // Sleep mode should be turned off for any fan speed
       expect(deviceAPI.setFanAndSleepState).toHaveBeenLastCalledWith(
         (inst as any).mapRotationSpeedToFanMode(speed), 
         SleepModeState.Off
       );
-      expect(cb).toHaveBeenCalledWith(null);
     }
+    
+    // Restore real timers
+    vi.useRealTimers();
   });
 });
