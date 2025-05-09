@@ -11,7 +11,7 @@ import {
   createMockAPI,
   createMockApiActions
 } from './testUtils.js';
-import { FanSpeed, PowerState, OperationMode } from '../enums.js';
+import { FanSpeed, PowerState, OperationMode, SleepModeState } from '../enums.js';
 
 // Use type assertion to fix the ReturnType<typeof vi.fn> compatibility issue
 import AirConditionerAPI from '../AirConditionerAPI.js';
@@ -173,17 +173,34 @@ describe('FanSpeedAccessory', () => {
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
     
+    // Mock the setFanAndSleepState method
+    deviceAPI.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    deviceAPI.updateState = vi.fn().mockResolvedValue({
+      operation_mode: OperationMode.Cool,
+      is_on: PowerState.On,
+      fan_mode: FanSpeed.Middle
+    });
+    
     const cb = vi.fn();
     await (inst as any).handleSet(75, cb);
-    expect(deviceAPI.setFanSpeed).toHaveBeenCalledWith('High');
+    
+    // Should use the combined command method now
+    expect(deviceAPI.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.High, SleepModeState.Off);
     expect(cb).toHaveBeenCalledWith(null);
   });
 
   it('should handle set error', async () => {
-    deviceAPI.setFanSpeed.mockRejectedValueOnce(new Error('fail'));
     const inst = new FanSpeedAccessory(platform, accessory);
     // Manually inject our mock API into the instance
     (inst as any).deviceAPI = deviceAPI;
+    
+    // Mock the setFanAndSleepState method to reject with an error
+    deviceAPI.setFanAndSleepState = vi.fn().mockRejectedValueOnce(new Error('fail'));
+    deviceAPI.updateState = vi.fn().mockResolvedValue({
+      operation_mode: OperationMode.Cool,
+      is_on: PowerState.On,
+      fan_mode: FanSpeed.Middle
+    });
     
     const cb = vi.fn();
     await (inst as any).handleSet(30, cb);
@@ -269,14 +286,24 @@ describe('FanSpeedAccessory', () => {
     expect(result).toBe(0);
   });
 
-  it('should handle set Auto mode (0%) using setFanAndSleepState', async () => {
+  it('should handle set Auto mode (0%) using combined command', async () => {
     const inst = new FanSpeedAccessory(platform, accessory);
+    const service = createMockService();
+    // Mock necessary methods
     (inst as any).deviceAPI = deviceAPI;
-    // Mock setFanAndSleepState on the API
-    (deviceAPI as any).setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    (inst as any).service = service;
+    deviceAPI.updateState = vi.fn().mockResolvedValue({
+      operation_mode: OperationMode.Cool,
+      is_on: PowerState.On,
+      fan_mode: FanSpeed.Auto
+    });
+    deviceAPI.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    
     const cb = vi.fn();
     await (inst as any).handleSet(0, cb);
-    expect((deviceAPI as any).setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Auto, expect.anything());
+    
+    // Should use the combined command method now for Auto mode
+    expect(deviceAPI.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Auto, SleepModeState.Off);
     expect(cb).toHaveBeenCalledWith(null);
   });
 
@@ -287,5 +314,38 @@ describe('FanSpeedAccessory', () => {
     expect((inst as any).mapRotationSpeedToFanMode(50)).toBe(FanSpeed.Middle);
     expect((inst as any).mapRotationSpeedToFanMode(75)).toBe(FanSpeed.High);
     expect((inst as any).mapRotationSpeedToFanMode(100)).toBe(FanSpeed.Turbo);
+  });
+
+  it('should turn off Sleep mode when setting ANY fan speed', async () => {
+    const inst = new FanSpeedAccessory(platform, accessory);
+    // Manually inject our mock API into the instance
+    (inst as any).deviceAPI = deviceAPI;
+    
+    // Mock the status to include active Sleep mode
+    deviceAPI.updateState = vi.fn().mockResolvedValue({
+      operation_mode: OperationMode.Cool,
+      is_on: PowerState.On,
+      fan_mode: FanSpeed.Middle,
+      opt_sleepMode: SleepModeState.On,
+      opt_sleep: PowerState.On
+    });
+    
+    // Mock the setFanAndSleepState method
+    deviceAPI.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
+    
+    // Test various fan speeds to ensure Sleep mode is turned off for all
+    const testSpeeds = [25, 50, 75, 100]; // Low, Middle, High, Turbo
+    
+    for (const speed of testSpeeds) {
+      const cb = vi.fn();
+      await (inst as any).handleSet(speed, cb);
+      
+      // Sleep mode should be turned off for any fan speed
+      expect(deviceAPI.setFanAndSleepState).toHaveBeenLastCalledWith(
+        (inst as any).mapRotationSpeedToFanMode(speed), 
+        SleepModeState.Off
+      );
+      expect(cb).toHaveBeenCalledWith(null);
+    }
   });
 });

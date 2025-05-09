@@ -92,12 +92,22 @@ export class FanSpeedAccessory {
 
     // Update RotationSpeed - only show accurate speed when AC is on
     let value: number;
-    if (!isAcOn || !isFanControlAllowed) {
-      // When AC is off or mode doesn't support fan control, set the rotation speed to 0
+    if (!isAcOn) {
+      // When AC is off, always set rotation speed to 0 and reset user settings
+      value = 0;
+      this.userSetFanMode = null; // Reset user settings when AC is off
+      this.platform.log.debug('AC is off, setting fan speed to 0% and resetting user settings');
+    } else if (!isFanControlAllowed) {
+      // When mode doesn't support fan control, set the rotation speed to 0
       value = 0;
       this.userSetFanMode = null; // Reset user settings when fan control is not allowed
+      this.platform.log.debug(`Current mode ${operationMode} doesn't allow fan control, setting fan speed to 0%`);
     } else if (status && status.opt_turbo === PowerState.On) {
       value = FanSpeedPercentMap[FanSpeed.Turbo];
+    } else if (status && (status.opt_sleepMode === SleepModeState.On || status.opt_sleep === PowerState.On)) {
+      // If Sleep mode is active, override with Low fan speed
+      value = FanSpeedPercentMap[FanSpeed.Low];
+      this.platform.log.debug('Sleep mode active, showing fan speed as Low');
     } else if (status && typeof status.fan_mode === 'string') {
       // If user manually set the fan speed recently (within 30 seconds), preserve that setting
       // instead of using what the air conditioner reports
@@ -230,7 +240,7 @@ export class FanSpeedAccessory {
 
   private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
     try {
-      // Get current status to check operation mode
+      // Get current status to check operation mode and sleep state
       const status = await this.deviceAPI.updateState();
       
       // If current mode doesn't allow fan control, switch to a mode that does
@@ -248,18 +258,21 @@ export class FanSpeedAccessory {
       
       this.platform.log.debug(`User set fan speed to ${value}%, mapped to mode: ${fanMode}`);
       
-      // Special handling for Auto mode (0%)
-      if (value === 0 || fanMode === FanSpeed.Auto) {
-        // Send a combined command to set fan to Auto and turn off Sleep mode
-        // This will produce only one beep instead of two
-        this.platform.log.info('Fan speed set to Auto (0%), using combined command to turn off Sleep mode');
-        await this.deviceAPI.setFanAndSleepState(FanSpeed.Auto, SleepModeState.Off);
+      // Check if Sleep mode is active
+      const sleepModeActive = 
+        status.opt_sleepMode === SleepModeState.On || 
+        (status.opt_sleep === PowerState.On);
+      
+      // For ANY fan speed that is manually set, turn off Sleep mode
+      // Always use combined command to minimize beeps from the air conditioner
+      if (sleepModeActive) {
+        this.platform.log.info('Turning off Sleep mode because fan speed was manually set');
       } else {
-        // For other fan speeds, just send the fan mode command
-        await this.deviceAPI.setFanSpeed(fanMode);
+        this.platform.log.debug(`Setting ${fanMode} fan speed - ensuring Sleep mode is off`);
       }
       
-      // Don't clear cache manually - let the centralized status update handle it
+      // Use combined command for fan speed and sleep state to minimize beeps
+      await this.deviceAPI.setFanAndSleepState(fanMode, SleepModeState.Off);
       
       if (callback && typeof callback === 'function') {
         callback(null);

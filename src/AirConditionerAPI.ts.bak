@@ -4,6 +4,14 @@ import { EventEmitter } from 'events';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
 import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState, FanSpeedPercentMap } from './enums.js';
+    await this.setSleepState(SleepModeState.Off);
+    
+    // Turn off turbo mode
+    await this.setTurboState(PowerState.Off);
+    
+    // Reset fan to Auto (which is the default)
+    await this.setFanSpeed(FanSpeed.Auto);
+  }./enums.js';
 
 export interface AirConditionerStatus {
   is_on: PowerState | string; // Allow string for test compatibility
@@ -12,11 +20,12 @@ export interface AirConditionerStatus {
   current_temp: number;
   fan_mode: FanSpeed | string; // Allow string for potential unknown modes
   swing_mode: SwingMode | string; // Allow string for potential unknown modes
-  opt_turbo?: PowerState; // Internal representation of Opt_super from protocol (Turbo mode)
+  opt_turbo?: PowerState;
   opt_eco?: PowerState;
   opt_display?: PowerState;
   opt_beep?: PowerState;
   opt_sleep?: PowerState; // Additional sleep state property
+  opt_super?: PowerState; // Optional super state
   opt_sleepMode?: SleepModeState | string; // Allow string for potential unknown modes
   outdoor_temp?: number;
 }
@@ -30,7 +39,7 @@ interface StatusUpdateMsg {
   WindDirection_H: string[];
   WindDirection_V: string[];
   Opt_display?: string[]; // Optional display state
-  Opt_super?: string[]; // Turbo mode in protocol, maps to opt_turbo in our status
+  Opt_super?: string[]; // Optional turbo state
   Opt_sleepMode?: string[]; // Optional sleep mode state
   OutdoorTemp?: string[]; // Optional outdoor temperature
 }
@@ -237,6 +246,19 @@ export class AirConditionerAPI extends EventEmitter {
       currentOperationMode = this.lastStatus.operation_mode as OperationMode;
     }
     
+    // First turn off the AC
+    await this.setAirConditionerState('is_on', PowerState.Off);
+    
+    // Clean up any active states that should be reset when AC is turned off
+    // Turn off sleep mode
+    await this.setSleepState(SleepModeState.Off);
+    
+    // Turn off turbo mode
+    await this.setTurboState(PowerState.Off);
+    
+    // Reset fan to Auto (which is the default)
+    await this.setFanSpeed(FanSpeed.Auto);
+    
     // Turn off and reset modes like sleepMode and turbo in a single command to avoid multiple beeps
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
       <SetMessage>
@@ -244,6 +266,7 @@ export class AirConditionerAPI extends EventEmitter {
         <Opt_sleepMode>off</Opt_sleepMode>
         <Opt_sleep>off</Opt_sleep>
         <Opt_super>off</Opt_super>
+        <Opt_turbo>off</Opt_turbo>
         <WindSpeed>Auto</WindSpeed>
       </SetMessage>
     </msg>`;
@@ -262,6 +285,7 @@ export class AirConditionerAPI extends EventEmitter {
       this.lastStatus.opt_sleepMode = SleepModeState.Off;
       this.lastStatus.opt_sleep = PowerState.Off;
       this.lastStatus.opt_turbo = PowerState.Off;
+      this.lastStatus.opt_super = PowerState.Off;
       this.lastStatus.fan_mode = FanSpeed.Auto;
       // Preserve current operation mode instead of resetting to Auto
       this.lastStatus.operation_mode = currentOperationMode;

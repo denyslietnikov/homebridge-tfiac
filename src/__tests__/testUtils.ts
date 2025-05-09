@@ -42,6 +42,7 @@ export interface MockApiActions {
   setDisplayState: ReturnType<typeof vi.fn>;
   setBeepState: ReturnType<typeof vi.fn>;
   setSleepState: ReturnType<typeof vi.fn>;
+  setFanAndSleepState: ReturnType<typeof vi.fn>; // Add combined command method
   cleanup: ReturnType<typeof vi.fn>;
   api: {
     on: ReturnType<typeof vi.fn>;
@@ -282,6 +283,7 @@ export function createMockApiActions(initialStatus = {}): MockApiActions & { api
     setDisplayState: vi.fn().mockResolvedValue(undefined),
     setBeepState: vi.fn().mockResolvedValue(undefined),
     setSleepState: vi.fn().mockResolvedValue(undefined),
+    setFanAndSleepState: vi.fn().mockResolvedValue(undefined), // Add combined command method
     cleanup: vi.fn().mockResolvedValue(undefined),
     api: {
       on: vi.fn(),

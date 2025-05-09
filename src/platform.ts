@@ -99,7 +99,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     const originalDebug = this.log.debug.bind(this.log);
     this.log.debug = (...args: [message: string, ...optionalParams: unknown[]]) => {
       // Only call the debug logger if the debug flag is true (either platform-level or from any device)
-      if (this.config.debug === true) {
+      if (this.config.debug) {
         originalDebug(...args);
       }
     };
