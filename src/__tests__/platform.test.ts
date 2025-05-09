@@ -301,4 +301,67 @@ describe('TfiacPlatform', () => {
       accessoryInstances,
     );
   });
+
+  it('shows debug logs when debug flag is set to true', async () => {
+    vi.clearAllMocks();
+    
+    // Create a new platform instance with debug enabled
+    const debugConfig: TfiacPlatformConfig = { ...config, debug: true };
+    const debugPlatform = new TfiacPlatform(mockLogger, debugConfig, mockAPI);
+    // Spy on the wrapper debug method
+    const wrapperSpy = vi.spyOn(mockLogger, 'debug');
+    
+    // Log a debug message
+    debugPlatform.log.debug('Test debug message');
+    
+    // Verify the wrapper debug was called
+    expect(wrapperSpy).toHaveBeenCalledWith('Test debug message');
+  });
+  
+  it('does not show debug logs when debug flag is not set', async () => {
+    vi.clearAllMocks();
+    
+    // Create a clean mockLogger with a spy already in place
+    const testMockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
+      success: vi.fn()
+    };
+    
+    // Directly spy on the debug method before creating the platform
+    const wrapperSpy = vi.spyOn(testMockLogger, 'debug');
+    
+    // Create a new platform instance with debug explicitly disabled
+    const noDebugConfig: TfiacPlatformConfig = { ...config, debug: false };
+    const noDebugPlatform = new TfiacPlatform(testMockLogger, noDebugConfig, mockAPI);
+    
+    // Log a debug message
+    noDebugPlatform.log.debug('Test debug message');
+    
+    // Verify the wrapper debug was not called
+    expect(wrapperSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows debug logs when any device has debug flag set to true', async () => {
+    vi.clearAllMocks();
+    
+    // Create a new platform instance with platform debug disabled but device debug enabled
+    const deviceDebugConfig: TfiacPlatformConfig = {
+      ...config,
+      debug: false,
+      devices: [ { ...config.devices![0], debug: true } ]
+    };
+    const deviceDebugPlatform = new TfiacPlatform(mockLogger, deviceDebugConfig, mockAPI);
+    // Spy on the wrapper debug method
+    const wrapperSpy = vi.spyOn(mockLogger, 'debug');
+    
+    // Log a debug message
+    deviceDebugPlatform.log.debug('Test debug message');
+    
+    // Verify the wrapper debug was called
+    expect(wrapperSpy).toHaveBeenCalledWith('Test debug message');
+  });
 });

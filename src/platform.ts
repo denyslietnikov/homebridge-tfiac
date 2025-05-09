@@ -89,10 +89,17 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
 
+    // Enable platform-level debugging if any device has debug=true
+    // Check if any device has debug enabled
+    if (!this.config.debug && Array.isArray(this.config.devices)) {
+      this.config.debug = this.config.devices.some(device => device.debug === true);
+    }
+
     // Wrap the log.debug method to respect the config.debug flag
     const originalDebug = this.log.debug.bind(this.log);
     this.log.debug = (...args: [message: string, ...optionalParams: unknown[]]) => {
-      if (this.config.debug) {
+      // Only call the debug logger if the debug flag is true (either platform-level or from any device)
+      if (this.config.debug === true) {
         originalDebug(...args);
       }
     };
