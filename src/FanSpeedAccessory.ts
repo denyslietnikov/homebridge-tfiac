@@ -17,6 +17,7 @@ export class FanSpeedAccessory {
   private userSetFanMode: FanSpeed | null = null; // Track the user's manually set fan mode
   private lastUpdateTime: number = 0; // Track when the user last set the fan speed
   private debounceTimer?: NodeJS.Timeout;
+  private cachedStatus?: AirConditionerStatus | null;
 
   constructor(
     private readonly platform: TfiacPlatform,
@@ -74,6 +75,21 @@ export class FanSpeedAccessory {
    * Update fan speed based on centralized status
    */
   private updateStatus(status: AirConditionerStatus | null): void {
+    // If AC is off or status is null, always reset fan speed and inactive state
+    if (!status || status.is_on !== PowerState.On) {
+      this.userSetFanMode = null;
+      this.service.updateCharacteristic(
+        this.platform.Characteristic.RotationSpeed,
+        0,
+      );
+      this.service.updateCharacteristic(
+        this.platform.Characteristic.Active,
+        this.platform.Characteristic.Active.INACTIVE,
+      );
+      this.cachedStatus = status;
+      return;
+    }
+
     // First check if AC is on
     const isAcOn = status && status.is_on === PowerState.On;
     
