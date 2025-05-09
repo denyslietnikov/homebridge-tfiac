@@ -74,7 +74,7 @@ export class TfiacPlatformAccessory {
     // Subscribe to debug API events if debug mode is enabled
     if (this.platform.config?.debug && this.deviceAPI && typeof this.deviceAPI.on === 'function') {
       this.deviceAPI.on('debug', (msg: string) => {
-        this.platform.log.debug(`[${deviceConfig.name}] API: ${msg}`);
+        this.platform.log.info(`[${deviceConfig.name}] API: ${msg}`);
       });
       
       this.deviceAPI.on('error', (msg: string) => {

@@ -529,20 +529,16 @@ export class AirConditionerAPI extends EventEmitter {
 
   /**
    * Set both fan speed and sleep state in a single command to minimize beeps.
+   * Updates both Opt_sleep and Opt_sleepMode tags and updates cached status.
    * @param fanMode The fan speed to set
    * @param sleepState The sleep state to set
    */
   async setFanAndSleepState(fanMode: FanSpeed, sleepState: SleepModeState): Promise<void> {
-    // Convert sleep state to the appropriate value format
-    const sleepValue = sleepState === SleepModeState.On
-      ? 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0'
-      : 'off';
-    
-    // Create a combined command with both parameters
     const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
       <SetMessage>
         <WindSpeed>${fanMode}</WindSpeed>
-        <Opt_sleepMode>${sleepValue}</Opt_sleepMode>
+        <Opt_sleep>${sleepState}</Opt_sleep>
+        <Opt_sleepMode>${sleepState}</Opt_sleepMode>
       </SetMessage>
     </msg>`;
     
@@ -554,6 +550,17 @@ export class AirConditionerAPI extends EventEmitter {
     
     // Send debug event for response
     this.emit('debug', `Received setFanAndSleepState response: ${response}`);
+    
+    // Update the cached status to reflect these changes
+    if (this.lastStatus) {
+      // Update the internal cache status
+      this.lastStatus.fan_mode = fanMode;
+      this.lastStatus.opt_sleep = sleepState === SleepModeState.On ? PowerState.On : PowerState.Off;
+      this.lastStatus.opt_sleepMode = sleepState;
+      
+      // Emit the updated status so all services update their characteristics
+      this.emit('status', this.lastStatus);
+    }
   }
 }
 
