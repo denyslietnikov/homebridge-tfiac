@@ -122,7 +122,12 @@ describe('SleepSwitchAccessory', () => {
     createAccessory();
     const callback = vi.fn();
     // Sleep is on AND AC is on
-    inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
+    inst.updateStatus({ 
+      opt_sleepMode: SleepModeState.On, 
+      is_on: PowerState.On,
+      opt_sleep: PowerState.On,
+      opt_turbo: PowerState.Off
+    } as any);
     
     (inst as any).handleGet(callback);
     expect(callback).toHaveBeenCalledWith(null, true);
@@ -273,27 +278,50 @@ describe('SleepSwitchAccessory', () => {
   });
 
   describe('Status Listener', () => {
-    it('updates characteristic when sleep state changes from off to on', () => {
-      createAccessory();
-      // AC is on for both cases
-      inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On } as any);
-      mockService.updateCharacteristic.mockClear();
-      
-      inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
-      
-      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
-    });
+  it('updates characteristic when sleep state changes from off to on', () => {
+    createAccessory();
+    // Set up the service with updateCharacteristic function
+    (inst as any).service = mockService;
+    
+    // Set initial status (AC is on, sleep off)
+    inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On, opt_turbo: PowerState.Off } as any);
+    mockService.updateCharacteristic.mockClear();
+    
+    // Update to sleep on - this should trigger the updateCharacteristic call
+    inst.updateStatus({ 
+      opt_sleepMode: SleepModeState.On, 
+      is_on: PowerState.On, 
+      opt_sleep: PowerState.On,
+      opt_turbo: PowerState.Off
+    } as any);
+    
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
+  });
 
-    it('updates characteristic when sleep state changes from on to off', () => {
-      createAccessory();
-      // AC is on for both cases
-      inst.updateStatus({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On } as any);
-      mockService.updateCharacteristic.mockClear();
-      
-      inst.updateStatus({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On } as any);
-      
-      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
-    });
+  it('updates characteristic when sleep state changes from on to off', () => {
+    createAccessory();
+    // Set up the service with updateCharacteristic function
+    (inst as any).service = mockService;
+    
+    // Set initial status (AC is on, sleep on)
+    inst.updateStatus({ 
+      opt_sleepMode: SleepModeState.On, 
+      is_on: PowerState.On, 
+      opt_sleep: PowerState.On,
+      opt_turbo: PowerState.Off
+    } as any);
+    mockService.updateCharacteristic.mockClear();
+    
+    // Update to sleep off - this should trigger the updateCharacteristic call
+    inst.updateStatus({ 
+      opt_sleepMode: SleepModeState.Off, 
+      is_on: PowerState.On,
+      opt_sleep: PowerState.Off,
+      opt_turbo: PowerState.Off
+    } as any);
+    
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
+  });
 
     it('does not update characteristic if sleep state unchanged (on)', () => {
       createAccessory();

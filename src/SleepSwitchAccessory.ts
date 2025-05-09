@@ -14,19 +14,25 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       'Sleep',
       'sleep',
-      (status: Partial<AirConditionerStatus> & { opt_sleepMode?: string; opt_turbo?: PowerState }) => {
-        // Sleep only applies when AC is on and Turbo is off
-        if (status.is_on !== PowerState.On || status.opt_turbo === PowerState.On) {
+      (
+        status: Partial<AirConditionerStatus> & {
+          opt_sleepMode?: string;
+          opt_sleep?: PowerState;
+          opt_turbo?: PowerState;
+        },
+      ) => {
+        // Only active when AC is on, Turbo is off, and the low-level sleep flag is on
+        if (status.is_on !== PowerState.On || status.opt_turbo === PowerState.On || status.opt_sleep !== PowerState.On) {
           return false;
         }
-        // Only consider Sleep active if opt_sleepMode exactly matches SleepModeState.On
-        // or starts with its prefix (e.g., 'sleepMode1')
+        // As a further safeguard, check for the detailed sleepMode string
         const mode = status.opt_sleepMode;
         if (typeof mode === 'string') {
           const onPrefix = SleepModeState.On.split(':')[0];
           return mode === SleepModeState.On || mode.startsWith(onPrefix);
         }
-        return false;
+        // If the raw opt_sleep flag is on, assume Sleep is active
+        return true;
       },
       async (value) => {
         const state = value ? SleepModeState.On : SleepModeState.Off;
