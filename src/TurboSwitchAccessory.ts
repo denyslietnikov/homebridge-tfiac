@@ -15,11 +15,10 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
       'turbo',
       (status) => status.opt_turbo === PowerState.On,
       async (value) => {
-        const state = value ? PowerState.On : PowerState.Off;
         // When turning Turbo on/off, update the fan speed for proper synchronization
         if (value) {
-          // When Turbo is turned on, set fan mode to Turbo
-          await this.cacheManager.api.setTurboState(state);
+          this.platform.log.info('Enabling Turbo and disabling Sleep in one command');
+          await this.cacheManager.api.setSleepAndTurbo(FanSpeed.Turbo, SleepModeState.Off);
         } else {
           this.platform.log.info('Disabling Turbo and setting fan speed to Auto in one command');
           await this.cacheManager.api.setFanAndSleepState(FanSpeed.Auto, SleepModeState.Off);

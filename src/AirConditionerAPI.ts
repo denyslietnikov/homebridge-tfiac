@@ -558,7 +558,7 @@ export class AirConditionerAPI extends EventEmitter {
       this.lastStatus.fan_mode = fanMode;
       this.lastStatus.opt_sleep = sleepState === SleepModeState.On ? PowerState.On : PowerState.Off;
       this.lastStatus.opt_sleepMode = sleepState;
-      
+      this.lastStatus.opt_turbo = PowerState.Off;
       // Emit the updated status so all services update their characteristics
       this.emit('status', this.lastStatus);
     }
@@ -585,6 +585,32 @@ export class AirConditionerAPI extends EventEmitter {
       this.lastStatus.opt_turbo = PowerState.Off;
       this.lastStatus.fan_mode = fanMode;
       this.lastStatus.opt_sleepMode = sleepState;
+      this.emit('status', this.lastStatus);
+    }
+  }
+
+  /**
+   * Disable Sleep and enable Turbo with specified fan speed in one command.
+   */
+  public async setSleepAndTurbo(
+    fanMode: FanSpeed,
+    sleepState: SleepModeState,
+  ): Promise<void> {
+    const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
+      <SetMessage>
+        <Opt_sleepMode>${sleepState}</Opt_sleepMode>
+        <Opt_super>on</Opt_super>
+        <WindSpeed>${fanMode}</WindSpeed>
+      </SetMessage>
+    </msg>`;
+    this.emit('debug', `Sending setSleepAndTurbo command: ${command}`);
+    const response = await this.sendCommandWithRetry(command);
+    this.emit('debug', `Received setSleepAndTurbo response: ${response}`);
+    if (this.lastStatus) {
+      this.lastStatus.opt_sleepMode = sleepState;
+      this.lastStatus.opt_sleep = sleepState === SleepModeState.On ? PowerState.On : PowerState.Off;
+      this.lastStatus.opt_turbo = PowerState.On;
+      this.lastStatus.fan_mode = fanMode;
       this.emit('status', this.lastStatus);
     }
   }

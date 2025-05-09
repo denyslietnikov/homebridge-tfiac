@@ -284,6 +284,8 @@ export function createMockApiActions(initialStatus = {}): MockApiActions & { api
     setBeepState: vi.fn().mockResolvedValue(undefined),
     setSleepState: vi.fn().mockResolvedValue(undefined),
     setFanAndSleepState: vi.fn().mockResolvedValue(undefined), // Add combined command method
+    setSleepAndTurbo: vi.fn().mockResolvedValue(undefined), // Add combined command method
+    setTurboAndSleep: vi.fn().mockResolvedValue(undefined), // Add combined command method
     cleanup: vi.fn().mockResolvedValue(undefined),
     api: {
       on: vi.fn(),

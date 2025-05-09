@@ -145,8 +145,18 @@ describe('TurboSwitchAccessory', () => {
   it('handles set characteristic to turn turbo on', async () => {
     createAccessory();
     const callback = vi.fn();
+    
+    // Mock the setSleepAndTurbo method since that's what is used when turning on Turbo now
+    mockCacheManager.api.setSleepAndTurbo = vi.fn().mockResolvedValue(undefined);
+    
+    // Inject our mock cache manager into the instance
+    (inst as any).cacheManager = mockCacheManager;
+    
     await (inst as any).handleSet(true, callback);
-    expect(mockApiActions.setTurboState).toHaveBeenCalledWith('on');
+    
+    // Check that setSleepAndTurbo was called with Turbo fan speed and sleep off
+    expect(mockCacheManager.api.setSleepAndTurbo).toHaveBeenCalledWith(FanSpeed.Turbo, SleepModeState.Off);
+    
     // Don't expect clear() to be called in the new implementation
     expect(mockCacheManager.clear).not.toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
@@ -176,9 +186,18 @@ describe('TurboSwitchAccessory', () => {
     createAccessory();
     const callback = vi.fn();
     const error = new Error('Network error');
-    mockApiActions.setTurboState.mockRejectedValueOnce(error);
+    
+    // Mock the setSleepAndTurbo method since that's what is used now, and make it fail
+    mockCacheManager.api.setSleepAndTurbo = vi.fn().mockRejectedValueOnce(error);
+    
+    // Inject our mock cache manager into the instance
+    (inst as any).cacheManager = mockCacheManager;
+    
     await (inst as any).handleSet(true, callback);
-    expect(mockApiActions.setTurboState).toHaveBeenCalledWith('on');
+    
+    // Check that setSleepAndTurbo was called with Turbo fan speed and sleep off
+    expect(mockCacheManager.api.setSleepAndTurbo).toHaveBeenCalledWith(FanSpeed.Turbo, SleepModeState.Off);
+    
     expect(callback).toHaveBeenCalledWith(error);
     expect(platform.log.error).toHaveBeenCalledWith(
       expect.stringContaining('Error setting Turbo'),
