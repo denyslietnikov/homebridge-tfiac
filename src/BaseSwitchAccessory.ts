@@ -106,6 +106,16 @@ export abstract class BaseSwitchAccessory {
       this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);
       // Subscribe to centralized status updates instead of individual polling
       this.statusListener = this.updateStatus.bind(this);
+      
+      // Subscribe to DeviceState changes
+      const deviceState = this.cacheManager.getDeviceState();
+      deviceState.on('stateChanged', (state) => {
+        // Convert DeviceState to AirConditionerStatus format for backward compatibility
+        const compatStatus = state.toApiStatus();
+        this.updateStatus(compatStatus);
+      });
+      
+      // Keep legacy subscriptions for backward compatibility
       if (this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
         // Subscribe to both new and legacy status events
         this.cacheManager.api.on('status', this.statusListener);
@@ -120,8 +130,12 @@ export abstract class BaseSwitchAccessory {
   public stopPolling(): void {
     // Safely clean up if available
     this.cacheManager?.cleanup?.();
-    // Unsubscribe listeners if supported
-    // Unsubscribe from both events
+    
+    // Unsubscribe from DeviceState events
+    const deviceState = this.cacheManager.getDeviceState();
+    deviceState.removeAllListeners('stateChanged');
+    
+    // Unsubscribe from legacy events if supported
     this.cacheManager?.api?.off?.('status', this.statusListener!);
     this.cacheManager?.api?.off?.('statusChanged', this.statusListener!);
   }
@@ -139,13 +153,15 @@ export abstract class BaseSwitchAccessory {
     this.platform.log.debug(`Updating ${this.logPrefix} status for ${this.accessory.displayName}...`);
     
     try {
-      // Always fetch latest status
-      const status = await this.cacheManager.getStatus();
+      // Get the device state which will fetch status if needed
+      await this.cacheManager.updateDeviceState();
+      const deviceState = this.cacheManager.getDeviceState();
+      const apiStatus = deviceState.toApiStatus();
       
       // Update cached status and the characteristic if needed
       const oldValue = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
-      this.cachedStatus = status;
-      const newValue = this.getStatusValue(status as Partial<import('./AirConditionerAPI').AirConditionerStatus>);
+      this.cachedStatus = apiStatus;
+      const newValue = this.getStatusValue(apiStatus);
       if (newValue !== oldValue && this.service) {
         this.platform.log.info(`Updating ${this.logPrefix} characteristic for ${this.accessory.displayName} to ${newValue}`);
         this.service.updateCharacteristic(this.onChar, newValue);

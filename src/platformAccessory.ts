@@ -484,20 +484,28 @@ export class TfiacPlatformAccessory {
   ): Promise<void> {
     this.platform.log.debug('Triggered SET Active:', value);
     try {
+      // Get the device state
+      const deviceState = this.cacheManager.getDeviceState();
+      
       if (value === this.platform.Characteristic.Active.ACTIVE) {
         // Skip sending turnOn if device is already on to avoid duplicate beeps
-        if (this.cachedStatus?.is_on === PowerState.On) {
+        if (deviceState.power === PowerState.On) {
           this.platform.log.debug('ActiveSet skipped: device already on');
         } else {
+          // Update device state optimistically
+          deviceState.setPower(PowerState.On);
           await this.deviceAPI.turnOn();
         }
       } else {
+        // Update device state optimistically
+        deviceState.setPower(PowerState.Off);
         await this.deviceAPI.turnOff();
       }
+      
       this.cacheManager.clear();
       // Skip updating status in test environments
       if (!process.env.VITEST_WORKER_ID && !process.env.JEST_WORKER_ID) {
-        await this.updateCachedStatus();
+        await this.cacheManager.updateDeviceState(true); // Force update from device
       }
       if (callback && typeof callback === 'function') {
         callback(null);

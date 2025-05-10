@@ -196,7 +196,13 @@ export class FanSpeedAccessory {
     try {
       this.platform.log.debug(`Fan accessory active set: ${value}`);
       
+      // Get device state
+      const deviceState = this.cacheManager.getDeviceState();
+      
       if (value === this.platform.Characteristic.Active.ACTIVE) {
+        // Update device state optimistically
+        deviceState.setPower(PowerState.On);
+        
         // Turn on AC with current settings
         await this.deviceAPI.turnOn();
         
@@ -206,9 +212,16 @@ export class FanSpeedAccessory {
         // If current mode is Auto, switch to a mode that allows fan control
         if (status.operation_mode === OperationMode.Auto) {
           this.platform.log.info('Switching from Auto to Cool mode to allow fan control');
+          
+          // Update device state optimistically
+          deviceState.setOperationMode(OperationMode.Cool);
+          
           await this.deviceAPI.setAirConditionerState('operation_mode', OperationMode.Cool);
         }
       } else {
+        // Update device state optimistically
+        deviceState.setPower(PowerState.Off);
+        
         // Turn off AC
         await this.deviceAPI.turnOff();
       }
@@ -261,23 +274,44 @@ export class FanSpeedAccessory {
     this.userSetFanMode = fanMode;
     this.lastUpdateTime = Date.now();
     this.platform.log.debug(`User set fan speed to ${speed}%, mapped to mode: ${fanMode}`);
+    
     if (callback) {
       callback(null);
     }
+    
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
+    
     this.debounceTimer = setTimeout(async () => {
       try {
+        // Get device state
+        const deviceState = this.cacheManager.getDeviceState();
+        
         const status = await this.deviceAPI.updateState();
         if (!this.isFanControlAllowedForMode(status.operation_mode as OperationMode)) {
           this.platform.log.info(`Switching to Cool mode to allow fan control from mode ${status.operation_mode}`);
+          
+          // Update device state optimistically
+          deviceState.setOperationMode(OperationMode.Cool);
+          
           await this.deviceAPI.setAirConditionerState('operation_mode', OperationMode.Cool);
         }
+        
+        // Update fan speed in device state optimistically
+        deviceState.setFanSpeed(fanMode);
+        
         if (fanMode === FanSpeed.Turbo) {
           this.platform.log.info('Enabling Turbo mode via fan speed slider');
+          
+          // Update turbo mode in device state
+          deviceState.setTurboMode(PowerState.On);
+          
           await this.deviceAPI.setFanSpeed(FanSpeed.Turbo);
         } else {
+          // Update sleep mode in device state
+          deviceState.setSleepMode(SleepModeState.Off);
+          
           await this.deviceAPI.setFanAndSleepState(fanMode, SleepModeState.Off);
         }
       } catch (err) {

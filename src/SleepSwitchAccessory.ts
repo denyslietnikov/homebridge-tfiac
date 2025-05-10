@@ -37,12 +37,12 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
       async (value) => {
         const state = value ? SleepModeState.On : SleepModeState.Off;
         
-        // Get current status
-        const status = await this.cacheManager.api.updateState();
+        // Get current device state
+        const deviceState = this.cacheManager.getDeviceState();
         
         if (value) {
           // Only allow enabling Sleep if AC is on
-          if (status.is_on !== PowerState.On) {
+          if (deviceState.power !== PowerState.On) {
             this.platform.log.info('Cannot enable Sleep mode when AC is off');
             // Update the switch to reflect the actual state (off)
             if (this.service) {
@@ -51,9 +51,15 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
             return;
           }
 
+          // Update the device state optimistically
+          deviceState.setSleepMode(state);
+          
           // Disable Turbo and enable Sleep in one atomic command
           await this.cacheManager.api.setTurboAndSleep(FanSpeed.Low, state);
         } else {
+          // Update the device state optimistically
+          deviceState.setSleepMode(state);
+          
           // Simply turn off Sleep mode
           await this.cacheManager.api.setSleepState(state);
         }

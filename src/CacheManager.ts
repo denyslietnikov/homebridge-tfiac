@@ -1,6 +1,7 @@
 import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import { EventEmitter } from 'events';
+import { DeviceState } from './state/DeviceState.js';
 
 /**
  * CacheManager implements caching for API responses and centralizes status updates.
@@ -12,6 +13,7 @@ export class CacheManager {
   private cache: AirConditionerStatus | null = null;
   private lastFetch = 0;
   private ttl: number;
+  private deviceState: DeviceState = new DeviceState();
 
   private constructor(private config: TfiacDeviceConfig) {
     // Create the API instance
@@ -66,6 +68,9 @@ export class CacheManager {
     this.cache = status;
     this.lastFetch = now;
     
+    // Update the DeviceState with the new data
+    this.deviceState.updateFromDevice(status);
+    
     // Emit status update for subscribers
     this.api.emit('status', status);
     
@@ -78,6 +83,52 @@ export class CacheManager {
    */
   getLastStatus(): AirConditionerStatus | null {
     return this.cache;
+  }
+
+  /**
+   * Returns the current device state object
+   */
+  getDeviceState(): DeviceState {
+    return this.deviceState;
+  }
+
+  /**
+   * Updates the device state from the device and returns it.
+   * If force=true, it will always make an API call regardless of cache.
+   */
+  async updateDeviceState(force: boolean = false): Promise<DeviceState> {
+    const now = Date.now();
+    let status = this.cache;
+    
+    // If cache is empty, expired, or force is true, fetch new status
+    if (!status || now - this.lastFetch >= this.ttl || force) {
+      status = await this.api.updateState();
+      this.cache = status;
+      this.lastFetch = now;
+      
+      // Emit status update for subscribers (legacy API)
+      this.api.emit('status', status);
+    }
+    
+    // Update the DeviceState with the latest data
+    this.deviceState.updateFromDevice(status);
+    
+    return this.deviceState;
+  }
+
+  /**
+   * Apply changes from device state to the physical device.
+   * This does not update the device state object itself, only sends commands.
+   */
+  async applyStateToDevice(state: DeviceState): Promise<void> {
+    // This will be implemented later with CommandQueue
+    // For now, it's a placeholder to establish the pattern
+    
+    // Get the API format of the current state
+    const apiStatus = state.toApiStatus();
+    
+    // In the future, this will trigger appropriate API calls based on what changed
+    console.log('State changes to be applied:', apiStatus);
   }
 
   /**
@@ -100,6 +151,9 @@ export class CacheManager {
     if (this.api && typeof this.api.removeAllListeners === 'function') {
       this.api.removeAllListeners();
     }
+    
+    // Remove listeners from DeviceState to prevent memory leaks
+    this.deviceState.removeAllListeners();
   }
 }
 
