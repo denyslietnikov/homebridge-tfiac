@@ -465,6 +465,19 @@ export class AirConditionerAPI extends EventEmitter {
       }
     }
     await this.setOptionState('Opt_super', state);
+    // ---- optimistic cache + emit ----
+    if (this.lastStatus) {
+      this.lastStatus.opt_turbo = state;
+      // If Turbo turned on, ensure Sleep flags are off
+      if (state === PowerState.On) {
+        this.lastStatus.opt_sleep = PowerState.Off;
+        this.lastStatus.opt_sleepMode = SleepModeState.Off;
+        this.lastStatus.fan_mode = FanSpeed.Turbo;
+      } else if (this.lastStatus.fan_mode === FanSpeed.Turbo) {
+        this.lastStatus.fan_mode = FanSpeed.Auto;
+      }
+      this.emit('status', this.lastStatus);
+    }
   }
 
   /**
@@ -473,7 +486,7 @@ export class AirConditionerAPI extends EventEmitter {
    * For 'on', sends the detailed sleep string; for 'off', sends 'off'.
    */
   async setSleepState(state: SleepModeState | string): Promise<void> {
-    const isOn = 
+    const isOn =
       (typeof state === 'string' && state.toLowerCase() !== 'off') ||
       state === SleepModeState.On;
 
@@ -481,15 +494,15 @@ export class AirConditionerAPI extends EventEmitter {
     if (isOn) {
       // Get current status
       const status = await this.updateState();
-      
+
       // First check if Turbo mode is active, and if so, set fan speed directly to Low
       // to avoid multiple beeps during auto-transition
       if (status.opt_turbo === PowerState.On || status.fan_mode === FanSpeed.Turbo) {
         this.emit('debug', 'Sleep mode enabled while Turbo active - directly setting fan to Low');
-        
+
         // First disable turbo to avoid its forced fan speed
         await this.setOptionState('Opt_super', PowerState.Off);
-        
+
         // Set fan speed to Low in same command as sleep mode to minimize beeps
         const sleepValue = 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0';
         const command = `<msg msgid="SetMessage" type="Control" seq="${this.seq}">
@@ -498,6 +511,22 @@ export class AirConditionerAPI extends EventEmitter {
                           <WindSpeed>${FanSpeed.Low}</WindSpeed>
                         </SetMessage></msg>`;
         await this.sendCommandWithRetry(command);
+        // ---- optimistic cache + emit ----
+        if (this.lastStatus) {
+          const isOnFlag =
+            (typeof state === 'string' && state.toLowerCase() !== 'off') ||
+            state === SleepModeState.On;
+          this.lastStatus.opt_sleep = isOnFlag ? PowerState.On : PowerState.Off;
+          this.lastStatus.opt_sleepMode = state as SleepModeState;
+          // Sleep always disables Turbo
+          if (isOnFlag) {
+            this.lastStatus.opt_turbo = PowerState.Off;
+            if (this.lastStatus.fan_mode === FanSpeed.Turbo) {
+              this.lastStatus.fan_mode = FanSpeed.Low;
+            }
+          }
+          this.emit('status', this.lastStatus);
+        }
         return;
       } else if (status.opt_turbo === PowerState.Off) {
         // If Turbo mode is already off, just disable it to be safe
@@ -510,6 +539,22 @@ export class AirConditionerAPI extends EventEmitter {
       : 'off';
 
     await this.setOptionState('Opt_sleepMode', sleepValue);
+    // ---- optimistic cache + emit ----
+    if (this.lastStatus) {
+      const isOnFlag =
+        (typeof state === 'string' && state.toLowerCase() !== 'off') ||
+        state === SleepModeState.On;
+      this.lastStatus.opt_sleep = isOnFlag ? PowerState.On : PowerState.Off;
+      this.lastStatus.opt_sleepMode = state as SleepModeState;
+      // Sleep always disables Turbo
+      if (isOnFlag) {
+        this.lastStatus.opt_turbo = PowerState.Off;
+        if (this.lastStatus.fan_mode === FanSpeed.Turbo) {
+          this.lastStatus.fan_mode = FanSpeed.Low;
+        }
+      }
+      this.emit('status', this.lastStatus);
+    }
   }
 
   /**

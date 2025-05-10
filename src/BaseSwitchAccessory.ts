@@ -204,6 +204,11 @@ export abstract class BaseSwitchAccessory {
       
       // Call the provided API function to change the state
       await this.setApiState(boolValue);
+
+      // Optimistically update characteristic so UI responds instantly
+      if (this.service) {
+        this.service.updateCharacteristic(this.onChar, boolValue);
+      }
       
       // Don't clear cache manually - let the centralized status update handle it
       

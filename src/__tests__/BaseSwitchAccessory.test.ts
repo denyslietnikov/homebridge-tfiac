@@ -268,8 +268,8 @@ describe('BaseSwitchAccessory', () => {
       expect(mockSetApiState).toHaveBeenCalledWith(true);
       // The test should not expect clear() to be called - centralized status updates handle this now
       expect(mockCacheManager.clear).not.toHaveBeenCalled();
-      // Don't expect updateCharacteristic to be called directly by handleSet anymore
-      expect(service.updateCharacteristic).not.toHaveBeenCalled();
+      // We now optimistically update the characteristic in handleSet for better UI responsiveness
+      expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
       expect(callback).toHaveBeenCalledWith(null);
       expect(platform.log.error).not.toHaveBeenCalled();
     });
@@ -281,7 +281,7 @@ describe('BaseSwitchAccessory', () => {
       await inst.handleSet(false, callback);
       expect(mockSetApiState).toHaveBeenCalledWith(false);
       expect(mockCacheManager.clear).not.toHaveBeenCalled(); // Should not clear cache on error
-      expect(service.updateCharacteristic).not.toHaveBeenCalled(); // Should not update characteristic on error
+      expect(service.updateCharacteristic).not.toHaveBeenCalled(); // No update on error
       expect(callback).toHaveBeenCalledWith(error);
       // Update to match the actual log message format
       expect(platform.log.error).toHaveBeenCalledWith(
