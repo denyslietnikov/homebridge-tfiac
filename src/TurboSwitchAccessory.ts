@@ -18,17 +18,27 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
         // Get current device state
         const deviceState = this.cacheManager.getDeviceState();
         
-        // Update the device state optimistically
-        deviceState.setTurboMode(value ? PowerState.On : PowerState.Off);
+        // Create a modified state for optimistic updates
+        const modifiedState = deviceState.clone();
         
-        // When turning Turbo on/off, update the fan speed for proper synchronization
         if (value) {
-          this.platform.log.info('Enabling Turbo and disabling Sleep in one command');
-          await this.cacheManager.api.setSleepAndTurbo(FanSpeed.Turbo, SleepModeState.Off);
+          // Apply turbo mode with optimistic update
+          modifiedState.setTurboMode(PowerState.On);
+          
+          // Turbo also affects sleep mode - they are mutually exclusive
+          modifiedState.setSleepMode(SleepModeState.Off);
+          
+          this.platform.log.info('Enabling Turbo and disabling Sleep');
         } else {
-          this.platform.log.info('Disabling Turbo and setting fan speed to Auto in one command');
-          await this.cacheManager.api.setFanAndSleepState(FanSpeed.Auto, SleepModeState.Off);
+          // Turn off turbo mode and set default fan speed
+          modifiedState.setTurboMode(PowerState.Off);
+          modifiedState.setFanSpeed(FanSpeed.Auto);
+          
+          this.platform.log.info('Disabling Turbo and setting fan speed to Auto');
         }
+        
+        // Apply the state changes through command queue
+        await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Turbo',
     );

@@ -20,11 +20,12 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
         // Get device state
         const deviceState = this.cacheManager.getDeviceState();
         
-        // Update device state optimistically
-        deviceState.setEcoMode(state);
+        // Create a modified state for optimistic updates
+        const modifiedState = deviceState.clone();
+        modifiedState.setEcoMode(state);
         
-        // Send command to the device
-        await this.cacheManager.api.setEcoState(state);
+        // Apply the state changes through command queue
+        await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Eco',
     );
@@ -36,15 +37,16 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
     // Get device state
     const deviceState = this.cacheManager.getDeviceState();
     
-    // Update device state optimistically
-    deviceState.setEcoMode(state);
+    // Create a modified state for optimistic updates
+    const modifiedState = deviceState.clone();
+    modifiedState.setEcoMode(state);
     
-    // Check if cacheManager and api exist before trying to access methods
-    if (!this.cacheManager?.api?.setEcoState) {
-      throw new Error('API or setEcoState method is not available');
+    // Apply the state changes through command queue
+    await this.cacheManager.applyStateToDevice(modifiedState);
+    
+    // Update the UI
+    if (this.service) {
+      this.service.updateCharacteristic(this.platform.Characteristic.On, value);
     }
-    
-    await this.cacheManager.api.setEcoState(state);
-    this.cacheManager.clear();
   }
 }

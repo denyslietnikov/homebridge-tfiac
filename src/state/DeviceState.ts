@@ -435,6 +435,31 @@ class DeviceState extends EventEmitter {
       lastUpdated: ${this._lastUpdated.toISOString()}
     }`;
   }
+
+  /**
+   * Creates a clone of the current device state.
+   * @returns A new DeviceState instance with the same property values.
+   */
+  public clone(): DeviceState {
+    const clonedState = new DeviceState();
+    
+    // Copy all properties
+    clonedState._power = this._power;
+    clonedState._operationMode = this._operationMode;
+    clonedState._targetTemperature = this._targetTemperature;
+    clonedState._currentTemperature = this._currentTemperature;
+    clonedState._outdoorTemperature = this._outdoorTemperature;
+    clonedState._fanSpeed = this._fanSpeed;
+    clonedState._swingMode = this._swingMode;
+    clonedState._turboMode = this._turboMode;
+    clonedState._ecoMode = this._ecoMode;
+    clonedState._displayMode = this._displayMode;
+    clonedState._beepMode = this._beepMode;
+    clonedState._sleepMode = this._sleepMode;
+    clonedState._lastUpdated = new Date(this._lastUpdated);
+    
+    return clonedState;
+  }
 }
 
 // Export as default and named export

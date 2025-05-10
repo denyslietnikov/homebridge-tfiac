@@ -1,7 +1,7 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import { SleepModeState, PowerState, FanSpeed } from './enums.js';
+import { SleepModeState, PowerState } from './enums.js';
 import type { AirConditionerStatus } from './AirConditionerAPI.js';
 
 export class SleepSwitchAccessory extends BaseSwitchAccessory {
@@ -51,17 +51,19 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
             return;
           }
 
-          // Update the device state optimistically
-          deviceState.setSleepMode(state);
+          // Create a modified state copy for applying changes
+          const modifiedState = deviceState.clone();
+          modifiedState.setSleepMode(state);
           
-          // Disable Turbo and enable Sleep in one atomic command
-          await this.cacheManager.api.setTurboAndSleep(FanSpeed.Low, state);
+          // Apply changes to device through command queue
+          await this.cacheManager.applyStateToDevice(modifiedState);
         } else {
-          // Update the device state optimistically
-          deviceState.setSleepMode(state);
+          // Create a modified state copy for applying changes
+          const modifiedState = deviceState.clone();
+          modifiedState.setSleepMode(state);
           
-          // Simply turn off Sleep mode
-          await this.cacheManager.api.setSleepState(state);
+          // Apply changes to device through command queue
+          await this.cacheManager.applyStateToDevice(modifiedState);
         }
       },
       'Sleep',

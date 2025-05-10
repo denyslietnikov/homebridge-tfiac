@@ -10,6 +10,8 @@ import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import * as CacheMgrModule from './CacheManager.js';
 import type { CacheManager } from './CacheManager.js';
+import { DeviceState } from './state/DeviceState.js';
+
 // Prefer named export, then default, then throw an error if no valid export is found
 const CacheManagerClass =
   (CacheMgrModule as { CacheManager?: { getInstance: (config: TfiacDeviceConfig) => CacheManager } }).CacheManager ??
@@ -38,12 +40,14 @@ export abstract class BaseSwitchAccessory {
   protected readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
   public cachedStatus: Partial<AirConditionerStatus> | null = null;
-
   protected isPolling = false; // Flag to prevent concurrent polling updates
   protected cacheManager: CacheManager;
+  protected deviceState: DeviceState;
 
-  // Listener for centralized status updates
-  private statusListener!: (status: import('./AirConditionerAPI').AirConditionerStatus | null) => void;
+  // Listener for centralized status updates (legacy)
+  private statusListener: (status: AirConditionerStatus | null) => void;
+  // Listener for state changes from the centralized DeviceState
+  private stateChangeListener: (state: DeviceState) => void;
 
   constructor(
     protected readonly platform: TfiacPlatform,
@@ -56,8 +60,10 @@ export abstract class BaseSwitchAccessory {
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
     this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig);
-    // Debug logging is now centralized in platformAccessory.ts
-    // No need to subscribe to API debug events here
+    this.deviceState = this.cacheManager.getDeviceState();
+    // Initialize status change handlers
+    this.statusListener = this.updateStatus.bind(this);
+    this.stateChangeListener = this.handleStateChange.bind(this);
 
     // 1) Try by UUID + subtype, 2) fall back to service name
     this.service =
@@ -104,20 +110,12 @@ export abstract class BaseSwitchAccessory {
       }
 
       this.platform.log.debug(`${this.logPrefix} accessory initialized for ${this.accessory.displayName}`);
-      // Subscribe to centralized status updates instead of individual polling
-      this.statusListener = this.updateStatus.bind(this);
       
-      // Subscribe to DeviceState changes
-      const deviceState = this.cacheManager.getDeviceState();
-      deviceState.on('stateChanged', (state) => {
-        // Convert DeviceState to AirConditionerStatus format for backward compatibility
-        const compatStatus = state.toApiStatus();
-        this.updateStatus(compatStatus);
-      });
+      // Subscribe to DeviceState changes for reactive UI updates
+      this.deviceState.on('stateChanged', this.stateChangeListener);
       
       // Keep legacy subscriptions for backward compatibility
       if (this.cacheManager?.api && typeof this.cacheManager.api.on === 'function') {
-        // Subscribe to both new and legacy status events
         this.cacheManager.api.on('status', this.statusListener);
         this.cacheManager.api.on('statusChanged', this.statusListener);
       }
@@ -132,12 +130,20 @@ export abstract class BaseSwitchAccessory {
     this.cacheManager?.cleanup?.();
     
     // Unsubscribe from DeviceState events
-    const deviceState = this.cacheManager.getDeviceState();
-    deviceState.removeAllListeners('stateChanged');
+    this.deviceState.removeListener('stateChanged', this.stateChangeListener);
     
     // Unsubscribe from legacy events if supported
-    this.cacheManager?.api?.off?.('status', this.statusListener!);
-    this.cacheManager?.api?.off?.('statusChanged', this.statusListener!);
+    this.cacheManager?.api?.off?.('status', this.statusListener);
+    this.cacheManager?.api?.off?.('statusChanged', this.statusListener);
+  }
+
+  /**
+   * Handle state change events from the DeviceState
+   */
+  private handleStateChange(state: DeviceState): void {
+    // Convert DeviceState to AirConditionerStatus format for backward compatibility
+    const apiStatus = state.toApiStatus();
+    this.updateStatus(apiStatus);
   }
 
   /**
@@ -225,8 +231,6 @@ export abstract class BaseSwitchAccessory {
       if (this.service) {
         this.service.updateCharacteristic(this.onChar, boolValue);
       }
-      
-      // Don't clear cache manually - let the centralized status update handle it
       
       if (callback && typeof callback === 'function') {
         callback(null);

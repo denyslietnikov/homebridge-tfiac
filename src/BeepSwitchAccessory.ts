@@ -20,11 +20,12 @@ export class BeepSwitchAccessory extends BaseSwitchAccessory {
         // Get device state
         const deviceState = this.cacheManager.getDeviceState();
         
-        // Update device state optimistically
-        deviceState.setBeepMode(state);
+        // Create a modified state for optimistic updates
+        const modifiedState = deviceState.clone();
+        modifiedState.setBeepMode(state);
         
-        // Send command to the device
-        await this.cacheManager.api.setBeepState(state);
+        // Apply the state changes through command queue
+        await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Beep',
     );

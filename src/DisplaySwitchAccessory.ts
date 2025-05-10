@@ -17,14 +17,16 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       (status: Partial<AirConditionerStatus>) => status.opt_display === PowerState.On,
       async (value) => {
         const state = value ? PowerState.On : PowerState.Off;
+        
         // Get device state
         const deviceState = this.cacheManager.getDeviceState();
         
-        // Update device state optimistically
-        deviceState.setDisplayMode(state);
+        // Create a modified state for optimistic updates
+        const modifiedState = deviceState.clone();
+        modifiedState.setDisplayMode(state);
         
-        // Send command to the device
-        await this.cacheManager.api.setDisplayState(state);
+        // Apply the state changes through command queue
+        await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Display',
     );

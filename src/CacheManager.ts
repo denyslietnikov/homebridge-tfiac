@@ -2,6 +2,8 @@ import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js'
 import { TfiacDeviceConfig } from './settings.js';
 import { EventEmitter } from 'events';
 import { DeviceState } from './state/DeviceState.js';
+import CommandQueue, { CommandType } from './state/CommandQueue.js';
+import { Logger } from 'homebridge';
 
 /**
  * CacheManager implements caching for API responses and centralizes status updates.
@@ -14,6 +16,8 @@ export class CacheManager {
   private lastFetch = 0;
   private ttl: number;
   private deviceState: DeviceState = new DeviceState();
+  private commandQueue: CommandQueue | null = null;
+  private logger: Logger;
 
   private constructor(private config: TfiacDeviceConfig) {
     // Create the API instance
@@ -42,16 +46,32 @@ export class CacheManager {
     
     // Set TTL based on config
     this.ttl = (config.updateInterval || 30) * 1000;
+    
+    // Create a simple logger if none provided
+    this.logger = {
+      info: (message: string) => console.log(`[INFO] ${message}`),
+      warn: (message: string) => console.log(`[WARN] ${message}`),
+      error: (message: string) => console.log(`[ERROR] ${message}`),
+      debug: (message: string) => console.log(`[DEBUG] ${message}`),
+    } as Logger;
   }
 
-  static getInstance(config: TfiacDeviceConfig): CacheManager {
+  static getInstance(config: TfiacDeviceConfig, logger?: Logger): CacheManager {
     // Always create fresh instance in test environment to trigger API instantiation
     if (process.env.NODE_ENV === 'test') {
-      return new CacheManager(config);
+      const instance = new CacheManager(config);
+      if (logger) {
+        instance.logger = logger;
+      }
+      return instance;
     }
     const key = `${config.ip}:${config.port}`;
     if (!this.instances.has(key)) {
-      this.instances.set(key, new CacheManager(config));
+      const instance = new CacheManager(config);
+      if (logger) {
+        instance.logger = logger;
+      }
+      this.instances.set(key, instance);
     }
     return this.instances.get(key)!;
   }
@@ -121,14 +141,78 @@ export class CacheManager {
    * This does not update the device state object itself, only sends commands.
    */
   async applyStateToDevice(state: DeviceState): Promise<void> {
-    // This will be implemented later with CommandQueue
-    // For now, it's a placeholder to establish the pattern
+    const queue = this.getCommandQueue();
     
-    // Get the API format of the current state
-    const apiStatus = state.toApiStatus();
+    // Get current status to compare with the desired state
+    await this.updateDeviceState(true);
+    const currentState = this.deviceState;
     
-    // In the future, this will trigger appropriate API calls based on what changed
-    console.log('State changes to be applied:', apiStatus);
+    // Schedule power command if needed
+    if (state.power !== currentState.power) {
+      await queue.addCommand(CommandType.POWER, { value: state.power === 'on' });
+    }
+    
+    // Schedule other commands based on the differences
+    // Only if the device is on or being turned on
+    if (state.power === 'on') {
+      // Operation mode
+      if (state.operationMode !== currentState.operationMode) {
+        await queue.addCommand(CommandType.MODE, { mode: state.operationMode });
+      }
+      
+      // Temperature
+      if (state.targetTemperature !== currentState.targetTemperature) {
+        await queue.addCommand(CommandType.TEMPERATURE, { temperature: state.targetTemperature });
+      }
+      
+      // Fan speed (handle special case for Turbo)
+      if (state.fanSpeed !== currentState.fanSpeed) {
+        if (state.fanSpeed === 'Turbo') {
+          // Use the combined command to set turbo and turn off sleep
+          await queue.addCommand(CommandType.SLEEP_AND_TURBO, { 
+            fanSpeed: 'Turbo', 
+            sleepState: 'off', 
+          });
+        } else {
+          // Normal fan speed change
+          await queue.addCommand(CommandType.FAN_SPEED, { speed: state.fanSpeed });
+        }
+      }
+      
+      // Swing mode
+      if (state.swingMode !== currentState.swingMode) {
+        await queue.addCommand(CommandType.SWING, { mode: state.swingMode });
+      }
+      
+      // Sleep mode
+      if (state.sleepMode !== currentState.sleepMode) {
+        // Use Fan + Sleep combined command if fan speed is Low or Auto
+        if (['Low', 'Auto'].includes(state.fanSpeed)) {
+          await queue.addCommand(CommandType.FAN_AND_SLEEP, {
+            fanSpeed: state.fanSpeed,
+            sleepState: state.sleepMode,
+          });
+        } else {
+          // Just change sleep state
+          await queue.addCommand(CommandType.SLEEP, { state: state.sleepMode });
+        }
+      }
+      
+      // Eco mode
+      if (state.ecoMode !== currentState.ecoMode) {
+        await queue.addCommand(CommandType.ECO, { state: state.ecoMode });
+      }
+      
+      // Display
+      if (state.displayMode !== currentState.displayMode) {
+        await queue.addCommand(CommandType.DISPLAY, { state: state.displayMode });
+      }
+      
+      // Beep
+      if (state.beepMode !== currentState.beepMode) {
+        await queue.addCommand(CommandType.BEEP, { state: state.beepMode });
+      }
+    }
   }
 
   /**
@@ -154,6 +238,42 @@ export class CacheManager {
     
     // Remove listeners from DeviceState to prevent memory leaks
     this.deviceState.removeAllListeners();
+  }
+
+  /**
+   * Initialize the command queue if it doesn't exist.
+   * This is separate from constructor to allow lazy initialization and proper logger setup.
+   */
+  private initCommandQueue(): CommandQueue {
+    if (!this.commandQueue) {
+      this.commandQueue = new CommandQueue(this.api, this.deviceState, this.logger);
+      
+      // Setup command queue event listeners
+      this.commandQueue.on('executed', (command) => {
+        this.logger.info(`Command ${command.type} executed successfully`);
+      });
+      
+      this.commandQueue.on('error', (data) => {
+        this.logger.error(`Error executing command ${data.command.type}: ${data.error}`);
+      });
+      
+      this.commandQueue.on('retry', (data) => {
+        this.logger.debug(`Retrying command ${data.command.type} (attempt ${data.retryCount})`);
+      });
+      
+      this.commandQueue.on('maxRetriesReached', (command) => {
+        this.logger.error(`Max retries reached for command ${command.type}`);
+      });
+    }
+    
+    return this.commandQueue;
+  }
+  
+  /**
+   * Get the command queue. Creates it if it doesn't exist.
+   */
+  public getCommandQueue(): CommandQueue {
+    return this.initCommandQueue();
   }
 }
 

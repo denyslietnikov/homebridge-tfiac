@@ -8,12 +8,15 @@ import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js'
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
 import { OperationMode, FanSpeed, SleepModeState, PowerState, FanSpeedPercentMap } from './enums.js';
+import { DeviceState } from './state/DeviceState.js';
 
 export class FanSpeedAccessory {
   private service: Service;
   private deviceAPI: AirConditionerAPI;
   private cacheManager: CacheManager;
   private statusListener: (status: AirConditionerStatus | null) => void;
+  private stateChangeListener: (state: DeviceState) => void;
+  private deviceState: DeviceState;
   private userSetFanMode: FanSpeed | null = null; // Track the user's manually set fan mode
   private lastUpdateTime: number = 0; // Track when the user last set the fan speed
   private debounceTimer?: NodeJS.Timeout;
@@ -28,6 +31,7 @@ export class FanSpeedAccessory {
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
     this.cacheManager = CacheManager.getInstance(deviceConfig);
     this.deviceAPI = this.cacheManager.api;
+    this.deviceState = this.cacheManager.getDeviceState();
 
     // Create or retrieve the Fan service
     this.service =
@@ -38,9 +42,15 @@ export class FanSpeedAccessory {
 
     // Subscribe to centralized status updates
     this.statusListener = this.updateStatus.bind(this);
+    this.stateChangeListener = this.handleStateChange.bind(this);
+    
+    // Subscribe to legacy and new state events
     if (typeof this.cacheManager.api.on === 'function') {
       this.cacheManager.api.on('status', this.statusListener);
     }
+    
+    // Subscribe to DeviceState changes
+    this.deviceState.on('stateChanged', this.stateChangeListener);
     
     // Debug logging is now centralized in platformAccessory.ts
 
@@ -288,32 +298,35 @@ export class FanSpeedAccessory {
         // Get device state
         const deviceState = this.cacheManager.getDeviceState();
         
-        const status = await this.deviceAPI.updateState();
-        if (!this.isFanControlAllowedForMode(status.operation_mode as OperationMode)) {
-          this.platform.log.info(`Switching to Cool mode to allow fan control from mode ${status.operation_mode}`);
+        // Create a modified state for optimistic updates
+        const modifiedState = deviceState.clone();
+        
+        // Check if we need to change operation mode for fan control
+        if (!this.isFanControlAllowedForMode(deviceState.operationMode)) {
+          this.platform.log.info(`Switching to Cool mode to allow fan control from mode ${deviceState.operationMode}`);
           
-          // Update device state optimistically
-          deviceState.setOperationMode(OperationMode.Cool);
-          
-          await this.deviceAPI.setAirConditionerState('operation_mode', OperationMode.Cool);
+          // Update the operation mode in our modified state
+          modifiedState.setOperationMode(OperationMode.Cool);
         }
         
-        // Update fan speed in device state optimistically
-        deviceState.setFanSpeed(fanMode);
+        // Update fan speed in modified state
+        modifiedState.setFanSpeed(fanMode);
         
         if (fanMode === FanSpeed.Turbo) {
           this.platform.log.info('Enabling Turbo mode via fan speed slider');
           
-          // Update turbo mode in device state
-          deviceState.setTurboMode(PowerState.On);
-          
-          await this.deviceAPI.setFanSpeed(FanSpeed.Turbo);
+          // Update turbo mode in modified state
+          modifiedState.setTurboMode(PowerState.On);
         } else {
-          // Update sleep mode in device state
-          deviceState.setSleepMode(SleepModeState.Off);
+          // Make sure turbo is off when not in turbo mode
+          modifiedState.setTurboMode(PowerState.Off);
           
-          await this.deviceAPI.setFanAndSleepState(fanMode, SleepModeState.Off);
+          // We don't want sleep mode to interfere with fan control
+          modifiedState.setSleepMode(SleepModeState.Off);
         }
+        
+        // Apply all changes through command queue
+        await this.cacheManager.applyStateToDevice(modifiedState);
       } catch (err) {
         this.platform.log.error('Error applying debounced fan speed set:', err);
       }
@@ -341,11 +354,33 @@ export class FanSpeedAccessory {
   }
 
   /**
+   * Handle state changes from the DeviceState system
+   */
+  private handleStateChange(state: DeviceState): void {
+    // Convert DeviceState to AirConditionerStatus for compatibility with existing code
+    const apiStatus = state.toApiStatus() as AirConditionerStatus;
+    this.updateStatus(apiStatus);
+  }
+
+  /**
    * Unsubscribe from centralized status updates
    */
   public stopPolling(): void {
+    // Remove legacy event listeners
     if (typeof this.cacheManager.api.off === 'function') {
       this.cacheManager.api.off('status', this.statusListener);
     }
+    
+    // Remove DeviceState event listeners
+    this.deviceState.removeListener('stateChanged', this.stateChangeListener);
+    
+    // Clear any pending timers
+    if (this.debounceTimer) {
+      clearTimeout(this.debounceTimer);
+      this.debounceTimer = undefined;
+    }
+    
+    // Call cache manager cleanup if available
+    this.cacheManager?.cleanup?.();
   }
 }
