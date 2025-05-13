@@ -24,8 +24,11 @@ export enum OperationMode {
  * Represents the fan speed modes.
  */
 export enum FanSpeed {
+  Silent = 'Silent',
   Low = 'Low',
-  Middle = 'Middle',
+  MediumLow = 'MediumLow',
+  Medium = 'Medium', // Renamed from Middle
+  MediumHigh = 'MediumHigh',
   High = 'High',
   Turbo = 'Turbo',
   Auto = 'Auto',
@@ -36,9 +39,12 @@ export enum FanSpeed {
  */
 export const FanSpeedPercentMap: Record<FanSpeed, number> = {
   [FanSpeed.Auto]: 0,
-  [FanSpeed.Low]: 25,
-  [FanSpeed.Middle]: 50,
-  [FanSpeed.High]: 75,
+  [FanSpeed.Silent]: 15,
+  [FanSpeed.Low]: 30,
+  [FanSpeed.MediumLow]: 45,
+  [FanSpeed.Medium]: 60, // Was Middle, percentage adjusted
+  [FanSpeed.MediumHigh]: 75,
+  [FanSpeed.High]: 90, // Percentage adjusted
   [FanSpeed.Turbo]: 100,
 };
 

@@ -1,8 +1,15 @@
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
+import AirConditionerAPI, { AirConditionerStatus, PartialDeviceOptions } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import { EventEmitter } from 'events';
 import { DeviceState } from './state/DeviceState.js';
-import CommandQueue, { CommandType } from './state/CommandQueue.js';
+import { PowerState } from './enums.js';
+import {
+  CommandQueue,
+  CommandExecutedEvent,
+  CommandErrorEvent,
+  CommandRetryEvent,
+  CommandMaxRetriesReachedEvent,
+} from './state/CommandQueue.js';
 import { Logger } from 'homebridge';
 
 /**
@@ -12,10 +19,10 @@ import { Logger } from 'homebridge';
 export class CacheManager {
   private static instances = new Map<string, CacheManager>();
   public api: AirConditionerAPI & EventEmitter; // Ensure API has EventEmitter capabilities
-  private cache: AirConditionerStatus | null = null;
+  private rawApiCache: AirConditionerStatus | null = null; // Renamed from 'cache'
   private lastFetch = 0;
   private ttl: number;
-  private deviceState: DeviceState = new DeviceState();
+  private _deviceState: DeviceState = new DeviceState(); // Renamed to avoid conflict with getter
   private commandQueue: CommandQueue | null = null;
   private logger: Logger;
 
@@ -56,18 +63,18 @@ export class CacheManager {
     } as Logger;
   }
 
-  static getInstance(config: TfiacDeviceConfig, logger?: Logger): CacheManager {
-    // Always create fresh instance in test environment to trigger API instantiation
+  static getInstance(config?: TfiacDeviceConfig, logger?: Logger): CacheManager {
+    // In test, always create fresh instance to trigger API instantiation
     if (process.env.NODE_ENV === 'test') {
-      const instance = new CacheManager(config);
+      const instance = new CacheManager(config!);
       if (logger) {
         instance.logger = logger;
       }
       return instance;
     }
-    const key = `${config.ip}:${config.port}`;
+    const key = `${config!.ip}:${config!.port}`;
     if (!this.instances.has(key)) {
-      const instance = new CacheManager(config);
+      const instance = new CacheManager(config!);
       if (logger) {
         instance.logger = logger;
       }
@@ -77,39 +84,41 @@ export class CacheManager {
   }
 
   /**
+   * Public getter for the DeviceState instance.
+   */
+  public getDeviceState(): DeviceState {
+    return this._deviceState;
+  }
+
+  /**
    * Gets the status from cache if available and not expired, otherwise fetches from API.
    */
-  async getStatus(): Promise<AirConditionerStatus> {
+  async getStatus(): Promise<DeviceState> { // Return DeviceState
     const now = Date.now();
-    if (this.cache && now - this.lastFetch < this.ttl) {
-      return this.cache;
+    // Use rawApiCache for checking TTL
+    if (this.rawApiCache && now - this.lastFetch < this.ttl) {
+      // DeviceState is already updated from rawApiCache, so return it
+      return this._deviceState;
     }
     const status = await this.api.updateState();
-    this.cache = status;
+    this.rawApiCache = status; // Store raw API response
     this.lastFetch = now;
     
     // Update the DeviceState with the new data
-    this.deviceState.updateFromDevice(status);
+    this._deviceState.updateFromDevice(status);
     
-    // Emit status update for subscribers
-    this.api.emit('status', status);
+    // Emit status update for subscribers (legacy API event)
+    this.api.emit('status', status); 
     
-    return status;
+    return this._deviceState; // Return the updated DeviceState
   }
 
   /**
-   * Returns the last cached status without making an API call,
-   * useful for synchronous status checks.
+   * Returns the current device state object from the internal DeviceState instance.
+   * This is always the most up-to-date known state, reflecting both fetches and optimistic updates.
    */
-  getLastStatus(): AirConditionerStatus | null {
-    return this.cache;
-  }
-
-  /**
-   * Returns the current device state object
-   */
-  getDeviceState(): DeviceState {
-    return this.deviceState;
+  getCurrentDeviceState(): DeviceState { // Renamed from getLastStatus and changed return type
+    return this._deviceState;
   }
 
   /**
@@ -118,12 +127,12 @@ export class CacheManager {
    */
   async updateDeviceState(force: boolean = false): Promise<DeviceState> {
     const now = Date.now();
-    let status = this.cache;
+    let status = this.rawApiCache; // Use rawApiCache
     
     // If cache is empty, expired, or force is true, fetch new status
     if (!status || now - this.lastFetch >= this.ttl || force) {
       status = await this.api.updateState();
-      this.cache = status;
+      this.rawApiCache = status; // Update rawApiCache
       this.lastFetch = now;
       
       // Emit status update for subscribers (legacy API)
@@ -131,87 +140,96 @@ export class CacheManager {
     }
     
     // Update the DeviceState with the latest data
-    this.deviceState.updateFromDevice(status);
+    this._deviceState.updateFromDevice(status);
     
-    return this.deviceState;
+    return this._deviceState;
   }
 
   /**
    * Apply changes from device state to the physical device.
    * This does not update the device state object itself, only sends commands.
    */
-  async applyStateToDevice(state: DeviceState): Promise<void> {
-    const queue = this.getCommandQueue();
-    
-    // Get current status to compare with the desired state
+  async applyStateToDevice(desiredState: DeviceState): Promise<void> {
+    this.logger.debug(`[CacheManager] Applying desired state: ${JSON.stringify(desiredState.toPlainObject())}`);
+    // Ensure currentState (this._deviceState) is fresh before diffing.
     await this.updateDeviceState(true);
-    const currentState = this.deviceState;
-    
-    // Schedule power command if needed
-    if (state.power !== currentState.power) {
-      await queue.addCommand(CommandType.POWER, { value: state.power === 'on' });
+    const currentState = this._deviceState;
+    this.logger.debug(`[CacheManager] Current actual state before diff: ${JSON.stringify(currentState.toPlainObject())}`);
+
+    // Use PartialDeviceOptions directly as it's imported and matches setDeviceOptions parameter
+    const options: PartialDeviceOptions = {};
+    let changesMade = false;
+
+    // Power state
+    if (desiredState.power !== undefined && desiredState.power !== currentState.power) {
+      options.power = desiredState.power;
+      changesMade = true;
     }
-    
-    // Schedule other commands based on the differences
-    // Only if the device is on or being turned on
-    if (state.power === 'on') {
-      // Operation mode
-      if (state.operationMode !== currentState.operationMode) {
-        await queue.addCommand(CommandType.MODE, { mode: state.operationMode });
+
+    // Only consider other options if the desired power state is ON,
+    // or if power is not being changed and the current state is ON.
+    const considerSubOptions = desiredState.power === PowerState.On ||
+                             (desiredState.power === undefined && currentState.power === PowerState.On);
+
+    if (considerSubOptions) {
+      if (desiredState.operationMode !== undefined && desiredState.operationMode !== currentState.operationMode) {
+        options.mode = desiredState.operationMode;
+        changesMade = true;
       }
+      if (desiredState.targetTemperature !== undefined && desiredState.targetTemperature !== currentState.targetTemperature) {
+        // Changed targetTemp to temp to match AirConditionerAPI.setOptionsCombined
+        options.temp = desiredState.targetTemperature; 
+        changesMade = true;
+      }
+      if (desiredState.fanSpeed !== undefined && desiredState.fanSpeed !== currentState.fanSpeed) {
+        options.fanSpeed = desiredState.fanSpeed;
+        changesMade = true;
+      }
+      if (desiredState.sleepMode !== undefined && desiredState.sleepMode !== currentState.sleepMode) {
+        options.sleep = desiredState.sleepMode;
+        changesMade = true;
+      }
+      if (desiredState.turboMode !== undefined && desiredState.turboMode !== currentState.turboMode) {
+        options.turbo = desiredState.turboMode;
+        changesMade = true;
+      }
+      if (desiredState.ecoMode !== undefined && desiredState.ecoMode !== currentState.ecoMode) {
+        options.eco = desiredState.ecoMode;
+        changesMade = true;
+      }
+      if (desiredState.displayMode !== undefined && desiredState.displayMode !== currentState.displayMode) {
+        options.display = desiredState.displayMode;
+        changesMade = true;
+      }
+      // Beep: If beepMode in desiredState is different, it's a request to change beep state.
+      if (desiredState.beepMode !== undefined && desiredState.beepMode !== currentState.beepMode) {
+        options.beep = desiredState.beepMode;
+        changesMade = true;
+      }
+    } else if (options.power === PowerState.Off) {
+      // If the only change is to turn power off, options will only contain { power: PowerState.Off }
+      // All other parameters are implicitly turned off by the device.
+      // No need to add other options if we are turning the device off.
+      this.logger.debug('[CacheManager] Powering off. Other options will be ignored by setOptionsCombined or device.');
+    }
+
+    if (changesMade && Object.keys(options).length > 0) {
+      this.logger.info(`[CacheManager] Changes detected. Enqueuing command with options: ${JSON.stringify(options)}`);
+      const queue = this.getCommandQueue();
       
-      // Temperature
-      if (state.targetTemperature !== currentState.targetTemperature) {
-        await queue.addCommand(CommandType.TEMPERATURE, { temperature: state.targetTemperature });
+      // Changed from addCommand with CommandType to enqueueCommand with options directly
+      await queue.enqueueCommand(options);
+
+      // Optimistically update local DeviceState.
+      // A method like `this._deviceState.updateFromOptions(options)` will be added to DeviceState.ts
+      if (typeof this._deviceState.updateFromOptions === 'function') {
+        this._deviceState.updateFromOptions(options);
+        this.logger.debug(`[CacheManager] Optimistically updated local DeviceState to: ${JSON.stringify(this._deviceState.toPlainObject())} after enqueuing.`);
+      } else {
+        this.logger.warn('[CacheManager] DeviceState.updateFromOptions method not found. Skipping optimistic update.');
       }
-      
-      // Fan speed (handle special case for Turbo)
-      if (state.fanSpeed !== currentState.fanSpeed) {
-        if (state.fanSpeed === 'Turbo') {
-          // Use the combined command to set turbo and turn off sleep
-          await queue.addCommand(CommandType.SLEEP_AND_TURBO, { 
-            fanSpeed: 'Turbo', 
-            sleepState: 'off', 
-          });
-        } else {
-          // Normal fan speed change
-          await queue.addCommand(CommandType.FAN_SPEED, { speed: state.fanSpeed });
-        }
-      }
-      
-      // Swing mode
-      if (state.swingMode !== currentState.swingMode) {
-        await queue.addCommand(CommandType.SWING, { mode: state.swingMode });
-      }
-      
-      // Sleep mode
-      if (state.sleepMode !== currentState.sleepMode) {
-        // Use Fan + Sleep combined command if fan speed is Low or Auto
-        if (['Low', 'Auto'].includes(state.fanSpeed)) {
-          await queue.addCommand(CommandType.FAN_AND_SLEEP, {
-            fanSpeed: state.fanSpeed,
-            sleepState: state.sleepMode,
-          });
-        } else {
-          // Just change sleep state
-          await queue.addCommand(CommandType.SLEEP, { state: state.sleepMode });
-        }
-      }
-      
-      // Eco mode
-      if (state.ecoMode !== currentState.ecoMode) {
-        await queue.addCommand(CommandType.ECO, { state: state.ecoMode });
-      }
-      
-      // Display
-      if (state.displayMode !== currentState.displayMode) {
-        await queue.addCommand(CommandType.DISPLAY, { state: state.displayMode });
-      }
-      
-      // Beep
-      if (state.beepMode !== currentState.beepMode) {
-        await queue.addCommand(CommandType.BEEP, { state: state.beepMode });
-      }
+    } else {
+      this.logger.info('[CacheManager] No changes to apply.');
     }
   }
 
@@ -219,7 +237,7 @@ export class CacheManager {
    * Clears the cached status, forcing a refresh on the next getStatus call.
    */
   clear(): void {
-    this.cache = null;
+    this.rawApiCache = null; // Clear rawApiCache
     this.lastFetch = 0;
   }
 
@@ -237,7 +255,7 @@ export class CacheManager {
     }
     
     // Remove listeners from DeviceState to prevent memory leaks
-    this.deviceState.removeAllListeners();
+    this._deviceState.removeAllListeners();
   }
 
   /**
@@ -246,23 +264,44 @@ export class CacheManager {
    */
   private initCommandQueue(): CommandQueue {
     if (!this.commandQueue) {
-      this.commandQueue = new CommandQueue(this.api, this.deviceState, this.logger);
+      // Ensure minRequestDelay is a number, defaulting to 500 if not specified or invalid
+      let minDelay = 500;
+      if (typeof this.config.minRequestDelay === 'number') {
+        minDelay = this.config.minRequestDelay;
+      } else if (typeof this.config.minRequestDelay === 'string') {
+        const parsedDelay = parseInt(this.config.minRequestDelay, 10);
+        if (!isNaN(parsedDelay)) {
+          minDelay = parsedDelay;
+        }
+      }
+      this.commandQueue = new CommandQueue(this.api, this._deviceState, this.logger, minDelay);
       
-      // Setup command queue event listeners
-      this.commandQueue.on('executed', (command) => {
-        this.logger.info(`Command ${command.type} executed successfully`);
+      this.commandQueue.on('executed', (event: CommandExecutedEvent) => {
+        // Use the event payload in the log message
+        this.logger.info('Command executed successfully', event.command); 
+        setTimeout(async () => {
+          try {
+            this.logger.debug('[CacheManager] Quick feedback: Forcing state update after command execution.');
+            await this.updateDeviceState(true);
+            this.logger.debug('[CacheManager] Quick feedback: State update complete.');
+          } catch (error) {
+            this.logger.error('[CacheManager] Quick feedback: Error during forced state update:', error);
+          }
+        }, 2000);
       });
       
-      this.commandQueue.on('error', (data) => {
-        this.logger.error(`Error executing command ${data.command.type}: ${data.error}`);
+      this.commandQueue.on('error', (event: CommandErrorEvent) => {
+        this.logger.error(`Error executing command: ${event.error.message}`, event.command);
       });
       
-      this.commandQueue.on('retry', (data) => {
-        this.logger.debug(`Retrying command ${data.command.type} (attempt ${data.retryCount})`);
+      this.commandQueue.on('retry', (event: CommandRetryEvent) => {
+        // Shorten the log line
+        const msg = `Retrying command (attempt ${event.retryCount}): ${event.error.message}`;
+        this.logger.debug(msg, event.command);
       });
       
-      this.commandQueue.on('maxRetriesReached', (command) => {
-        this.logger.error(`Max retries reached for command ${command.type}`);
+      this.commandQueue.on('maxRetriesReached', (event: CommandMaxRetriesReachedEvent) => {
+        this.logger.error(`Max retries reached for command: ${event.error.message}`, event.command);
       });
     }
     
@@ -274,6 +313,14 @@ export class CacheManager {
    */
   public getCommandQueue(): CommandQueue {
     return this.initCommandQueue();
+  }
+
+  /**
+   * Update the internal cache directly, used by tests.
+   */
+  public async updateCache(deviceId: string, newStatus: Partial<AirConditionerStatus>): Promise<void> {
+    this.rawApiCache = newStatus as AirConditionerStatus;
+    this._deviceState.updateFromDevice(this.rawApiCache);
   }
 }
 

@@ -1,4 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */
+console.log('[testUtils.ts] START LOADING');
+
 // src/__tests__/testUtils.helper.ts
 import {
   API,
@@ -14,262 +16,450 @@ import {
   Service,
   WithUUID,
 } from 'homebridge';
-import { vi } from 'vitest';
+import { vi, Mock } from 'vitest';
 import { TfiacPlatform } from '../platform.js';
 import { TfiacDeviceConfig } from '../settings.js';
 import { PLATFORM_NAME } from '../settings.js';
+import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from '../enums';
+import { EventEmitter } from 'events';
+import type { AirConditionerStatus, DeviceOptions, PartialDeviceOptions as ApiPartialDeviceOptions } from '../AirConditionerAPI';
+console.log('[testUtils.ts] Imported types from AirConditionerAPI (AirConditionerStatus, DeviceOptions, PartialDeviceOptions)');
 
-// Common types for mocks
-export interface MockLogger extends Partial<Logging> {
-  debug: ReturnType<typeof vi.fn>;
-  info: ReturnType<typeof vi.fn>;
-  warn: ReturnType<typeof vi.fn>;
-  error: ReturnType<typeof vi.fn>;
-  log: ReturnType<typeof vi.fn>;
-  success: ReturnType<typeof vi.fn>;
-}
-
-// Define MockApiActions interface based on createMockApiActions return type
-export interface MockApiActions {
-  updateState: ReturnType<typeof vi.fn>;
-  turnOn: ReturnType<typeof vi.fn>;
-  turnOff: ReturnType<typeof vi.fn>;
-  setAirConditionerState: ReturnType<typeof vi.fn>;
-  setFanSpeed: ReturnType<typeof vi.fn>;
-  setSwingMode: ReturnType<typeof vi.fn>;
-  setTurboState: ReturnType<typeof vi.fn>;
-  setEcoState: ReturnType<typeof vi.fn>;
-  setDisplayState: ReturnType<typeof vi.fn>;
-  setBeepState: ReturnType<typeof vi.fn>;
-  setSleepState: ReturnType<typeof vi.fn>;
-  setFanAndSleepState: ReturnType<typeof vi.fn>; // Add combined command method
-  cleanup: ReturnType<typeof vi.fn>;
-  api: {
-    on: ReturnType<typeof vi.fn>;
-    off: ReturnType<typeof vi.fn>;
-  };
-}
-
-// Use a more flexible type for hap to avoid deep compatibility issues
-// Define MockAPI as a standalone interface with necessary mocked properties
-export interface MockAPI {
-  hap: any; // Keep 'any' for flexibility in mocking hap internals
-  registerPlatformAccessories: ReturnType<typeof vi.fn>;
-  updatePlatformAccessories: ReturnType<typeof vi.fn>;
-  unregisterPlatformAccessories: ReturnType<typeof vi.fn>;
-  // Mock platformAccessory as a function returning a PlatformAccessory-like object
-  platformAccessory: ReturnType<typeof vi.fn>;
-  on: ReturnType<typeof vi.fn>;
-  emit: ReturnType<typeof vi.fn>;
-  removeAccessories: ReturnType<typeof vi.fn>;
-  api: {
-    on: ReturnType<typeof vi.fn>;
-    off: ReturnType<typeof vi.fn>;
-  };
-}
-
-// Helper function to create a mocked Homebridge logger
-export function createMockLogger(): MockLogger {
-  return {
-    debug: vi.fn(),
-    info: vi.fn(),
-    warn: vi.fn(),
-    error: vi.fn(),
-    log: vi.fn(),
-    success: vi.fn(),
-  } as MockLogger;
-}
-
-// Helper to create a mock characteristic
-export function createMockCharacteristic() {
+// Mock characteristic creation
+export function createMockCharacteristic(): IMockCharacteristic {
   const onMethod = function (this: any, event: 'get' | 'set', handler: any): any {
     if (event === 'get') {
-      this.getHandler = handler;
+      this.getHandler = handler; 
     } else {
-      this.setHandler = handler;
+      this.setHandler = handler; 
     }
     return this;
   };
-
   return {
+    UUID: 'mock-char-uuid',
     value: null,
-    getHandler: undefined,
-    setHandler: undefined,
+    props: {},
     on: vi.fn(onMethod),
-    onGet: vi.fn(function (this: any, handler: any) {
-      this.getHandler = handler;
-      return this;
-    }),
     onSet: vi.fn(function (this: any, handler: any) {
-      this.setHandler = handler;
-      return this;
+      this.setHandler = handler; return this; 
+    }),
+    onGet: vi.fn(function (this: any, handler: any) {
+      this.getHandler = handler; return this; 
+    }),
+    updateValue: vi.fn(function (this: any, newValue: CharacteristicValue) {
+      this.value = newValue; return this; 
     }),
     setProps: vi.fn().mockReturnThis(),
-    updateValue: vi.fn(function (this: any, newValue: CharacteristicValue) {
-      this.value = newValue;
-      return this;
-    }),
   };
 }
 
-// Helper to create a mock service that better matches the Service interface
-export function createMockService(): any {
-  const characteristics = new Map<string, any>();
+// Mock service creation
+export function createMockService(serviceUUID = 'mock-service-uuid', displayName = 'Mock Service'): Service {
+  const characteristics = new Map<string, IMockCharacteristic>();
+  const getCharacteristic = vi.fn((charIdentifier: any): IMockCharacteristic => {
+    const key = charIdentifier?.UUID || String(charIdentifier);
+    if (!characteristics.has(key)) {
+      const newChar = createMockCharacteristic();
+      newChar.UUID = key;
+      characteristics.set(key, newChar);
+    }
+    return characteristics.get(key)!;
+  });
 
-  const mockService = {
+  return {
     characteristics,
-    UUID: 'mock-service-uuid',
-    displayName: 'Mock Service',
-    iid: 1,
-    name: 'Mock Service',
-    subtype: undefined,
-    on: vi.fn().mockReturnThis(),
-    emit: vi.fn().mockReturnValue(true),
-    getCharacteristic: vi.fn((charIdentifier: any) => {
-      const key =
-        charIdentifier && typeof charIdentifier === 'object' && 'UUID' in charIdentifier
-          ? (charIdentifier as { UUID: string }).UUID
-          : String(charIdentifier);
-      if (!characteristics.has(key)) {
-        characteristics.set(key, createMockCharacteristic());
-      }
-      return characteristics.get(key)!;
-    }),
+    UUID: serviceUUID,
+    displayName,
+    getCharacteristic,
     setCharacteristic: vi.fn(function (this: any, charIdentifier: any, value: CharacteristicValue) {
-      const mockChar = this.getCharacteristic(charIdentifier);
+      const mockChar = getCharacteristic(charIdentifier);
       mockChar.updateValue(value);
       return this;
     }),
     updateCharacteristic: vi.fn(function (this: any, charIdentifier: any, value: any) {
-      const mockChar = this.getCharacteristic(charIdentifier);
+      const mockChar = getCharacteristic(charIdentifier);
       mockChar.updateValue(value);
       return this;
     }),
     addCharacteristic: vi.fn().mockReturnThis(),
     removeCharacteristic: vi.fn(),
-    getServiceId: vi.fn().mockReturnValue('mock-service-id'),
-  };
-  
-  return mockService;
-}
-
-// Helper to create a mock platform accessory with default values for optional parameters
-export function createMockPlatformAccessory(
-  displayName: string = 'Mock Accessory',
-  uuid: string = 'mock-uuid',
-  deviceConfig: TfiacDeviceConfig = { name: 'Mock Device', ip: '1.2.3.4' },
-  mockService?: any,
-): PlatformAccessory {
-  const service = mockService || createMockService();
-
-  return {
-    context: { deviceConfig },
-    displayName,
-    UUID: uuid,
-    category: Categories.AIR_CONDITIONER,
-    getService: vi.fn().mockReturnValue(service),
-    addService: vi.fn().mockReturnValue(service),
-    services: [service],
     on: vi.fn().mockReturnThis(),
-    emit: vi.fn().mockReturnValue(true),
-    removeService: vi.fn(),
-    getServiceById: vi.fn(),
-  } as unknown as PlatformAccessory;
+  } as unknown as Service;
 }
 
-// API mocking for common Homebridge API features
-export function createMockAPI(customUuid?: string): MockAPI {
-  // Common Characteristic constant values used in tests
-  const characteristicValues = {
-    TargetHeaterCoolerState: {
-      AUTO: 0,
-      HEAT: 1,
-      COOL: 2,
-    },
-    CurrentHeaterCoolerState: {
-      INACTIVE: 0,
-      IDLE: 1,
-      HEATING: 2,
-      COOLING: 3,
-    },
-    TemperatureDisplayUnits: {
-      CELSIUS: 0,
-      FAHRENHEIT: 1,
-    },
-    Active: {
-      INACTIVE: 0,
-      ACTIVE: 1,
-    },
-    SwingMode: {
-      SWING_DISABLED: 0,
-      SWING_ENABLED: 1,
-    },
+// Helper to create a mock service constructor
+const createMockServiceConstructor = (uuid: string, defaultDisplayName = 'MockService') => {
+  const constructor = function(this: any, displayName?: string, subtype?: string) {
+    const serviceInstance = createMockService(uuid, displayName || defaultDisplayName);
+    if (subtype) {
+      serviceInstance.subtype = subtype;
+    }
+    return serviceInstance;
   };
+  constructor.UUID = uuid;
+  return vi.fn(constructor);
+};
 
-  // Create a Characteristic constructor mock with common constants
-  const CharacteristicMock = function (this: any) {
-    // Each property is manually created for each Characteristic
-    this.UUID = 'mock-uuid';
-  } as unknown as typeof Characteristic & { [key: string]: any };
+// Interfaces
+export interface MockLogger extends Partial<Logging> {
+  debug: Mock<(...args: any[]) => any>;
+  info: Mock<(...args: any[]) => any>;
+  warn: Mock<(...args: any[]) => any>;
+  error: Mock<(...args: any[]) => any>;
+  log: Mock<(...args: any[]) => any>;
+  success: Mock<(...args: any[]) => any>;
+}
 
-  // Add all characteristic values to the mock
-  Object.entries(characteristicValues).forEach(([key, values]) => {
-    CharacteristicMock[key] = key;
-    Object.entries(values).forEach(([valueKey, value]) => {
-      if (!CharacteristicMock[key] || typeof CharacteristicMock[key] !== 'object') {
-        CharacteristicMock[key] = {};
+export interface MockApiActions {
+  updateState: Mock<(...args: any[]) => any>;
+  turnOn: Mock<(...args: any[]) => any>;
+  turnOff: Mock<(...args: any[]) => any>;
+  setAirConditionerState: Mock<(...args: any[]) => any>;
+  setFanSpeed: Mock<(...args: any[]) => any>;
+  setSwingMode: Mock<(...args: any[]) => any>;
+  setTurboState: Mock<(...args: any[]) => any>;
+  setEcoState: Mock<(...args: any[]) => any>;
+  setDisplayState: Mock<(...args: any[]) => any>;
+  setBeepState: Mock<(...args: any[]) => any>;
+  setSleepState: Mock<(...args: any[]) => any>;
+  setFanAndSleepState: Mock<(...args: any[]) => any>;
+  cleanup: Mock<(...args: any[]) => any>;
+  api: {
+    on: Mock<(...args: any[]) => any>;
+    off: Mock<(...args: any[]) => any>;
+  };
+}
+
+export interface MockDeviceCommandPayload {
+  TurnOn?: PowerState | string;
+  BaseMode?: OperationMode | string;
+  SetTemp?: number;
+  WindSpeed?: FanSpeed | string;
+  WindDirection_H?: 'on' | 'off';
+  WindDirection_V?: 'on' | 'off';
+  Opt_super?: PowerState | string;
+  Opt_eco?: PowerState | string;
+  Opt_display?: PowerState | string;
+  Opt_beep?: PowerState | string;
+  Opt_sleepMode?: SleepModeState | string;
+}
+
+export interface IMockCharacteristic {
+  UUID: string;
+  value: CharacteristicValue | null;
+  props: any;
+  on: Mock<(...args: any[]) => any>;
+  onSet: Mock<(...args: any[]) => any>;
+  onGet: Mock<(...args: any[]) => any>;
+  setProps: Mock<(...args: any[]) => any>;
+  updateValue: Mock<(...args: any[]) => any>;
+  getHandler?: CharacteristicGetCallback;
+  setHandler?: CharacteristicSetCallback;
+}
+
+export interface MockAPI {
+  hap: {
+    Service: Record<string, { UUID: string } & any>;
+    Characteristic: Record<string, IMockCharacteristic & any>;
+    HAPStatus: {
+      SUCCESS: number;
+      SERVICE_COMMUNICATION_FAILURE: number;
+      [key: string]: number;
+    };
+    HAPStatusError: {
+      new (hapStatus: number): Error & { hapStatus: number; status: number; };
+    };
+    HapStatusError: {
+      new (hapStatus: number): Error & { hapStatus: number; status: number; };
+    };
+    uuid: {
+      generate: Mock<(arg: string) => string>;
+      isValid: Mock<(arg: string) => boolean>;
+    };
+    Categories: {
+      AIR_CONDITIONER: number;
+    };
+  };
+  registerPlatformAccessories: Mock<(...args: any[]) => any>;
+  updatePlatformAccessories: Mock<(...args: any[]) => any>;
+  unregisterPlatformAccessories: Mock<(...args: any[]) => any>;
+  platformAccessory: Mock<(...args: any[]) => any>;
+  on: Mock<(...args: any[]) => any>;
+  emit: Mock<(...args: any[]) => any>;
+  removeAccessories: Mock<(...args: any[]) => any>;
+  api: {
+    on: Mock<(...args: any[]) => any>;
+    off: Mock<(...args: any[]) => any>;
+  };
+}
+
+export interface MockDeviceState extends EventEmitter {
+  status: AirConditionerStatus;
+  updateState(newState: Partial<AirConditionerStatus>): void;
+  toApiCommand(): Partial<MockDeviceCommandPayload>;
+  getPlainState(): AirConditionerStatus;
+  toApiStatus(): AirConditionerStatus;
+  on(event: 'statusChanged', listener: (newStatus: AirConditionerStatus) => void): this;
+  emit(event: 'statusChanged', newStatus: AirConditionerStatus): boolean;
+}
+
+export interface MockCacheManagerType extends EventEmitter {
+  getCachedStatus: Mock<(deviceId: string) => Promise<Partial<AirConditionerStatus> | undefined>>;
+  updateCache: Mock<(deviceId: string, newStatus: Partial<AirConditionerStatus>) => Promise<void>>;
+  getDeviceState: Mock<(deviceId: string) => MockDeviceState | undefined>;
+  on(event: 'cacheUpdated', listener: (deviceId: string, newStatus: Partial<AirConditionerStatus>) => void): this;
+  emit(event: 'cacheUpdated', deviceId: string, newStatus: Partial<AirConditionerStatus>): boolean;
+}
+
+// Mock API creation
+export function createMockAPI(customUuid?: string): MockAPI {
+  const mockCharacteristicFunc = (uuid: string): IMockCharacteristic => {
+    const onMethod = function (this: any, event: 'get' | 'set', handler: any): any {
+      if (event === 'get') {
+        this.getHandler = handler;
+      } else {
+        this.setHandler = handler;
       }
-      CharacteristicMock[key][valueKey] = value;
-    });
-    // Ensure a UUID property so tests that pass the characteristic object get the same key
-    (CharacteristicMock[key] as any).UUID = key;
-  });
-
-  // Common individual characteristics used in the tests.
-  (CharacteristicMock as any).Name = { UUID: 'Name', prototype: {} };
-  (CharacteristicMock as any).RotationSpeed = { UUID: 'RotationSpeed', prototype: {} };
-
-  // Cast simple constants directly.
-  (CharacteristicMock as any).On = 'On';
-
-  const ServiceMock = function (this: any) {
-    this.UUID = 'mock-service-uuid';
-  } as unknown as typeof Service & { [key: string]: any };
-
-  // Add common service identifiers
-  ['HeaterCooler', 'TemperatureSensor', 'Switch', 'Fan', 'Fanv2'].forEach((service) => {
-    ServiceMock[service] = { UUID: `mock-${service.toLowerCase()}-uuid` };
-  });
-
-  // Create a non-enum copy of Categories - Manually specify needed categories
-  const categoriesCopy = {
-    AIR_CONDITIONER: Categories.AIR_CONDITIONER,
+      return this;
+    };
+    return {
+      UUID: uuid,
+      value: null,
+      props: {},
+      on: vi.fn(onMethod),
+      onSet: vi.fn(function (this: any, handler: any) {
+        this.setHandler = handler; return this; 
+      }),
+      onGet: vi.fn(function (this: any, handler: any) {
+        this.getHandler = handler; return this; 
+      }),
+      updateValue: vi.fn(function (this: any, newValue: CharacteristicValue) {
+        this.value = newValue; return this; 
+      }),
+      setProps: vi.fn().mockReturnThis(),
+    };
   };
 
   return {
     hap: {
-      Service: ServiceMock,
-      Characteristic: CharacteristicMock,
-      uuid: {
-        generate: vi.fn().mockReturnValue(customUuid || 'generated-uuid'),
+      Service: {
+        AccessoryInformation: createMockServiceConstructor('0000003E-0000-1000-8000-0026BB765291', 'Accessory Information'),
+        Switch: createMockServiceConstructor('00000049-0000-1000-8000-0026BB765291', 'Switch'),
+        Outlet: createMockServiceConstructor('00000047-0000-1000-8000-0026BB765291', 'Outlet'),
+        Thermostat: createMockServiceConstructor('0000004A-0000-1000-8000-0026BB765291', 'Thermostat'),
+        HeaterCooler: createMockServiceConstructor('000000BC-0000-1000-8000-0026BB765291', 'HeaterCooler'),
+        Fan: createMockServiceConstructor('00000040-0000-1000-8000-0026BB765291', 'Fan'),
+        Lightbulb: createMockServiceConstructor('00000043-0000-1000-8000-0026BB765291', 'Lightbulb'),
+        TemperatureSensor: createMockServiceConstructor('0000008A-0000-1000-8000-0026BB765291', 'Temperature Sensor'),
       },
-      Categories: categoriesCopy, // Use the manually created copy
+      Characteristic: {
+        Name: mockCharacteristicFunc('00000023-0000-1000-8000-0026BB765291'),
+        Manufacturer: mockCharacteristicFunc('00000020-0000-1000-8000-0026BB765291'),
+        Model: mockCharacteristicFunc('00000021-0000-1000-8000-0026BB765291'),
+        SerialNumber: mockCharacteristicFunc('00000030-0000-1000-8000-0026BB765291'),
+        Identify: mockCharacteristicFunc('00000014-0000-1000-8000-0026BB765291'),
+        FirmwareRevision: mockCharacteristicFunc('00000052-0000-1000-8000-0026BB765291'),
+        On: mockCharacteristicFunc('00000025-0000-1000-8000-0026BB765291'),
+        CurrentHeatingCoolingState: mockCharacteristicFunc('0000000F-0000-1000-8000-0026BB765291'),
+        TargetHeatingCoolingState: {
+          ...mockCharacteristicFunc('00000033-0000-1000-8000-0026BB765291'),
+          OFF: 0, HEAT: 1, COOL: 2, AUTO: 3,
+        },
+        CurrentTemperature: mockCharacteristicFunc('00000011-0000-1000-8000-0026BB765291'),
+        TargetTemperature: mockCharacteristicFunc('00000035-0000-1000-8000-0026BB765291'),
+        TemperatureDisplayUnits: {
+          ...mockCharacteristicFunc('00000036-0000-1000-8000-0026BB765291'),
+          CELSIUS: 0, FAHRENHEIT: 1,
+        },
+        Active: mockCharacteristicFunc('000000B0-0000-1000-8000-0026BB765291'),
+        CurrentHeaterCoolerState: mockCharacteristicFunc('000000B1-0000-1000-8000-0026BB765291'),
+        TargetHeaterCoolerState: mockCharacteristicFunc('000000B2-0000-1000-8000-0026BB765291'),
+        SwingMode: {
+          ...mockCharacteristicFunc('000000B6-0000-1000-8000-0026BB765291'),
+          SWING_DISABLED: 0,
+          SWING_ENABLED: 1,
+        },
+        RotationSpeed: mockCharacteristicFunc('00000029-0000-1000-8000-0026BB765291'),
+        CoolingThresholdTemperature: mockCharacteristicFunc('0000000D-0000-1000-8000-0026BB765291'),
+        HeatingThresholdTemperature: mockCharacteristicFunc('00000012-0000-1000-8000-0026BB765291'),
+      },
+      HAPStatus: {
+        SUCCESS: 0,
+        SERVICE_COMMUNICATION_FAILURE: -70402,
+      },
+      HAPStatusError: vi.fn().mockImplementation((hapStatus: number) => {
+        const error = new Error(`HAPStatusError: ${hapStatus}`);
+        error.name = 'HAPStatusError';
+        (error as any).hapStatus = hapStatus;
+        (error as any).status = hapStatus;
+        return error;
+      }),
+      HapStatusError: vi.fn().mockImplementation((hapStatus: number) => {
+        const error = new Error(`HAPStatusError: ${hapStatus}`);
+        error.name = 'HAPStatusError';
+        (error as any).hapStatus = hapStatus;
+        (error as any).status = hapStatus;
+        return error;
+      }),
+      uuid: {
+        generate: vi.fn().mockImplementation((val: string) => customUuid || `${val}-uuid`),
+        isValid: vi.fn().mockReturnValue(true),
+      },
+      Categories: {
+        AIR_CONDITIONER: 21,
+      },
     },
+    platformAccessory: vi.fn().mockImplementation((displayName, uuid) => ({
+      displayName,
+      UUID: uuid,
+      addService: vi.fn(),
+      getService: vi.fn(),
+    })),
     registerPlatformAccessories: vi.fn(),
     updatePlatformAccessories: vi.fn(),
     unregisterPlatformAccessories: vi.fn(),
-    platformAccessory: vi.fn(),
     on: vi.fn(),
     emit: vi.fn(),
     removeAccessories: vi.fn(),
-    api: {
-      on: vi.fn(),
-      off: vi.fn(),
-    },
-  } as MockAPI & { api: any };
+    api: { on: vi.fn(), off: vi.fn() },
+  } as MockAPI;
 }
 
-// Create mock API actions for AirConditionerAPI
+// Shared mock API and constants
+export const sharedMockAPI = createMockAPI();
+export const hapConstants = sharedMockAPI.hap;
+
+// Default device options and initial status
+export const defaultDeviceOptions: DeviceOptions = {
+  id: 'test-device-id',
+  name: 'Test AC',
+  power: PowerState.Off,
+  mode: OperationMode.Auto,
+  temp: 22,
+  fanSpeed: FanSpeed.Auto,
+  swingMode: SwingMode.Off,
+  sleep: SleepModeState.Off,
+  turbo: PowerState.Off,
+  display: PowerState.On,
+  eco: PowerState.Off,
+  beep: PowerState.On,
+};
+
+export const initialStatusCelsius: Partial<AirConditionerStatus> = {
+  is_on: PowerState.Off,
+  operation_mode: OperationMode.Cool,
+  target_temp: 22,
+  current_temp: 24,
+  fan_mode: FanSpeed.Auto,
+  swing_mode: SwingMode.Off,
+  opt_sleepMode: SleepModeState.Off,
+  opt_turbo: PowerState.Off,
+  opt_eco: PowerState.Off,
+  opt_display: PowerState.On,
+  opt_beep: PowerState.On,
+  outdoor_temp: 28,
+};
+
+// Mock platform accessory creation
+export function generateTestPlatformAccessory(
+  displayName: string = defaultDeviceOptions.name,
+  uuid: string = sharedMockAPI.hap.uuid.generate(defaultDeviceOptions.id),
+  deviceConfig: TfiacDeviceConfig = { ...defaultDeviceOptions, ip: '1.2.3.4' },
+  mainServiceInput?: Service,
+): PlatformAccessory {
+  const accessoryInformationService = createMockService(
+    hapConstants.Service.AccessoryInformation.UUID, 'Accessory Information');
+  const mainService = mainServiceInput || createMockService(hapConstants.Service.Switch.UUID, displayName);
+
+  accessoryInformationService.getCharacteristic(hapConstants.Characteristic.Manufacturer).updateValue('Test Manufacturer');
+  accessoryInformationService.getCharacteristic(hapConstants.Characteristic.Model).updateValue('Test Model');
+  accessoryInformationService.getCharacteristic(hapConstants.Characteristic.SerialNumber).updateValue(defaultDeviceOptions.id);
+  accessoryInformationService.getCharacteristic(hapConstants.Characteristic.Name).updateValue(displayName);
+
+  const services: Service[] = [accessoryInformationService, mainService];
+
+  const mockAccessory = {
+    context: { deviceConfig, deviceOptions: { ...defaultDeviceOptions, ...deviceConfig } },
+    displayName,
+    UUID: uuid,
+    category: Categories.AIR_CONDITIONER,
+    services,
+    getService: vi.fn((identifier: string | WithUUID<typeof Service>) => {
+      const searchUUID = (typeof identifier !== 'string' && (identifier as any).UUID) ? (identifier as any).UUID : undefined;
+      const searchNameOrUUIDString = (typeof identifier === 'string') ? identifier : undefined;
+
+      for (const s of services) {
+        if (searchUUID && s.UUID === searchUUID) {
+          return s;
+        }
+        if (searchNameOrUUIDString && (s.displayName === searchNameOrUUIDString || s.UUID === searchNameOrUUIDString)) {
+          return s;
+        }
+      }
+      return undefined;
+    }),
+    addService: vi.fn((serviceToAdd: Service | (new (...args: any[]) => Service), newServiceDisplayName?: string, subtype?: string, ...otherArgs: any[]) => {
+      let newServiceInstance: Service;
+      if (typeof serviceToAdd === 'function') {
+        const ServiceConstructor = serviceToAdd as any;
+        newServiceInstance = ServiceConstructor(newServiceDisplayName, subtype);
+      } else {
+        newServiceInstance = serviceToAdd;
+        if (newServiceDisplayName) {
+          newServiceInstance.displayName = newServiceDisplayName;
+        }
+        if (subtype && newServiceInstance.subtype === undefined) {
+          newServiceInstance.subtype = subtype;
+        }
+      }
+      const existingService = services.find(s =>
+        s.UUID === newServiceInstance.UUID &&
+        s.subtype === newServiceInstance.subtype,
+      );
+      if (existingService) {
+        if (newServiceDisplayName && existingService.displayName !== newServiceDisplayName) {
+          existingService.displayName = newServiceDisplayName;
+        }
+        return existingService;
+      } else {
+        services.push(newServiceInstance);
+        return newServiceInstance;
+      }
+    }),
+    removeService: vi.fn((serviceToRemove: Service) => {
+      const index = services.findIndex(s => s.UUID === serviceToRemove.UUID && s.displayName === serviceToRemove.displayName);
+      if (index !== -1) {
+        services.splice(index, 1);
+      }
+    }),
+    getServiceById: vi.fn((serviceUUID: string, subtype?: string) => {
+      return services.find(s => s.UUID === serviceUUID && (subtype ? s.subtype === subtype : true));
+    }),
+    on: vi.fn().mockReturnThis(),
+    emit: vi.fn().mockReturnValue(true),
+    updateReachability: vi.fn(),
+  } as unknown as PlatformAccessory;
+
+  return mockAccessory;
+}
+
+// Generate mock platform accessory
+export function createMockPlatformAccessory(
+  displayName: string = defaultDeviceOptions.name,
+  uuid: string = sharedMockAPI.hap.uuid.generate(defaultDeviceOptions.id),
+  deviceConfig: TfiacDeviceConfig = { ...defaultDeviceOptions, ip: '1.2.3.4' },
+  mainServiceInput?: Service,
+): PlatformAccessory {
+  return generateTestPlatformAccessory(displayName, uuid, deviceConfig, mainServiceInput);
+}
+
+// Other creator functions
+export function createMockLogger(): MockLogger {
+  return {
+    debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn(), log: vi.fn(), success: vi.fn(),
+  };
+}
+
 export function createMockApiActions(initialStatus = {}): MockApiActions & { api: any } {
   const actions = {
     updateState: vi.fn().mockResolvedValue(initialStatus),
@@ -283,164 +473,224 @@ export function createMockApiActions(initialStatus = {}): MockApiActions & { api
     setDisplayState: vi.fn().mockResolvedValue(undefined),
     setBeepState: vi.fn().mockResolvedValue(undefined),
     setSleepState: vi.fn().mockResolvedValue(undefined),
-    setFanAndSleepState: vi.fn().mockResolvedValue(undefined), // Add combined command method
-    setSleepAndTurbo: vi.fn().mockResolvedValue(undefined), // Add combined command method
-    setTurboAndSleep: vi.fn().mockResolvedValue(undefined), // Add combined command method
-    cleanup: vi.fn().mockResolvedValue(undefined),
-    api: {
-      on: vi.fn(),
-      off: vi.fn(),
-    },
+    setFanAndSleepState: vi.fn().mockResolvedValue(undefined),
+    cleanup: vi.fn(),
+    api: { on: vi.fn(), off: vi.fn() },
   };
-  (global as any).mockApiActions = actions;
   return actions as MockApiActions & { api: any };
 }
 
-// Create a mock platform instance with common test configurations
+export function createMockDeviceState(
+  options: DeviceOptions,
+  initialOverrides?: Partial<AirConditionerStatus>,
+): MockDeviceState {
+  const emitter = new EventEmitter() as MockDeviceState;
+  const defaultStatus: AirConditionerStatus = {
+    is_on: PowerState.Off, operation_mode: OperationMode.Auto, target_temp: 20, current_temp: 22,
+    fan_mode: FanSpeed.Auto, swing_mode: SwingMode.Off, opt_eco: PowerState.Off, opt_turbo: PowerState.Off,
+    opt_sleepMode: SleepModeState.Off, opt_sleep: PowerState.Off, opt_display: PowerState.On,
+    opt_beep: PowerState.On, outdoor_temp: 25, ...initialOverrides,
+  };
+  emitter.status = { ...defaultStatus };
+  emitter.updateState = (newState: Partial<AirConditionerStatus>) => {
+    emitter.status = { ...emitter.status, ...newState };
+    emitter.emit('statusChanged', { ...emitter.status });
+  };
+  emitter.toApiCommand = (): Partial<MockDeviceCommandPayload> => {
+    const command: Partial<MockDeviceCommandPayload> = {};
+    if (emitter.status.is_on !== undefined) {
+      command.TurnOn = emitter.status.is_on; 
+    }
+    if (emitter.status.operation_mode !== undefined) {
+      command.BaseMode = emitter.status.operation_mode; 
+    }
+    if (emitter.status.target_temp !== undefined) {
+      command.SetTemp = emitter.status.target_temp; 
+    }
+    if (emitter.status.fan_mode !== undefined) {
+      command.WindSpeed = emitter.status.fan_mode; 
+    }
+    if (emitter.status.swing_mode !== undefined) {
+      switch (emitter.status.swing_mode) {
+      case SwingMode.Off: command.WindDirection_H = 'off'; command.WindDirection_V = 'off'; break;
+      case SwingMode.Vertical: command.WindDirection_H = 'off'; command.WindDirection_V = 'on'; break;
+      case SwingMode.Horizontal: command.WindDirection_H = 'on'; command.WindDirection_V = 'off'; break;
+      case SwingMode.Both: command.WindDirection_H = 'on'; command.WindDirection_V = 'on'; break;
+      }
+    }
+    if (emitter.status.opt_eco !== undefined) {
+      command.Opt_eco = emitter.status.opt_eco; 
+    }
+    if (emitter.status.opt_turbo !== undefined) {
+      command.Opt_super = emitter.status.opt_turbo; 
+    }
+    if (emitter.status.opt_sleepMode !== undefined) {
+      command.Opt_sleepMode = emitter.status.opt_sleepMode; 
+    }
+    if (emitter.status.opt_display !== undefined) {
+      command.Opt_display = emitter.status.opt_display; 
+    }
+    if (emitter.status.opt_beep !== undefined) {
+      command.Opt_beep = emitter.status.opt_beep; 
+    }
+    return command;
+  };
+  emitter.getPlainState = (): AirConditionerStatus => ({ ...emitter.status });
+  emitter.toApiStatus = vi.fn(() => ({ ...emitter.status }));
+  emitter.removeListener = vi.fn((event: string, listener: (...args: any[]) => void) => {
+    EventEmitter.prototype.removeListener.call(emitter, event, listener);
+    return emitter;
+  });
+  return emitter;
+}
+
+export function createMockCacheManager(
+  initialStatuses: Record<string, Partial<AirConditionerStatus>> = {},
+): MockCacheManagerType {
+  const emitter = new EventEmitter() as MockCacheManagerType;
+  const deviceStates: Record<string, MockDeviceState> = {};
+  const cachedStatuses: Record<string, Partial<AirConditionerStatus>> = { ...initialStatuses };
+
+  const ensureDeviceState = (deviceId: string, deviceOpts?: DeviceOptions) => {
+    if (!deviceStates[deviceId] && deviceOpts) {
+      deviceStates[deviceId] = createMockDeviceState(deviceOpts, cachedStatuses[deviceId] || {});
+    }
+    return deviceStates[deviceId];
+  };
+
+  emitter.getDeviceState = vi.fn((deviceId: string) => {
+    if (!deviceStates[deviceId] && defaultDeviceOptions.id === deviceId) {
+      ensureDeviceState(deviceId, defaultDeviceOptions);
+    }
+    return deviceStates[deviceId];
+  });
+  emitter.getCachedStatus = vi.fn(async (deviceId: string) => cachedStatuses[deviceId]);
+  emitter.updateCache = vi.fn(async (deviceId: string, newStatus: Partial<AirConditionerStatus>) => {
+    cachedStatuses[deviceId] = { ...(cachedStatuses[deviceId] || {}), ...newStatus };
+    const deviceState = deviceStates[deviceId];
+    if (deviceState) {
+      deviceState.updateState(newStatus); 
+    }
+    emitter.emit('cacheUpdated', deviceId, cachedStatuses[deviceId]!);
+  });
+
+  if (!initialStatuses[defaultDeviceOptions.id]) {
+    cachedStatuses[defaultDeviceOptions.id] = { ...initialStatusCelsius };
+    ensureDeviceState(defaultDeviceOptions.id, defaultDeviceOptions);
+  }
+  return emitter;
+}
+
+// Test platform setup
 export function setupTestPlatform(
   config: Partial<PlatformConfig> = {},
   customLogger?: MockLogger,
-  customAPI?: MockAPI,
 ): TfiacPlatform {
   const logger = customLogger || createMockLogger();
-  const api = customAPI || createMockAPI();
-
+  const api = sharedMockAPI;
   const defaultConfig = {
-    name: PLATFORM_NAME,
-    platform: PLATFORM_NAME,
-    devices: [{ name: 'Test AC', ip: '192.168.1.99', port: 7777 }],
+    name: PLATFORM_NAME, platform: PLATFORM_NAME,
+    devices: [{ name: 'Test AC', ip: '192.168.1.99', port: 7777, id: 'default-test-id' }],
     ...config,
   };
-
   return new TfiacPlatform(logger as unknown as Logging, defaultConfig as PlatformConfig, api as unknown as API);
 }
 
-// Helper to create a mock PlatformConfig for tests
+export const mockPlatform = setupTestPlatform();
+
+/**
+ * Alias setupTestPlatform as createMockPlatform for accessory tests.
+ */
+export function createMockPlatform(): TfiacPlatform {
+  return setupTestPlatform();
+}
+
 export function createMockPlatformConfig(
   config: Partial<PlatformConfig> & { devices: TfiacDeviceConfig[] },
 ): PlatformConfig {
   return {
-    name: PLATFORM_NAME,
-    platform: PLATFORM_NAME,
-    enableDiscovery: true,
-    ...config,
+    name: PLATFORM_NAME, platform: PLATFORM_NAME, enableDiscovery: true, ...config,
   } as PlatformConfig;
 }
 
-// Alias setupTestPlatform as createMockPlatform for compatibility with older tests
-export const createMockPlatform = setupTestPlatform;
-// Alias setupTestPlatform for characteristic tests
-export const mockPlatform = setupTestPlatform();
-// Alias createMockPlatformAccessory for compatibility with older tests, but wrap in vi.fn for easier mocking/resetting in tests
-export const mockPlatformAccessory = vi.fn(
-  (displayName: string, uuid: string) => createMockPlatformAccessory(displayName, uuid),
-) as unknown as ReturnType<typeof vi.fn>;
-
-// Helper function to get characteristic handlers from service mock
-export function getHandlerByIdentifier(
-  service: any,
-  charIdentifier: any,
-  eventType: 'get' | 'set',
-): ((callback: CharacteristicGetCallback) => void) | ((value: CharacteristicValue, callback: CharacteristicSetCallback) => void) {
-  // Get the accessory from the service if it's available
-  const accessory = service.accessory;
-  
-  // If we can access the TfiacPlatformAccessory instance
-  if (accessory && accessory.getCharacteristicHandler) {
-    // Extract the characteristic name or UUID
-    const charId = typeof charIdentifier === 'string' 
-      ? charIdentifier 
-      : charIdentifier.UUID || charIdentifier;
-    
-    // Try to get handler from the accessory's handler system
-    const handler = accessory.getCharacteristicHandler(charId, eventType);
-    if (handler) {
-      return handler;
-    }
-  }
-  
-  // Fall back to the old approach
-  const char = service.getCharacteristic(charIdentifier);
-  return eventType === 'get' ? char.getHandler : char.setHandler;
-}
-
-// Common initial status values for tests
-export const initialStatusFahrenheit = {
-  is_on: 'on',
-  current_temp: 68,
-  target_temp: 68,
-  operation_mode: 'auto',
-  fan_mode: 'Low',
-  swing_mode: 'Off',
-  outdoor_temp: 68,
-  opt_super: 'off',
-  opt_eco: 'off',
-  opt_display: 'on',
-  opt_beep: 'on',
-  opt_sleepMode: 'off',
+export const initialStatusFahrenheit: Partial<AirConditionerStatus> = {
+  is_on: PowerState.Off,
+  operation_mode: OperationMode.Cool,
+  target_temp: toFahrenheit(22), // 71.6°F
+  current_temp: toFahrenheit(24), // 75.2°F
+  fan_mode: FanSpeed.Auto,
+  swing_mode: SwingMode.Off,
+  opt_sleepMode: SleepModeState.Off, 
+  opt_turbo: PowerState.Off,
+  opt_eco: PowerState.Off,
+  opt_display: PowerState.On,
+  opt_beep: PowerState.On,
+  outdoor_temp: toFahrenheit(28), // 82.4°F
 };
-
-export const initialStatusCelsius = {
-  is_on: 'on',
-  current_temp: 20,
-  target_temp: 20,
-  operation_mode: 'auto',
-  fan_mode: 'Low',
-  swing_mode: 'Off',
-  outdoor_temp: 20,
-  opt_super: 'off',
-  opt_eco: 'off',
-  opt_display: 'on',
-  opt_beep: 'on',
-  opt_sleepMode: 'off',
-};
-
-// Helper for temperature conversions in tests
 export function toFahrenheit(celsius: number): number {
-  return (celsius * 9) / 5 + 32;
+  return (celsius * 9) / 5 + 32; 
 }
-
 export function toCelsius(fahrenheit: number): number {
-  return ((fahrenheit - 32) * 5) / 9;
+  return ((fahrenheit - 32) * 5) / 9; 
 }
 
-// Identifiers for characteristic names used in tests
+// Define hapIdentifiers with all necessary characteristic identifiers used in tests
 export const hapIdentifiers = {
+  Service: {
+    HeaterCooler: 'HeaterCooler',
+    Thermostat: 'Thermostat',
+    AccessoryInformation: 'AccessoryInformation',
+    Switch: 'Switch',
+    Fan: 'Fan',
+    TemperatureSensor: 'TemperatureSensor',
+  },
   Characteristic: {
-    CoolingThresholdTemperature: 'CoolingThresholdTemperature',
-    HeatingThresholdTemperature: 'HeatingThresholdTemperature',
     CurrentTemperature: 'CurrentTemperature',
-    RotationSpeed: 'RotationSpeed',
+    TargetTemperature: 'TargetTemperature',
+    TemperatureDisplayUnits: 'TemperatureDisplayUnits',
+    Active: 'Active',
+    CurrentHeaterCoolerState: 'CurrentHeaterCoolerState',
+    TargetHeaterCoolerState: 'TargetHeaterCoolerState',
     SwingMode: 'SwingMode',
+    RotationSpeed: 'RotationSpeed',
+    CoolingThresholdTemperature: 'CoolingThresholdTemperature', 
+    HeatingThresholdTemperature: 'HeatingThresholdTemperature',
+    On: 'On',
+    Name: 'Name',
+    Manufacturer: 'Manufacturer',
+    Model: 'Model',
+    SerialNumber: 'SerialNumber',
   },
 };
 
-// Mocked constants for HAP characteristics used in tests
-export const hapConstants = createMockAPI().hap;
-
-/**
- * Create a mock CacheManager compatible with our enhanced version
- */
-export function createMockCacheManager(mockApi: any = {}, mockStatus: any = null) {
-  // Create mock EventEmitter methods
-  const eventEmitter = {
-    on: vi.fn(),
-    off: vi.fn(),
-    emit: vi.fn(),
-    removeAllListeners: vi.fn(),
-  };
+// Helper to get a characteristic handler by identifier
+export function getHandlerByIdentifier(
+  mockService: any,
+  characteristicIdentifier: string,
+  handlerType: 'get' | 'set',
+): CharacteristicGetCallback | CharacteristicSetCallback | undefined {
+  // If the service has an accessory reference, use it to get the handler directly
+  if (mockService.accessory) {
+    const accessory = mockService.accessory;
+    const handlerName = `handle${characteristicIdentifier}${handlerType.charAt(0).toUpperCase() + handlerType.slice(1)}`;
+    
+    // Return the handler function bound to the accessory
+    if (accessory[handlerName] && typeof accessory[handlerName] === 'function') {
+      return accessory[handlerName].bind(accessory);
+    }
+    
+    // For threshold temperature, both cooling and heating share the same handler
+    if (characteristicIdentifier === 'CoolingThresholdTemperature' || characteristicIdentifier === 'HeatingThresholdTemperature') {
+      const thresholdHandler = `handleThresholdTemperature${handlerType.charAt(0).toUpperCase() + handlerType.slice(1)}`;
+      if (accessory[thresholdHandler] && typeof accessory[thresholdHandler] === 'function') {
+        return accessory[thresholdHandler].bind(accessory);
+      }
+    }
+  }
   
-  // Combine API with EventEmitter capabilities
-  const apiWithEvents = {
-    ...mockApi,
-    ...eventEmitter,
-  };
-  
-  return {
-    api: apiWithEvents,
-    getStatus: vi.fn().mockResolvedValue(mockStatus),
-    getLastStatus: vi.fn().mockReturnValue(mockStatus),
-    clear: vi.fn(),
-    cleanup: vi.fn(),
-  };
+  // Fallback to the old way of getting handlers
+  const characteristic = mockService.getCharacteristic(characteristicIdentifier);
+  return handlerType === 'get' ? characteristic?.getHandler : characteristic?.setHandler;
 }
+
+console.log('[testUtils.ts] END LOADING. Functions like generateTestPlatformAccessory and createMockPlatform should be defined and exported.');

@@ -16,7 +16,10 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
       (status) => status.operation_mode === OperationMode.FanOnly,
       async (value) => {
         const mode = value ? OperationMode.FanOnly : OperationMode.Auto;
-        await this.cacheManager.api.setAirConditionerState('operation_mode', mode);
+        const deviceState = this.cacheManager.getDeviceState();
+        const desiredState = deviceState.clone();
+        desiredState.setOperationMode(mode);
+        await this.cacheManager.applyStateToDevice(desiredState);
       },
       'Fan Only',
     );

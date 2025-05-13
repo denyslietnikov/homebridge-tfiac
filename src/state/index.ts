@@ -2,4 +2,4 @@
 export * from './DeviceState.js';
 export { default as DeviceState } from './DeviceState.js';
 export * from './CommandQueue.js';
-export { default as CommandQueue } from './CommandQueue.js';
+export { CommandQueue } from './CommandQueue.js';

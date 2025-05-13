@@ -15,34 +15,34 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
       'turbo',
       (status) => status.opt_turbo === PowerState.On,
       async (value) => {
-        // Get current device state
+        // Get current device state from CacheManager
         const deviceState = this.cacheManager.getDeviceState();
         
-        // Create a modified state for optimistic updates
+        // Create a modified state
         const modifiedState = deviceState.clone();
         
-        if (value) {
-          // Apply turbo mode with optimistic update
+        if (value) { // Turbo ON
+          this.platform.log.info('[TurboSwitchAccessory] Requesting Turbo ON');
           modifiedState.setTurboMode(PowerState.On);
-          
-          // Turbo also affects sleep mode - they are mutually exclusive
-          modifiedState.setSleepMode(SleepModeState.Off);
-          
-          this.platform.log.info('Enabling Turbo and disabling Sleep');
-        } else {
-          // Turn off turbo mode and set default fan speed
+          // If available, explicitly ensure sleep mode is off
+          if (typeof modifiedState.setSleepMode === 'function') {
+            modifiedState.setSleepMode(SleepModeState.Off);
+          }
+        } else { // Turbo OFF
+          this.platform.log.info('[TurboSwitchAccessory] Requesting Turbo OFF');
           modifiedState.setTurboMode(PowerState.Off);
-          modifiedState.setFanSpeed(FanSpeed.Auto);
-          
-          this.platform.log.info('Disabling Turbo and setting fan speed to Auto');
+          // If available, explicitly reset fan speed to auto
+          if (typeof modifiedState.setFanSpeed === 'function') {
+            modifiedState.setFanSpeed(FanSpeed.Auto);
+          }
         }
         
-        // Apply the state changes through command queue
+        // Apply the state changes through CacheManager.
+        // CacheManager will diff and send the appropriate command (e.g., setOptionsCombined).
+        // It also updates the central DeviceState, triggering listeners for UI updates.
         await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Turbo',
     );
-    
-    // Debug logging is now centralized in platformAccessory.ts
   }
 }

@@ -1,174 +1,261 @@
-import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
-import { DrySwitchAccessory } from '../DrySwitchAccessory.js';
-import { PlatformAccessory, Service } from 'homebridge';
-import { TfiacPlatform } from '../platform.js';
-import { createMockApiActions, createMockCacheManager } from './testUtils';
-import { OperationMode } from '../enums.js';
+import { vi, describe, it, expect, beforeEach, type Mock } from 'vitest';
+import { defaultDeviceOptions, createMockService, hapConstants } from './testUtils';
+import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from '../enums';
+import { TfiacPlatform } from '../platform';
+import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback } from 'homebridge';
+import { DeviceState, PlainDeviceState } from '../state/DeviceState';
 
-// Create mock implementations
-vi.mock('../CacheManager.js', () => ({
-  CacheManager: {
-    getInstance: vi.fn(),
-  },
-  default: {
-    getInstance: vi.fn(),
-  },
-}));
+vi.setConfig({ testTimeout: 30000 });
+
+const mockSetDeviceState = vi.fn();
+const mockGetCachedStatus = vi.fn();
+const mockUpdateCache = vi.fn();
+const mockGetDeviceState = vi.fn();
+const mockApplyStateToDevice = vi.fn();
+const mockUpdateDeviceState = vi.fn();
 
 describe('DrySwitchAccessory', () => {
   let platform: TfiacPlatform;
-  let accessory: any;
-  let mockService: any;
-  let inst: DrySwitchAccessory;
-  let deviceAPI: any;
-  let mockCacheManager: any;
+  let accessory: PlatformAccessory;
+  let service: Service;
+  let DrySwitchAccessoryModule: any;
+  let drySwitchAccessoryInstance: any;
+  let handlers: { getHandler: () => Promise<CharacteristicValue>; setHandler: (value: CharacteristicValue, callback: CharacteristicSetCallback) => Promise<void> };
+  let mockDeviceStateInstance: DeviceState;
+  let capturedStateChangeListener: ((state: DeviceState) => void) | undefined;
+  let cacheManagerInstance: any;
 
-  beforeEach(() => {
-    // Reset mocks
-    vi.clearAllMocks();
+  const createDeviceStateMock = (initialPlainState: Partial<PlainDeviceState>): DeviceState => {
+    let internalState: PlainDeviceState = {
+      power: PowerState.Off,
+      operationMode: OperationMode.Auto,
+      targetTemperature: 22,
+      currentTemperature: 20,
+      outdoorTemperature: null,
+      fanSpeed: FanSpeed.Auto,
+      swingMode: SwingMode.Off,
+      turboMode: PowerState.Off,
+      ecoMode: PowerState.Off,
+      displayMode: PowerState.On,
+      beepMode: PowerState.On,
+      sleepMode: SleepModeState.Off,
+      lastUpdated: new Date(),
+      ...initialPlainState,
+    };
 
-    // Create platform mock
+    const mock: any = {
+      on: vi.fn().mockImplementation((event: string, listener: (...args: any[]) => void) => {
+        if (event === 'stateChanged' && mock === mockDeviceStateInstance && !capturedStateChangeListener) {
+          capturedStateChangeListener = listener as (state: DeviceState) => void;
+        }
+        return mock;
+      }),
+      removeListener: vi.fn().mockReturnThis(),
+      toApiStatus: vi.fn().mockImplementation(() => ({
+        is_on: internalState.power,
+        operation_mode: internalState.operationMode,
+        target_temperature: internalState.targetTemperature,
+        current_temperature: internalState.currentTemperature,
+        outdoor_temperature: internalState.outdoorTemperature,
+        fan_speed: internalState.fanSpeed,
+        swing_mode: internalState.swingMode,
+        turbo_mode: internalState.turboMode,
+        eco_mode: internalState.ecoMode,
+        display_on: internalState.displayMode,
+        beep_on: internalState.beepMode,
+        sleep_mode: internalState.sleepMode === SleepModeState.On,
+      })),
+      setOperationMode: vi.fn().mockImplementation((mode: OperationMode) => {
+        internalState.operationMode = mode;
+      }),
+      clone: vi.fn().mockImplementation(() => {
+        return createDeviceStateMock(internalState);
+      }),
+      get power() { return internalState.power; },
+      get operationMode() { return internalState.operationMode; },
+      get targetTemperature() { return internalState.targetTemperature; },
+      get currentTemperature() { return internalState.currentTemperature; },
+      get outdoorTemperature() { return internalState.outdoorTemperature; },
+      get fanSpeed() { return internalState.fanSpeed; },
+      get swingMode() { return internalState.swingMode; },
+      get turboMode() { return internalState.turboMode; },
+      get ecoMode() { return internalState.ecoMode; },
+      get displayMode() { return internalState.displayMode; },
+      get beepMode() { return internalState.beepMode; },
+      get sleepMode() { return internalState.sleepMode; },
+      get lastUpdated() { return internalState.lastUpdated; },
+      updateFromApi: vi.fn(),
+      emitStateChanged: vi.fn(),
+    };
+    return mock as DeviceState;
+  };
+
+  beforeEach(async () => {
+    mockSetDeviceState.mockReset().mockResolvedValue(undefined);
+    mockGetCachedStatus.mockReset();
+    mockUpdateCache.mockReset();
+    mockApplyStateToDevice.mockReset().mockImplementation(async () => undefined);
+    mockUpdateDeviceState.mockReset().mockResolvedValue(undefined);
+
+    capturedStateChangeListener = undefined;
+
+    const initialMockPlainState: Partial<PlainDeviceState> = {
+      power: PowerState.On,
+      operationMode: OperationMode.Cool,
+      targetTemperature: 22,
+    };
+    mockDeviceStateInstance = createDeviceStateMock(initialMockPlainState);
+
+    mockGetDeviceState.mockReset().mockReturnValue(mockDeviceStateInstance);
+
+    vi.resetModules();
+
+    await vi.doMock('../AirConditionerAPI', () => {
+      const apiInstance = { setDeviceState: mockSetDeviceState };
+      return { AirConditionerAPI: vi.fn().mockImplementation(() => apiInstance), default: vi.fn().mockImplementation(() => apiInstance) };
+    });
+
+    cacheManagerInstance = {
+      getCachedStatus: mockGetCachedStatus,
+      updateCache: mockUpdateCache,
+      getDeviceState: mockGetDeviceState,
+      applyStateToDevice: mockApplyStateToDevice,
+      updateDeviceState: mockUpdateDeviceState,
+      isCacheFresh: vi.fn().mockReturnValue(true),
+    };
+
+    await vi.doMock('../CacheManager', () => {
+      const CacheManagerMock = { getInstance: vi.fn().mockReturnValue(cacheManagerInstance) };
+      return { CacheManager: CacheManagerMock, default: CacheManagerMock };
+    });
+
+    DrySwitchAccessoryModule = await import('../DrySwitchAccessory');
+
     platform = {
-      log: {
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-      },
+      log: { info: vi.fn(), debug: vi.fn(), error: vi.fn(), warn: vi.fn() },
       api: {
         hap: {
-          Service: {
-            Switch: { UUID: 'switch-uuid' },
-          },
-          Characteristic: {
-            On: 'On',
-            Name: 'Name',
-          },
-        },
+          Service: hapConstants.Service, Characteristic: hapConstants.Characteristic,
+          HAPStatus: { SERVICE_COMMUNICATION_FAILURE: -70402, SUCCESS: 0 },
+          HapStatusError: class HapStatusError extends Error { constructor(public hapStatus: number) { super(`HAPStatusError: ${hapStatus}`); } }
+        }
       },
-      Service: {
-        Switch: { UUID: 'switch-uuid' },
-      },
-      Characteristic: {
-        On: 'On',
-        Name: 'Name',
-        ConfiguredName: 'ConfiguredName',
-      },
-      config: {},
-    } as any;
+      Service: hapConstants.Service, Characteristic: hapConstants.Characteristic,
+    } as unknown as TfiacPlatform;
 
-    // Create mock service
-    mockService = {
-      setCharacteristic: vi.fn().mockReturnThis(),
-      getCharacteristic: vi.fn().mockReturnValue({
-        on: vi.fn(),
-        onGet: vi.fn(),
-        onSet: vi.fn(),
-      }),
-      updateCharacteristic: vi.fn(),
-    };
-
-    // Create mock accessory
     accessory = {
-      getService: vi.fn().mockReturnValue(null), // Return null to force addService call
-      getServiceById: vi.fn().mockReturnValue(null), // Return null to force addService call
-      addService: vi.fn().mockReturnValue(mockService),
-      context: {
-        deviceConfig: {
-          ip: '192.168.1.100',
-          port: 8080,
-          name: 'Test AC',
-        },
-      },
-      displayName: 'Test AC',
-      services: [mockService],
+      context: { deviceConfig: defaultDeviceOptions }, getServiceById: vi.fn(), getService: vi.fn(),
+      addService: vi.fn().mockReturnThis(), removeService: vi.fn().mockReturnThis(),
+      displayName: 'Test Dry Switch Accessory', UUID: 'test-uuid', category: 1,
+      services: [], reachable: true, on: vi.fn(), emit: vi.fn(), removeAllListeners: vi.fn(),
+    } as unknown as PlatformAccessory;
+
+    service = createMockService(hapConstants.Service.Switch.UUID, 'Dry Mode');
+
+    const mockOnCharacteristic = {
+      onGet: vi.fn((handler) => { handlers.getHandler = handler; return mockOnCharacteristic; }),
+      onSet: vi.fn((handler) => { handlers.setHandler = handler; return mockOnCharacteristic; }),
+      updateValue: vi.fn(), props: {}, displayName: 'On', UUID: hapConstants.Characteristic.On.UUID,
     };
 
-    // Create API mock with methods for dry mode
-    deviceAPI = createMockApiActions({ operation_mode: OperationMode.Cool });
-    deviceAPI.setAirConditionerState = vi.fn().mockResolvedValue(undefined);
-    
-    // Create mock CacheManager
-    mockCacheManager = createMockCacheManager(deviceAPI, { operation_mode: OperationMode.Cool });
+    service.getCharacteristic = vi.fn().mockImplementation((char) => {
+      if (char === platform.Characteristic.On || char === platform.Characteristic.On.UUID) return mockOnCharacteristic;
+      if (char === platform.Characteristic.Name) return { updateValue: vi.fn(), value: 'Dry Mode' };
+      return { onGet: vi.fn().mockReturnThis(), onSet: vi.fn().mockReturnThis(), updateValue: vi.fn(), props: {}, displayName: 'Unknown', UUID: 'unknown' };
+    });
+    service.setCharacteristic = vi.fn().mockReturnThis();
+
+    (accessory.getService as Mock).mockReturnValue(service);
+    (accessory.getServiceById as Mock).mockReturnValue(service);
+
+    handlers = { getHandler: async () => false, setHandler: async () => { /* no-op */ } };
+
+    drySwitchAccessoryInstance = new DrySwitchAccessoryModule.DrySwitchAccessory(platform, accessory);
   });
 
-  function createAccessory() {
-    inst = new DrySwitchAccessory(platform, accessory);
-    // Override CacheManager to use our mock
-    (inst as any).cacheManager = mockCacheManager;
-    return inst;
-  }
-
-  it('should construct and set up polling and handlers', () => {
-    createAccessory();
-    expect(accessory.addService).toHaveBeenCalled();
-    expect(mockService.setCharacteristic).toHaveBeenCalled();
-    expect(mockService.getCharacteristic).toHaveBeenCalledWith('On');
-  });
-
-  it('should stop polling and cleanup', () => {
-    createAccessory();
-    inst.stopPolling();
-    expect(mockCacheManager.cleanup).toHaveBeenCalled();
-  });
-
-  it('should update cached status and update characteristic', async () => {
-    createAccessory();
-    // Initialize with Cool mode
-    inst.updateStatus({ operation_mode: OperationMode.Cool } as any);
-    mockService.updateCharacteristic.mockClear();
-    // Mock getStatus to return Dry mode, which should update the characteristic
-    mockCacheManager.getStatus.mockResolvedValueOnce({ operation_mode: OperationMode.Dry });
-    await (inst as any).updateCachedStatus();
-    expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
-  });
-
-  it('should handle get with cached status (dry mode on)', () => {
-    createAccessory();
+  it('should set Dry=true when handleSet is called with true', async () => {
     const callback = vi.fn();
-    inst.updateStatus({ operation_mode: OperationMode.Dry } as any);
-    inst['handleGet'](callback);
-    expect(callback).toHaveBeenCalledWith(null, true);
-  });
+    await handlers.setHandler(true, callback);
 
-  it('should handle get with cached status (dry mode off)', () => {
-    createAccessory();
-    const callback = vi.fn();
-    inst.updateStatus({ operation_mode: OperationMode.Cool } as any);
-    inst['handleGet'](callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
-  });
+    expect(mockDeviceStateInstance.clone).toHaveBeenCalled();
+    expect(mockApplyStateToDevice).toHaveBeenCalled();
+    const stateSentToApi = (mockApplyStateToDevice.mock.calls[0][0] as DeviceState);
+    expect(stateSentToApi.toApiStatus().operation_mode).toBe(OperationMode.Dry);
 
-  it('should handle get with no cached status', () => {
-    createAccessory();
-    const callback = vi.fn();
-    inst['handleGet'](callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
-  });
-
-  it('should handle set (turn dry mode on) and update status', async () => {
-    createAccessory();
-    const callback = vi.fn();
-    await (inst as any).handleSet(true, callback);
-    expect(deviceAPI.setAirConditionerState).toHaveBeenCalledWith('operation_mode', OperationMode.Dry);
     expect(callback).toHaveBeenCalledWith(null);
+    expect(callback).toHaveBeenCalledTimes(1);
   });
 
-  it('should handle set (turn dry mode off) and update status', async () => {
-    createAccessory();
+  it('should set Dry=false when handleSet is called with false', async () => {
     const callback = vi.fn();
-    await (inst as any).handleSet(false, callback);
-    expect(deviceAPI.setAirConditionerState).toHaveBeenCalledWith('operation_mode', OperationMode.Auto);
+    await handlers.setHandler(false, callback);
+
+    expect(mockDeviceStateInstance.clone).toHaveBeenCalled();
+    expect(mockApplyStateToDevice).toHaveBeenCalled();
+    const stateSentToApi = (mockApplyStateToDevice.mock.calls[0][0] as DeviceState);
+    expect(stateSentToApi.toApiStatus().operation_mode).toBe(OperationMode.Auto);
+
     expect(callback).toHaveBeenCalledWith(null);
+    expect(callback).toHaveBeenCalledTimes(1);
   });
 
-  it('should handle set error', async () => {
-    createAccessory();
+  it('should return true when handleGet is called and Dry status is true (cache fresh)', () => {
+    const stateUpdateForListener = createDeviceStateMock({
+      power: PowerState.On,
+      operationMode: OperationMode.Dry,
+      targetTemperature: 22,
+    });
+
+    if (capturedStateChangeListener) {
+      capturedStateChangeListener(stateUpdateForListener);
+    } else {
+      throw new Error('State change listener was not captured for handleGet true test');
+    }
+
+    (cacheManagerInstance.isCacheFresh as Mock).mockReturnValue(true);
+    const result = handlers.getHandler();
+    expect(result).toBe(true);
+    expect(mockUpdateDeviceState).not.toHaveBeenCalled();
+  });
+
+  it('should return false when handleGet is called and initial state is Cool (cache fresh)', () => {
+    (cacheManagerInstance.isCacheFresh as Mock).mockReturnValue(true);
+    const result = handlers.getHandler();
+    expect(result).toBe(false);
+  });
+
+  it('should return cached value (false from initial Cool state) when cache is stale, and not attempt update', () => {
+    // Arrange
+    // Initial state (Dry mode OFF via OperationMode.Cool) is set in beforeEach.
+    // The DrySwitchAccessory's getStatusValue is (status) => status.operation_mode === OperationMode.Dry.
+    // So, the initial cached value for "On" (Dry mode active) will be false.
+
+    (cacheManagerInstance.isCacheFresh as Mock).mockReturnValue(false); // Mark cache as stale
+    mockUpdateDeviceState.mockReset(); // Ensure it's clean for the "not.toHaveBeenCalled" check
+
+    // Act: Call the synchronous handler.
+    const result = handlers.getHandler(); // handleGet is synchronous
+
+    // Assert: Result should be based on the initial cached state.
+    // Initial operationMode was Cool, so Dry mode is considered off.
+    expect(result).toBe(false);
+
+    // Assert: updateDeviceState should not have been called by the current handleGet implementation.
+    expect(mockUpdateDeviceState).not.toHaveBeenCalled();
+  });
+
+  it('should call callback with HAPStatusError when applyStateToDevice fails', async () => {
+    const testError = new Error('API failure');
+    mockApplyStateToDevice.mockReset().mockImplementation(async () => {
+      throw testError;
+    });
     const callback = vi.fn();
-    const error = new Error('Network error');
-    deviceAPI.setAirConditionerState.mockRejectedValue(error);
-    await (inst as any).handleSet(true, callback);
-    expect(deviceAPI.setAirConditionerState).toHaveBeenCalledWith('operation_mode', OperationMode.Dry);
-    expect(callback).toHaveBeenCalledWith(error);
+
+    await handlers.setHandler(true, callback);
+
+    expect(callback).toHaveBeenCalledWith(expect.any(platform.api.hap.HapStatusError));
+    const errorArg = callback.mock.calls[0][0];
+    expect(errorArg.hapStatus).toBe(platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    expect(callback).toHaveBeenCalledTimes(1);
   });
 });

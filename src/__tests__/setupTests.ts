@@ -5,8 +5,6 @@ declare global {
   // eslint-disable-next-line no-var
   var MockApiActions: Record<string, unknown>;
   // eslint-disable-next-line no-var
-  var vitest: typeof vi;
-  // eslint-disable-next-line no-var
   var jest: typeof vi;
 }
 
@@ -16,9 +14,6 @@ globalThis.MockApiActions = {};
 // Ensure compatibility with code that still uses jest
 // This helps with cases where automatic replacement didn't work
 globalThis.jest = vi;
-
-// Add global vitest object for backward compatibility
-globalThis.vitest = vi;
 
 // Set a higher default timeout value (15 seconds)
 vi.setConfig({ testTimeout: 15000 });

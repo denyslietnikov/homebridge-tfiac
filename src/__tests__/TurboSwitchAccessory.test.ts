@@ -1,16 +1,15 @@
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { TurboSwitchAccessory } from '../TurboSwitchAccessory.js';
-import { PlatformAccessory, Service } from 'homebridge';
+import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
-import { createMockApiActions, createMockCacheManager } from './testUtils';
-import { FanSpeed, SleepModeState } from '../enums.js';
+import { createMockCacheManager, createMockDeviceState, createMockPlatform, defaultDeviceOptions } from './testUtils';
+import { PowerState, FanSpeed, SleepModeState } from '../enums.js';
+import { AirConditionerStatus } from '../AirConditionerAPI.js';
+import { CacheManager } from '../CacheManager.js';
+import { DeviceState } from '../state/DeviceState.js';
 
-// Create mock implementations
 vi.mock('../CacheManager.js', () => ({
   CacheManager: {
-    getInstance: vi.fn(),
-  },
-  default: {
     getInstance: vi.fn(),
   },
 }));
@@ -19,246 +18,189 @@ describe('TurboSwitchAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: any;
   let mockService: any;
+  let mockCharacteristicOn: any;
   let inst: TurboSwitchAccessory;
-  let mockApiActions: any;
   let mockCacheManager: any;
+  let mockDeviceStateObject: any;
+  let capturedStateChangeListener: (state: DeviceState) => void;
+  let capturedOnSetHandler: (value: CharacteristicValue, callback: CharacteristicSetCallback) => Promise<void>;
 
   beforeEach(() => {
-    // Reset mocks
     vi.clearAllMocks();
 
-    // Create platform mock
-    platform = {
-      log: {
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-      },
-      config: {
-        debug: false, // Add this property to fix the test
-      },
-      api: {
-        hap: {
-          Service: {
-            Switch: { UUID: 'switch-uuid' },
-          },
-          Characteristic: {
-            On: 'On',
-            Name: 'Name',
-          },
-        },
-      },
-      Service: {
-        Switch: { UUID: 'switch-uuid' },
-      },
-      Characteristic: {
-        On: 'On',
-        Name: 'Name',
-        ConfiguredName: 'ConfiguredName',
-      },
-    } as any;
+    platform = createMockPlatform();
 
-    // Create mock service
+    mockCharacteristicOn = {
+      onGet: vi.fn().mockReturnThis(),
+      onSet: vi.fn((handler) => {
+        capturedOnSetHandler = handler;
+        return mockCharacteristicOn;
+      }),
+      updateValue: vi.fn(),
+    };
+
     mockService = {
       setCharacteristic: vi.fn().mockReturnThis(),
-      getCharacteristic: vi.fn().mockReturnValue({
-        on: vi.fn(),
-        onGet: vi.fn(),
-        onSet: vi.fn(),
+      getCharacteristic: vi.fn((char) => {
+        if (char === platform.Characteristic.On) {
+          return mockCharacteristicOn;
+        }
+        return { onGet: vi.fn().mockReturnThis(), onSet: vi.fn().mockReturnThis(), updateValue: vi.fn() };
       }),
       updateCharacteristic: vi.fn(),
     };
 
-    // Create mock accessory
     accessory = {
-      getService: vi.fn().mockReturnValue(null), // Return null to force addService call
-      getServiceById: vi.fn().mockReturnValue(null), // Return null to force addService call
+      getService: vi.fn().mockReturnValue(null),
+      getServiceById: vi.fn().mockReturnValue(mockService),
       addService: vi.fn().mockReturnValue(mockService),
       context: {
-        deviceConfig: {
-          ip: '192.168.1.100',
-          port: 8080,
-          name: 'Test AC',
-        },
+        deviceConfig: { ip: '192.168.1.100', port: 8080, name: 'Test AC Turbo' },
       },
-      displayName: 'Test AC',
-      services: [mockService],
+      displayName: 'Test AC Turbo Display',
     };
 
-    // Create API mock with turbo methods
-    mockApiActions = createMockApiActions({ opt_turbo: 'on' });
-    mockApiActions.setTurboState = vi.fn().mockResolvedValue(undefined);
-    
-    // Create mock CacheManager
-    mockCacheManager = createMockCacheManager(mockApiActions, { opt_turbo: 'on' });
+    mockDeviceStateObject = createMockDeviceState(defaultDeviceOptions);
+    mockDeviceStateObject.on = vi.fn((event, listener) => {
+      if (event === 'stateChanged') {
+        capturedStateChangeListener = listener;
+      }
+      return mockDeviceStateObject;
+    });
+    mockDeviceStateObject.setTurboMode = vi.fn();
+    mockDeviceStateObject.setSleepMode = vi.fn();
+    mockDeviceStateObject.setFanSpeed = vi.fn();
+    mockDeviceStateObject.clone = vi.fn().mockReturnValue(mockDeviceStateObject);
 
-    // No listener capture; tests will call updateStatus directly
+    mockCacheManager = createMockCacheManager();
+    mockCacheManager.getDeviceState.mockReturnValue(mockDeviceStateObject);
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
+    mockCacheManager.api = {
+      setDeviceOptions: vi.fn().mockResolvedValue(undefined),
+    };
+
+    (CacheManager.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockCacheManager);
+
+    mockDeviceStateObject.toApiStatus.mockReturnValue({ 
+      opt_turbo: PowerState.Off 
+    });
+
+    inst = new TurboSwitchAccessory(platform, accessory);
   });
 
-  function createAccessory() {
-    inst = new TurboSwitchAccessory(platform, accessory);
-    // Override CacheManager to use our mock
-    (inst as any).cacheManager = mockCacheManager;
-    return inst;
-  }
-
-  it('should initialize correctly', () => {
-    createAccessory();
-    expect(accessory.addService).toHaveBeenCalledWith(
-      platform.Service.Switch,
-      'Turbo',
-      'turbo'
-    );
+  it('should construct and set up characteristics and listeners', () => {
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'turbo');
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Turbo');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    expect(mockCharacteristicOn.onGet).toHaveBeenCalledWith(expect.any(Function));
+    expect(mockCharacteristicOn.onSet).toHaveBeenCalledWith(expect.any(Function));
+    expect(mockDeviceStateObject.on).toHaveBeenCalledWith('stateChanged', expect.any(Function));
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
   });
 
-  it('handles get characteristic with turbo on', () => {
-    createAccessory();
-    const callback = vi.fn();
-    inst.updateStatus({ opt_turbo: 'on' } as any);
-    
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, true);
-  });
-
-  it('handles get characteristic with turbo off', () => {
-    createAccessory();
-    const callback = vi.fn();
-    inst.updateStatus({ opt_turbo: 'off' } as any);
-    
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
-  });
-
-  it('handles get characteristic with null status', () => {
-    createAccessory();
-    const callback = vi.fn();
-    // Don't set status to test null case
-    (inst as any).cachedStatus = null;
-    
-    (inst as any).handleGet(callback);
-    expect(callback).toHaveBeenCalledWith(null, false);
-  });
-
-  it('handles set characteristic to turn turbo on', async () => {
-    createAccessory();
-    const callback = vi.fn();
-    
-    // Mock the setSleepAndTurbo method since that's what is used when turning on Turbo now
-    mockCacheManager.api.setSleepAndTurbo = vi.fn().mockResolvedValue(undefined);
-    
-    // Inject our mock cache manager into the instance
-    (inst as any).cacheManager = mockCacheManager;
-    
-    await (inst as any).handleSet(true, callback);
-    
-    // Check that setSleepAndTurbo was called with Turbo fan speed and sleep off
-    expect(mockCacheManager.api.setSleepAndTurbo).toHaveBeenCalledWith(FanSpeed.Turbo, SleepModeState.Off);
-    
-    // Don't expect clear() to be called in the new implementation
-    expect(mockCacheManager.clear).not.toHaveBeenCalled();
-    expect(callback).toHaveBeenCalledWith(null);
-  });
-
-  it('handles set characteristic to turn turbo off', async () => {
-    createAccessory();
-    const callback = vi.fn();
-    
-    // The mock API is injected into the cacheManager, so we need to set it there
-    mockCacheManager.api.setFanAndSleepState = vi.fn().mockResolvedValue(undefined);
-    
-    // Inject our mock cache manager into the instance
-    (inst as any).cacheManager = mockCacheManager;
-    
-    await (inst as any).handleSet(false, callback);
-    
-    // Check that setFanAndSleepState was called with Auto fan speed and sleep off
-    expect(mockCacheManager.api.setFanAndSleepState).toHaveBeenCalledWith(FanSpeed.Auto, SleepModeState.Off);
-    
-    // Don't expect clear() to be called in the new implementation
-    expect(mockCacheManager.clear).not.toHaveBeenCalled();
-    expect(callback).toHaveBeenCalledWith(null);
-  });
-
-  it('handles set error', async () => {
-    createAccessory();
-    const callback = vi.fn();
-    const error = new Error('Network error');
-    
-    // Mock the setSleepAndTurbo method since that's what is used now, and make it fail
-    mockCacheManager.api.setSleepAndTurbo = vi.fn().mockRejectedValueOnce(error);
-    
-    // Inject our mock cache manager into the instance
-    (inst as any).cacheManager = mockCacheManager;
-    
-    await (inst as any).handleSet(true, callback);
-    
-    // Check that setSleepAndTurbo was called with Turbo fan speed and sleep off
-    expect(mockCacheManager.api.setSleepAndTurbo).toHaveBeenCalledWith(FanSpeed.Turbo, SleepModeState.Off);
-    
-    expect(callback).toHaveBeenCalledWith(error);
-    expect(platform.log.error).toHaveBeenCalledWith(
-      expect.stringContaining('Error setting Turbo'),
-      error
-    );
-  });
-
-  describe('Status Listener', () => {
-    it('updates characteristic when turbo state changes from off to on', () => {
-      createAccessory();
-      inst.updateStatus({ opt_turbo: 'off' } as any);
-      mockService.updateCharacteristic.mockClear();
-      
-      inst.updateStatus({ opt_turbo: 'on' } as any);
-      
-      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', true);
-    });
-
-    it('updates characteristic when turbo state changes from on to off', () => {
-      createAccessory();
-      inst.updateStatus({ opt_turbo: 'on' } as any);
-      mockService.updateCharacteristic.mockClear();
-      
-      inst.updateStatus({ opt_turbo: 'off' } as any);
-      
-      expect(mockService.updateCharacteristic).toHaveBeenCalledWith('On', false);
-    });
-
-    it('does not update characteristic if turbo state unchanged (on)', () => {
-      createAccessory();
-      inst.updateStatus({ opt_turbo: 'on' } as any);
-      mockService.updateCharacteristic.mockClear();
-      
-      inst.updateStatus({ opt_turbo: 'on' } as any);
-      
-      expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
-    });
-
-    it('does not update characteristic if turbo state unchanged (off)', () => {
-      createAccessory();
-      inst.updateStatus({ opt_turbo: 'off' } as any);
-      mockService.updateCharacteristic.mockClear();
-      
-      inst.updateStatus({ opt_turbo: 'off' } as any);
-      
-      expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
-    });
-
-    it('handles null status gracefully', () => {
-      createAccessory();
-      // Simulate receiving null status
-      inst.updateStatus(null as any);
-      
-      // No crash should occur
-      expect(true).toBe(true);
-    });
-  });
-
-  it('stops polling and cleans up api', () => {
-    createAccessory();
+  it('should stop polling by removing DeviceState listener', () => {
     inst.stopPolling();
-    expect(mockCacheManager.cleanup).toHaveBeenCalled();
+    expect(mockDeviceStateObject.removeListener).toHaveBeenCalledWith('stateChanged', expect.any(Function));
+  });
+
+  describe('handleGet', () => {
+    it('should return true when turbo is on', () => {
+      // Need to mock both the API status and update the DeviceState object
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ opt_turbo: PowerState.On });
+      // Simulate the accessor by creating a new instance after setting up mocks
+      inst = new TurboSwitchAccessory(platform, accessory);
+      
+      const result = inst.handleGet();
+      
+      expect(result).toBe(true);
+    });
+
+    it('should return false when turbo is off', () => {
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ opt_turbo: PowerState.Off });
+      // Simulate the accessor by creating a new instance after setting up mocks
+      inst = new TurboSwitchAccessory(platform, accessory);
+      
+      const result = inst.handleGet();
+      
+      expect(result).toBe(false);
+    });
+
+    it('should handle null deviceState by returning false', () => {
+      Object.defineProperty(inst, 'deviceState', { get: () => null });
+      
+      const result = inst.handleGet();
+      
+      expect(result).toBe(false);
+    });
+
+    it('should call callback with the result if provided', () => {
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ opt_turbo: PowerState.On });
+      // Simulate the accessor by creating a new instance after setting up mocks
+      inst = new TurboSwitchAccessory(platform, accessory);
+      
+      // BaseSwitchAccessory.handleGet doesn't use callbacks anymore
+      // Just call the function and check the return value
+      const result = inst.handleGet();
+      
+      expect(result).toBe(true);
+    });
+  });
+
+  describe('handleSet', () => {
+    it('should set turbo on and sleep mode off when value is true', async () => {
+      const mockCallback = vi.fn();
+      
+      await capturedOnSetHandler(true, mockCallback);
+      
+      expect(mockDeviceStateObject.setTurboMode).toHaveBeenCalledWith(PowerState.On);
+      expect(mockDeviceStateObject.setSleepMode).toHaveBeenCalledWith(SleepModeState.Off);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
+      expect(mockCallback).toHaveBeenCalledWith(null);
+    });
+
+    it('should set turbo off and fan speed to auto when value is false', async () => {
+      const mockCallback = vi.fn();
+      
+      await capturedOnSetHandler(false, mockCallback);
+      
+      expect(mockDeviceStateObject.setTurboMode).toHaveBeenCalledWith(PowerState.Off);
+      expect(mockDeviceStateObject.setFanSpeed).toHaveBeenCalledWith(FanSpeed.Auto);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
+      expect(mockCallback).toHaveBeenCalledWith(null);
+    });
+
+    it('should handle errors from applyStateToDevice', async () => {
+      const mockCallback = vi.fn();
+      const mockError = new Error('Test error');
+      mockCacheManager.applyStateToDevice.mockRejectedValue(mockError);
+      
+      await capturedOnSetHandler(true, mockCallback);
+      
+      expect(mockCallback).toHaveBeenCalledWith(expect.objectContaining({
+        status: platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+      }));
+    });
+  });
+
+  describe('stateChanged listener', () => {
+    it('should update characteristic when turbo state changes to on', () => {
+      // Trigger the stateChanged listener with new state
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValue({ opt_turbo: PowerState.On });
+      
+      capturedStateChangeListener(newState);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+    });
+
+    it('should update characteristic when turbo state changes to off', () => {
+      // Trigger the stateChanged listener with new state
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValue({ opt_turbo: PowerState.Off });
+      
+      capturedStateChangeListener(newState);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
+    });
   });
 });

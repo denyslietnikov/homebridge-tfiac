@@ -9,7 +9,8 @@ import {
   createMockService,
   createMockPlatformAccessory
 } from './testUtils';
-import { PowerState, OperationMode, FanSpeed } from '../enums.js'; // Import Enums
+import { PowerState, OperationMode, FanSpeed, FanSpeedPercentMap, SleepModeState } from '../enums.js'; // Import Enums
+import { fahrenheitToCelsius, celsiusToFahrenheit } from '../utils.js'; // Import utils
 
 describe('TfiacPlatformAccessory extra tests', () => {
   let platform: Partial<TfiacPlatform>;
@@ -100,7 +101,7 @@ describe('TfiacPlatformAccessory extra tests', () => {
       CoolingThresholdTemperature: 'CoolingThresholdTemperature',
       HeatingThresholdTemperature: 'HeatingThresholdTemperature',
       RotationSpeed: 'RotationSpeed',
-      SwingMode: 'SwingMode',
+      SwingMode: { SWING_DISABLED: 0, SWING_ENABLED: 1 }, // Modified SwingMode mock
     };
 
     (platform as any).api = {
@@ -178,19 +179,21 @@ describe('TfiacPlatformAccessory extra tests', () => {
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.SwingMode,
-      0,
+      platform.Characteristic!.SwingMode.SWING_DISABLED, // Updated expectation
     );
   });
 
   it('updateHeaterCoolerCharacteristics sets values on non-null status', () => {
     const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
     const status: AirConditionerStatus = {
-      is_on: PowerState.On, // Use Enum
-      operation_mode: OperationMode.Heat, // Use Enum
+      is_on: PowerState.On, 
+      operation_mode: OperationMode.Heat, 
       current_temp: 212,
       target_temp: 212,
-      fan_mode: FanSpeed.High, // Use Enum
-      swing_mode: 'Both',
+      fan_mode: FanSpeed.High, 
+      swing_mode: 'Both', // This should map to SWING_ENABLED
+      opt_sleepMode: SleepModeState.Off, 
+      opt_turbo: PowerState.Off, 
     };
     (inst as any).updateHeaterCoolerCharacteristics(status);
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
@@ -219,67 +222,35 @@ describe('TfiacPlatformAccessory extra tests', () => {
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.RotationSpeed,
-      75,
+      FanSpeedPercentMap[FanSpeed.High], 
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.SwingMode,
-      1,
+      platform.Characteristic!.SwingMode.SWING_ENABLED, // Updated expectation
     );
   });
 
   it('map and handler functions behave correctly', () => {
     const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Cool)).toBe(2); // Use Enum
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Heat)).toBe(1); // Use Enum
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Auto)).toBe(0); // Use Enum
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState']('other' as OperationMode)).toBe(0); // Handle unknown
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode'](OperationMode.Cool, PowerState.On, 70, 75)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.COOLING);
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode'](OperationMode.Heat, PowerState.On, 70, 65)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.HEATING);
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode'](OperationMode.Auto, PowerState.On, 70, 70)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.IDLE);
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode']('other' as OperationMode, PowerState.On, 70, 70)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.IDLE);
 
-    // Updated expectations for fan mode to rotation speed mapping
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Low)).toBe(25); // Use Enum
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Middle)).toBe(50); // Use Enum for Middle
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.High)).toBe(75); // Use Enum
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Auto)).toBe(0); // Updated to match actual behavior (0 not 50)
-    expect(inst['mapFanModeToRotationSpeed']('X' as FanSpeed)).toBe(50); // Updated to match actual behavior (50 not 0)
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.Low, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Low]);
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.Medium, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Medium]);
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.High, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.High]);
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.Auto, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Auto]);
+    expect((inst as any)['calculateFanRotationSpeed']('X' as FanSpeed, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Auto]);
 
-    // Updated expectations for rotation speed to fan mode mapping
-    expect(inst['mapRotationSpeedToFanMode'](0)).toBe(FanSpeed.Auto);    // 0-15% → Auto
-    expect(inst['mapRotationSpeedToFanMode'](10)).toBe(FanSpeed.Auto);   // 0-15% → Auto
-    expect(inst['mapRotationSpeedToFanMode'](20)).toBe(FanSpeed.Low);    // >15% closer to Low (25%)
-    expect(inst['mapRotationSpeedToFanMode'](40)).toBe(FanSpeed.Middle); // >15% closer to Middle (50%)
-    expect(inst['mapRotationSpeedToFanMode'](60)).toBe(FanSpeed.Middle); // >15% closer to Middle (50%), NOT to High (75%)
-    expect(inst['mapRotationSpeedToFanMode'](90)).toBe(FanSpeed.Turbo);  // >15% closer to Turbo (100%)
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](0)).toBe(FanSpeed.Auto);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](10)).toBe(FanSpeed.Silent);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](20)).toBe(FanSpeed.Silent); 
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](40)).toBe(FanSpeed.Low); 
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](60)).toBe(FanSpeed.Medium);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](90)).toBe(FanSpeed.High);
 
-    expect(inst.fahrenheitToCelsius(32)).toBe(0);
-    expect(inst.celsiusToFahrenheit(0)).toBe(32);
-
-    // test compatibility handler fallback
-    const h = inst.getCharacteristicHandler('Active', 'get');
-    expect(h).toBeDefined();
-    const h2 = inst.getCharacteristicHandler('Unknown', 'get');
-    expect(h2).toBeUndefined();
-  });
-
-  it('getCharacteristicHandler fallback covers all mapped cases', () => {
-    const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    const keys: Array<[string, 'get' | 'set']> = [
-      ['CurrentTemperature', 'get'],
-      ['CoolingThresholdTemperature', 'get'],
-      ['HeatingThresholdTemperature', 'get'],
-      ['CoolingThresholdTemperature', 'set'],
-      ['RotationSpeed', 'get'],
-      ['RotationSpeed', 'set'],
-      ['SwingMode', 'get'],
-      ['SwingMode', 'set'],
-      ['Active', 'get'],
-      ['Active', 'set'],
-      ['CurrentHeaterCoolerState', 'get'],
-      ['TargetHeaterCoolerState', 'get'],
-      ['TargetHeaterCoolerState', 'set'],
-    ];
-    for (const [char, event] of keys) {
-      const handler = inst.getCharacteristicHandler(char, event);
-      expect(handler).toBeDefined();
-      expect(typeof handler).toBe('function');
-    }
+    expect(fahrenheitToCelsius(32)).toBe(0);
+    expect(celsiusToFahrenheit(0)).toBe(32);
   });
 });

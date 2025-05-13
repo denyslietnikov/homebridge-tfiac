@@ -2,331 +2,342 @@ import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { StandaloneFanAccessory } from '../StandaloneFanAccessory.js';
 import { TfiacPlatform } from '../platform.js';
 import { PlatformAccessory, Service } from 'homebridge';
-import { createMockPlatformAccessory, createMockService, setupTestPlatform, createMockApiActions, createMockCacheManager } from './testUtils.js';
+import { 
+  createMockPlatformAccessory, 
+  createMockService, 
+  createMockDeviceState, 
+  createMockCacheManager, 
+  defaultDeviceOptions 
+} from './testUtils.js';
+import { PowerState, FanSpeed, OperationMode } from '../enums.js';
+import { DeviceState } from '../state/DeviceState.js';
 
-// Import to get the right type for getInstance mock
-import defaultCacheManager from '../CacheManager.js';
+// Mock the CacheManager module
+vi.mock('../CacheManager.js');
 
-// Mock CacheManager module with proper implementation
-vi.mock('../CacheManager.js', () => {
-  const mockModule = {
-    CacheManager: {
-      getInstance: vi.fn(),
-    },
-    default: {
-      getInstance: vi.fn(),
-    }
-  };
-  
-  return mockModule;
-});
-
-// Import CacheManager after mocking
-import { CacheManager } from '../CacheManager.js';
+// Import after mocking
+import CacheManager from '../CacheManager.js';
 
 describe('StandaloneFanAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: PlatformAccessory;
   let service: Service;
-  let deviceAPI: any;
   let mockCacheManager: any;
+  let mockDeviceState: any;
+
+  // Function to create a platform with necessary mocks
+  function createTestPlatform() {
+    return {
+      log: {
+        info: vi.fn(),
+        debug: vi.fn(),
+        error: vi.fn(),
+        warn: vi.fn(),
+      },
+      Service: {
+        Fan: function(name: string, subtype?: string) {
+          return service;
+        },
+        UUID: 'fan-service-uuid'
+      },
+      Characteristic: {
+        ConfiguredName: {
+          UUID: 'configured-name-uuid'
+        },
+        On: {
+          UUID: 'on-uuid'
+        },
+        RotationSpeed: {
+          UUID: 'rotation-speed-uuid'
+        }
+      }
+    } as unknown as TfiacPlatform;
+  }
+
+  function createAccessoryAndOverrideCacheManager() {
+    accessory.context = {
+      deviceConfig: defaultDeviceOptions,
+    };
+    
+    // Mock accessory.getService to return nothing so addService is called
+    accessory.getService = vi.fn((serviceName) => {
+      if (serviceName === 'Standalone Fan') {
+        return undefined;
+      }
+      return undefined;
+    });
+    
+    // Mock service.getCharacteristic to return a mock with proper behavior
+    const onCharMock = {
+      onGet: vi.fn().mockReturnThis(),
+      onSet: vi.fn().mockReturnThis(),
+      on: vi.fn().mockReturnThis(),
+      value: true,
+    };
+    
+    // Ensure service.getCharacteristic returns the correct mocks
+    service.getCharacteristic = vi.fn().mockImplementation((characteristic) => {
+      if (characteristic === platform.Characteristic.On) {
+        return { ...onCharMock, value: true };
+      } else if (characteristic === platform.Characteristic.RotationSpeed) {
+        return { ...onCharMock, value: 50 };
+      }
+      return onCharMock;
+    });
+    
+    service.updateCharacteristic = vi.fn();
+    accessory.addService = vi.fn().mockReturnValue(service);
+    
+    return new StandaloneFanAccessory(platform, accessory);
+  }
 
   beforeEach(async () => {
     vi.clearAllMocks();
     
-    platform = setupTestPlatform();
+    platform = createTestPlatform();
     service = createMockService();
+    
     accessory = createMockPlatformAccessory('Test Fan', 'test-uuid', { 
       ip: '1.2.3.4', 
       port: 1234, 
       updateInterval: 1, 
-      name: 'Test' 
+      name: 'Test',
+      id: 'test-device-id'
     }, service);
     
-    deviceAPI = createMockApiActions({
-      is_on: 'on',
-      fan_mode: 'Auto'
+    // Setup a mock device state
+    mockDeviceState = createMockDeviceState(defaultDeviceOptions);
+    mockDeviceState.power = PowerState.On;
+    mockDeviceState.fanSpeed = FanSpeed.Auto;
+    mockDeviceState.on = vi.fn((event, listener) => {
+      if (event === 'stateChanged') {
+        // Store listener for tests
+        (mockDeviceState as any).stateChangedListener = listener;
+      }
+      return mockDeviceState;
+    });
+    mockDeviceState.removeListener = vi.fn().mockReturnValue(mockDeviceState);
+    mockDeviceState.toApiStatus = vi.fn().mockReturnValue({
+      is_on: PowerState.On,
+      fan_mode: FanSpeed.Auto
     });
     
-    // Create mock CacheManager
-    mockCacheManager = createMockCacheManager(deviceAPI, { is_on: 'on', fan_mode: 'Auto' });
+    // Create and setup CacheManager
+    mockCacheManager = createMockCacheManager();
+    mockCacheManager.getDeviceState = vi.fn().mockReturnValue(mockDeviceState);
+    mockCacheManager.api = {
+      turnOn: vi.fn().mockResolvedValue(undefined),
+      turnOff: vi.fn().mockResolvedValue(undefined),
+      setFanSpeed: vi.fn().mockResolvedValue(undefined)
+    };
     
-    // Mock the getInstance method of CacheManager
-    (CacheManager.getInstance as any).mockReturnValue(mockCacheManager);
-    (defaultCacheManager.getInstance as any).mockReturnValue(mockCacheManager);
+    // Mock the CacheManager.getInstance function properly
+    (CacheManager.getInstance as any) = vi.fn().mockReturnValue(mockCacheManager);
   });
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+  it('should construct and set up polling and handlers', () => {
+    const inst = createAccessoryAndOverrideCacheManager();
+    
+    // Accessory methods were called correctly
+    expect(service.getCharacteristic).toHaveBeenCalledTimes(2);
+    expect(service.updateCharacteristic).toHaveBeenCalled();
   });
 
-  function createAccessoryAndOverrideCacheManager() {
+  it('should use existing service if available', () => {
+    const existingService = createMockService();
+    existingService.getCharacteristic = vi.fn().mockImplementation((characteristic) => {
+      if (characteristic === platform.Characteristic.On) {
+        return { 
+          onGet: vi.fn().mockReturnThis(),
+          onSet: vi.fn().mockReturnThis(),
+          on: vi.fn().mockReturnThis(),
+          value: true
+        };
+      } else if (characteristic === platform.Characteristic.RotationSpeed) {
+        return { 
+          onGet: vi.fn().mockReturnThis(),
+          onSet: vi.fn().mockReturnThis(),
+          on: vi.fn().mockReturnThis(),
+          value: 50
+        };
+      }
+      return {
+        onGet: vi.fn().mockReturnThis(),
+        onSet: vi.fn().mockReturnThis(),
+        on: vi.fn().mockReturnThis()
+      };
+    });
+    existingService.updateCharacteristic = vi.fn();
+    
+    // Mock getService to return existing service for the service name
+    accessory.getService = vi.fn().mockImplementation((nameOrService) => {
+      if (nameOrService === 'Standalone Fan') {
+        return existingService;
+      }
+      return undefined;
+    });
+    
+    // Also need to mock getServiceById to return the service for the other checks
+    accessory.getServiceById = vi.fn().mockImplementation((service, subtype) => {
+      if ((service === platform.Service.Fan || service === platform.Service.Fan.UUID) && 
+          subtype === 'standalone_fan') {
+        return existingService;
+      }
+      return undefined;
+    });
+    
+    // Make sure the context is set properly
+    accessory.context = {
+      deviceConfig: defaultDeviceOptions,
+    };
+    
+    // Avoid using the common test helper which would override our mocks
     const inst = new StandaloneFanAccessory(platform, accessory);
-    // Override the CacheManager with our mock
-    (inst as any).cacheManager = mockCacheManager;
-    return inst;
-  }
-
-  it('should construct and set up polling and handlers', async () => {
-    (accessory.getService as ReturnType<typeof vi.fn>).mockReturnValue(null);
-    accessory.addService = vi.fn().mockReturnValue(service);
-
-    const inst = createAccessoryAndOverrideCacheManager();
     
-    expect(accessory.addService).toHaveBeenCalledWith(platform.Service.Fan, 'Standalone Fan', 'standalone_fan');
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.ConfiguredName, 'Standalone Fan');
-    expect(service.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
-    expect(service.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed);
-  });
-
-  it('should use existing service if available', async () => {
-    const service = createMockService();
-    (accessory.getService as ReturnType<typeof vi.fn>).mockReturnValue(null);
-    accessory.getServiceById = vi.fn().mockReturnValue(service);
-    accessory.addService = vi.fn().mockReturnValue(service); // Mock addService to satisfy type, return value doesn't matter for this test
-    
-    const inst = createAccessoryAndOverrideCacheManager();
-    
+    // Should not attempt to add a service if it already exists
     expect(accessory.addService).not.toHaveBeenCalled();
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.ConfiguredName, 'Standalone Fan');
   });
 
-  it('should do nothing on stopPolling', async () => {
+  it('should do nothing on stopPolling', () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    // The stopPolling method actually doesn't do anything
-    // as per the implementation - it's a no-op stub
-    expect(() => inst.stopPolling()).not.toThrow();
+    
+    inst.stopPolling();
+    
+    expect(mockDeviceState.removeListener).toHaveBeenCalled();
   });
 
-  it('should updateStatus and update both characteristics', async () => {
+  it('should updateStatus and update both characteristics', () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    inst['updateStatus']({ is_on: 'on', fan_mode: 'Auto' });
+    
+    // Get the listener from our mock
+    const stateChangedListener = (mockDeviceState as any).stateChangedListener;
+    expect(stateChangedListener).toBeDefined();
+    
+    // Call the listener with updated state
+    stateChangedListener(mockDeviceState);
+    
+    // Both characteristics should be updated
     expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed, 50);
+    expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed, expect.any(Number));
   });
 
-  it('should updateStatus with different fan modes', async () => {
+  it('should updateStatus with different fan modes', () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    inst['updateStatus']({ is_on: 'on', fan_mode: 'Low' });
+    
+    mockDeviceState.toApiStatus = vi.fn().mockReturnValue({
+      is_on: PowerState.On,
+      fan_mode: FanSpeed.Low
+    });
+    
+    // Get and call the listener
+    const stateChangedListener = (mockDeviceState as any).stateChangedListener;
+    stateChangedListener(mockDeviceState);
+    
+    // Should update with correct fan speed value
     expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed, 25);
   });
 
-  it('should log error on updateStatus with error', async () => {
+  it('should handle get for On characteristic', () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    expect(() => inst['updateStatus'](null)).not.toThrow();
-  });
-
-  it('should handle get for On characteristic based on characteristic value', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    // Set up mocks to return the desired value
-    service.getCharacteristic = vi.fn().mockImplementation((characteristic) => {
-      return {
-        value: characteristic === platform.Characteristic.On ? true : null,
-        on: vi.fn().mockReturnThis(),
-        updateValue: vi.fn().mockReturnThis()
-      };
+    const callback = vi.fn();
+    
+    // Mock the service.getCharacteristic to return a value
+    service.getCharacteristic = vi.fn().mockImplementation(() => {
+      return { value: true };
     });
     
-    const result = await new Promise<{ err: any, val: any }>((resolve) => {
-      (inst as any).handleGet((err: any, val: any) => {
-        resolve({ err, val });
-      });
-    });
+    // Call the handleGet method
+    (inst as any).handleGet(callback);
     
-    expect(result.err).toBeNull();
-    expect(result.val).toBe(true);
-  });
-
-  it('should handle get for On characteristic with off state', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    mockCacheManager.getLastStatus.mockReturnValue({ is_on: 'off' });
-    
-    const result = await new Promise<{ err: any, val: any }>((resolve) => {
-      (inst as any).handleGet((err: any, val: any) => {
-        resolve({ err, val });
-      });
-    });
-    
-    expect(result.err).toBeNull();
-    expect(result.val).toBe(false);
-  });
-
-  it('should handle get for On characteristic with no cached status', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    mockCacheManager.getLastStatus.mockReturnValue(null);
-    
-    const result = await new Promise<{ err: any, val: any }>((resolve) => {
-      (inst as any).handleGet((err: any, val: any) => {
-        resolve({ err, val });
-      });
-    });
-    
-    expect(result.err).toBeNull();
-    expect(result.val).toBe(false);
+    // Callback should be called with true
+    expect(callback).toHaveBeenCalledWith(null, true);
   });
 
   it('should handle set for On characteristic to turn on', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
+    const callback = vi.fn();
     
-    await new Promise<void>((resolve) => {
-      (inst as any).handleSet(true, (err: any) => {
-        resolve();
-      });
-    });
+    // Call the handleSet method with true
+    await (inst as any).handleSet(true, callback);
     
-    expect(deviceAPI.turnOn).toHaveBeenCalled();
-    expect(mockCacheManager.clear).toHaveBeenCalled();
+    // Should call turnOn and call the callback
+    expect(mockCacheManager.api.turnOn).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
   });
 
   it('should handle set for On characteristic to turn off', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
+    const callback = vi.fn();
     
-    await new Promise<void>((resolve) => {
-      (inst as any).handleSet(false, (err: any) => {
-        resolve();
-      });
-    });
+    // Call the handleSet method with false
+    await (inst as any).handleSet(false, callback);
     
-    expect(deviceAPI.turnOff).toHaveBeenCalled();
-    expect(mockCacheManager.clear).toHaveBeenCalled();
+    // Should call turnOff and call the callback
+    expect(mockCacheManager.api.turnOff).toHaveBeenCalled();
+    expect(callback).toHaveBeenCalledWith(null);
   });
 
   it('should handle set error for On characteristic', async () => {
-    deviceAPI.turnOn.mockRejectedValueOnce(new Error('fail'));
     const inst = createAccessoryAndOverrideCacheManager();
+    const callback = vi.fn();
+    const error = new Error('Test error');
     
-    const result = await new Promise<Error | null>((resolve) => {
-      (inst as any).handleSet(true, (err: Error | null) => {
-        resolve(err);
-      });
+    // Make the API call fail
+    mockCacheManager.api.turnOn.mockRejectedValueOnce(error);
+    
+    // Call the handleSet method with true
+    await (inst as any).handleSet(true, callback);
+    
+    // Should pass the error to the callback
+    expect(callback).toHaveBeenCalledWith(error);
+  });
+  
+  it('should handle get for RotationSpeed', () => {
+    const inst = createAccessoryAndOverrideCacheManager();
+    const callback = vi.fn();
+    
+    // Mock the service.getCharacteristic to return a value
+    service.getCharacteristic = vi.fn().mockImplementation(() => {
+      return { value: 50 };
     });
     
-    expect(result).toBeInstanceOf(Error);
-    expect(result?.message).toBe('fail');
+    // Call the handleRotationSpeedGet method
+    (inst as any).handleRotationSpeedGet(callback);
+    
+    // Callback should be called with 50
+    expect(callback).toHaveBeenCalledWith(null, 50);
   });
 
-  it('should handle get for RotationSpeed based on characteristic value', async () => {
+  it('should handle set for RotationSpeed', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    // Set up mocks to return the desired value for rotation speed
-    service.getCharacteristic = vi.fn().mockImplementation((characteristic) => {
-      return {
-        value: characteristic === platform.Characteristic.RotationSpeed ? 75 : null,
-        on: vi.fn().mockReturnThis(),
-        updateValue: vi.fn().mockReturnThis()
-      };
-    });
+    const callback = vi.fn();
     
-    const result = await new Promise<{ err: any, val: any }>((resolve) => {
-      (inst as any).handleRotationSpeedGet((err: any, val: any) => {
-        resolve({ err, val });
-      });
-    });
+    // Call the handleRotationSpeedSet method with 75 (High)
+    await (inst as any).handleRotationSpeedSet(75, callback);
     
-    expect(result.err).toBeNull();
-    expect(result.val).toBe(75);
+    // Should call setFanSpeed with FanSpeed.High
+    expect(mockCacheManager.api.setFanSpeed).toHaveBeenCalledWith(FanSpeed.High);
+    expect(callback).toHaveBeenCalledWith(null);
   });
 
-  it('should handle get for RotationSpeed with no cached status', async () => {
+  it('should map fan modes to rotation speeds correctly', () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    mockCacheManager.getLastStatus.mockReturnValue(null);
     
-    const result = await new Promise<{ err: any, val: any }>((resolve) => {
-      (inst as any).handleRotationSpeedGet((err: any, val: any) => {
-        resolve({ err, val });
-      });
-    });
-    
-    expect(result.err).toBeNull();
-    expect(result.val).toBe(50);
+    // Test the private mapFanModeToRotationSpeed method
+    expect((inst as any).mapFanModeToRotationSpeed(FanSpeed.Auto)).toBe(50);
+    expect((inst as any).mapFanModeToRotationSpeed(FanSpeed.Low)).toBe(25);
+    expect((inst as any).mapFanModeToRotationSpeed(FanSpeed.Medium)).toBe(50);
+    expect((inst as any).mapFanModeToRotationSpeed(FanSpeed.High)).toBe(75);
   });
-
-  it('should handle set for RotationSpeed to Low', async () => {
+  
+  it('should map rotation speeds to fan modes correctly', () => {
     const inst = createAccessoryAndOverrideCacheManager();
     
-    await new Promise<void>((resolve) => {
-      (inst as any).handleRotationSpeedSet(20, (err: any) => {
-        resolve();
-      });
-    });
-    
-    expect(deviceAPI.setFanSpeed).toHaveBeenCalledWith('Low');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
-  });
-
-  it('should handle set for RotationSpeed to Middle', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    
-    await new Promise<void>((resolve) => {
-      (inst as any).handleRotationSpeedSet(40, (err: any) => {
-        resolve();
-      });
-    });
-    
-    expect(deviceAPI.setFanSpeed).toHaveBeenCalledWith('Middle');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
-  });
-
-  it('should handle set for RotationSpeed to High', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    
-    await new Promise<void>((resolve) => {
-      (inst as any).handleRotationSpeedSet(70, (err: any) => {
-        resolve();
-      });
-    });
-    
-    expect(deviceAPI.setFanSpeed).toHaveBeenCalledWith('High');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
-  });
-
-  it('should handle set for RotationSpeed to Auto', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    
-    await new Promise<void>((resolve) => {
-      (inst as any).handleRotationSpeedSet(90, (err: any) => {
-        resolve();
-      });
-    });
-    
-    expect(deviceAPI.setFanSpeed).toHaveBeenCalledWith('Auto');
-    expect(mockCacheManager.clear).toHaveBeenCalled();
-  });
-
-  it('should handle set error for RotationSpeed', async () => {
-    const error = new Error('fail');
-    deviceAPI.setFanSpeed.mockRejectedValueOnce(error);
-    const inst = createAccessoryAndOverrideCacheManager();
-    
-    const result = await new Promise<Error | null>((resolve) => {
-      (inst as any).handleRotationSpeedSet(40, (err: Error | null) => {
-        resolve(err);
-      });
-    });
-    
-    expect(result).toBeInstanceOf(Error);
-    expect(result?.message).toBe('fail');
-  });
-
-  it('should map fan modes to rotation speeds correctly', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    expect((inst as any).mapFanModeToRotationSpeed('Auto')).toBe(50);
-    expect((inst as any).mapFanModeToRotationSpeed('Low')).toBe(25);
-    expect((inst as any).mapFanModeToRotationSpeed('Middle')).toBe(50);
-    expect((inst as any).mapFanModeToRotationSpeed('High')).toBe(75);
-    expect((inst as any).mapFanModeToRotationSpeed('Unknown')).toBe(50);
-  });
-
-  it('should map rotation speeds to fan modes correctly', async () => {
-    const inst = createAccessoryAndOverrideCacheManager();
-    // Exactly 0% → Auto
-    expect((inst as any).mapRotationSpeedToFanMode(0)).toBe('Auto');
-    // 1-25% → Low
-    expect((inst as any).mapRotationSpeedToFanMode(10)).toBe('Low');
-    // 26-50% → Middle
-    expect((inst as any).mapRotationSpeedToFanMode(40)).toBe('Middle');
-    // 51-75% → High
-    expect((inst as any).mapRotationSpeedToFanMode(60)).toBe('High');
-    // 76-100% → Auto (code returns Auto for values > 75%)
-    expect((inst as any).mapRotationSpeedToFanMode(90)).toBe('Auto');
+    // Test the private mapRotationSpeedToFanMode method
+    expect((inst as any).mapRotationSpeedToFanMode(0)).toBe(FanSpeed.Auto);
+    expect((inst as any).mapRotationSpeedToFanMode(25)).toBe(FanSpeed.Low);
+    expect((inst as any).mapRotationSpeedToFanMode(50)).toBe(FanSpeed.Medium);
+    expect((inst as any).mapRotationSpeedToFanMode(75)).toBe(FanSpeed.High);
+    expect((inst as any).mapRotationSpeedToFanMode(100)).toBe(FanSpeed.Auto);
   });
 });

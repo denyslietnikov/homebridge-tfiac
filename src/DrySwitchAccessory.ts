@@ -11,14 +11,17 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
     super(
       platform,
       accessory,
-      'Dry',
-      'dry',
-      (status) => status.operation_mode === OperationMode.Dry,
-      async (value) => {
+      'Dry Mode', // serviceName
+      'dry', // subType
+      (status) => status.operation_mode === OperationMode.Dry, // isOn
+      async (value) => { // setOn
         const mode = value ? OperationMode.Dry : OperationMode.Auto;
-        await this.cacheManager.api.setAirConditionerState('operation_mode', mode);
+        // Use this.deviceState from BaseSwitchAccessory
+        const desiredState = this.deviceState.clone();
+        desiredState.setOperationMode(mode);
+        await this.cacheManager.applyStateToDevice(desiredState);
       },
-      'Dry',
+      'Dry Mode', // characteristicName
     );
   }
 }

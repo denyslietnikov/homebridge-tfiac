@@ -26,7 +26,6 @@ import {
   createMockService,
   createMockCharacteristic,
   createMockPlatformAccessory,
-  mockPlatformAccessory
 } from './testUtils.js';
 
 // Ensure this mockLogger is a full vi.fn mock to enable spy checking
@@ -34,7 +33,13 @@ const mockLogger = {
   debug: vi.fn(),
   info: vi.fn(),
   warn: vi.fn(),
-  error: vi.fn(),
+  error: vi.fn((...args: unknown[]) => {
+    // Log to console for visibility during test run
+    const errorArgs = args.map(arg => 
+      arg instanceof Error ? { message: arg.message, stack: arg.stack } : arg
+    );
+    console.error('mockLogger.error called with:', JSON.stringify(errorArgs, null, 2));
+  }),
   log: vi.fn(),
   success: vi.fn()
 };
@@ -118,6 +123,11 @@ const mockAPI: API = {
       Thermostat: vi.fn(() => mockServiceInstance),
       HeaterCooler: vi.fn(() => mockServiceInstance),
       AccessoryInformation: vi.fn(() => mockServiceInstance),
+      // Add missing service mocks
+      Switch: vi.fn(() => createMockService('Switch')),
+      Fanv2: vi.fn(() => createMockService('Fanv2')),
+      Fan: vi.fn(() => createMockService('Fan')), // For StandaloneFanAccessory if it uses Service.Fan
+      TemperatureSensor: vi.fn(() => createMockService('TemperatureSensor')),
     } as unknown as typeof Service,
     Characteristic: {
       prototype: {},
@@ -244,6 +254,7 @@ describe('TfiacPlatform', () => {
       return mockAPI;
     });
 
+    // Initialize platform AFTER setting up the mock implementation for registerPlatformAccessories
     platform = new TfiacPlatform(mockLogger, config, mockAPI);
 
     // Use vi.clearAllMocks() instead of individual mockClear calls
@@ -275,31 +286,81 @@ describe('TfiacPlatform', () => {
     vi.clearAllMocks();
   });
 
-  // ---------- Restored platform tests ----------
-  it('registers new accessories on didFinishLaunching', () => {
-    // Simulate Homebridge didFinishLaunching event
-    didFinishLaunchingCallback();
-    // Should register the configured accessory
-    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
-    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledWith(
-      PLUGIN_NAME,
-      PLATFORM_NAME,
-      accessoryInstances,
-    );
+  // ---------- Rewritten platform tests ----------
+  it('does not register accessories upon construction', () => {
+    // Platform is constructed in beforeEach, but discoverDevices is not called by constructor
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
   });
 
-  it('registers accessories when calling discoverDevices directly', async () => {
-    // Clear previous calls and state
-    (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockClear();
-    accessoryInstances.length = 0;
-    // Invoke discovery manually
+  it('registers new accessories on didFinishLaunching', async () => {
+    // Platform is constructed in beforeEach
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled(); // Ensure not called yet
+
+    if (!didFinishLaunchingCallback) {
+      throw new Error('didFinishLaunchingCallback was not set by mockAPI.on');
+    }
+    await didFinishLaunchingCallback(); // This will call platform.discoverDevices()
+
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
+    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledWith(
+      PLUGIN_NAME,
+      PLATFORM_NAME,
+      accessoryInstances, // This array is populated by the mockImplementation
+    );
+    // Assuming one device in the default config from beforeEach
+    expect(accessoryInstances.length).toBe(1);
+    if (config.devices && config.devices.length > 0) {
+      expect(accessoryInstances[0].displayName).toBe(config.devices[0].name);
+    }
+  });
+
+  it('registers new accessories when discoverDevices is called directly', async () => {
+    // Platform is constructed in beforeEach
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled(); // Ensure not called yet
+
     await platform.discoverDevices();
+
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
     expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
     expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledWith(
       PLUGIN_NAME,
       PLATFORM_NAME,
       accessoryInstances,
     );
+    expect(accessoryInstances.length).toBe(1);
+    if (config.devices && config.devices.length > 0) {
+      expect(accessoryInstances[0].displayName).toBe(config.devices[0].name);
+    }
+  });
+
+  it('does not re-register accessories if discoverDevices is called multiple times', async () => {
+    // First call (e.g., via didFinishLaunching)
+    if (!didFinishLaunchingCallback) {
+      throw new Error('didFinishLaunchingCallback was not set by mockAPI.on');
+    }
+    await didFinishLaunchingCallback();
+    
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
+    
+    // Clear mocks for the next call
+    (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockClear();
+    accessoryInstances.length = 0; // Clear the capture array
+
+    // Second call (e.g., direct call to discoverDevices)
+    await platform.discoverDevices();
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled(); // Should not register again
+    expect(accessoryInstances.length).toBe(0); // No new accessories should have been pushed
+
+    // Third call (another direct call to be sure)
+    (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockClear(); // Clear again just in case
+    accessoryInstances.length = 0;
+    await platform.discoverDevices();
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
+    expect(accessoryInstances.length).toBe(0);
   });
 
   it('shows debug logs when debug flag is set to true', async () => {

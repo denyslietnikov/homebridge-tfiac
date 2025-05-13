@@ -20,11 +20,12 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
         // Get device state
         const deviceState = this.cacheManager.getDeviceState();
         
-        // Create a modified state for optimistic updates
+        // Create a modified state
         const modifiedState = deviceState.clone();
         modifiedState.setEcoMode(state);
         
         // Apply the state changes through command queue
+        // This will trigger DeviceState update and subsequently the BaseSwitchAccessory listener
         await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Eco',
@@ -37,16 +38,15 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
     // Get device state
     const deviceState = this.cacheManager.getDeviceState();
     
-    // Create a modified state for optimistic updates
+    // Create a modified state
     const modifiedState = deviceState.clone();
     modifiedState.setEcoMode(state);
     
     // Apply the state changes through command queue
+    // This will trigger DeviceState update and subsequently the BaseSwitchAccessory listener
     await this.cacheManager.applyStateToDevice(modifiedState);
     
-    // Update the UI
-    if (this.service) {
-      this.service.updateCharacteristic(this.platform.Characteristic.On, value);
-    }
+    // Removed manual UI update: if (this.service) { ... }
+    // The characteristic update is now handled by the BaseSwitchAccessory's stateChanged listener.
   }
 }
