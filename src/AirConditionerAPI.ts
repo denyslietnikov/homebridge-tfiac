@@ -43,7 +43,7 @@ export interface DeviceOptions {
   mode: OperationMode;
   temp: number;
   fanSpeed: FanSpeed;
-  swingMode: SwingMode | string;
+  swingMode: SwingMode; // Changed from SwingMode | string
   sleep: SleepModeState | string;
   turbo: PowerState;
   display: PowerState;
@@ -285,7 +285,6 @@ export class AirConditionerAPI extends EventEmitter {
     }
   }
 
-  // Renamed from setOptionsCombined to setDeviceOptions
   public async setDeviceOptions(options: PartialDeviceOptions): Promise<void> {
     if (!this.lastStatus) {
       await this.updateState(); // Ensure lastStatus is initialized
@@ -294,7 +293,23 @@ export class AirConditionerAPI extends EventEmitter {
     const current = this.lastStatus ? JSON.parse(JSON.stringify(this.lastStatus)) : ({} as AirConditionerStatus);
 
     // Determine effective states, starting with current, then applying options
-    const effPower = options.power !== undefined ? options.power : current.is_on || PowerState.Off;
+    let effPower = options.power !== undefined ? options.power : (current.is_on || PowerState.Off);
+
+    // If any other option is set that implies the AC should be active, and power is not explicitly set to Off
+    if (effPower === PowerState.Off && options.power === undefined) {
+      if (options.mode !== undefined ||
+          options.temp !== undefined ||
+          options.fanSpeed !== undefined ||
+          options.swingMode !== undefined ||
+          options.turbo === PowerState.On ||
+          (options.sleep && options.sleep !== SleepModeState.Off && options.sleep !== 'off') || // Check for active sleep string value too
+          options.display === PowerState.On ||
+          options.eco === PowerState.On
+      ) {
+        effPower = PowerState.On;
+      }
+    }
+
     const effMode = options.mode !== undefined ? options.mode : current.operation_mode || OperationMode.Auto;
     const effTemp = options.temp !== undefined ? options.temp : current.target_temp || 24;
     let effFan = options.fanSpeed !== undefined ? options.fanSpeed : current.fan_mode || FanSpeed.Auto;
@@ -317,12 +332,19 @@ export class AirConditionerAPI extends EventEmitter {
         effFan = FanSpeed.Turbo;     // Turbo implies max fan speed
       } else if ((typeof effSleep === 'string' && effSleep !== 'off') || effSleep === SleepModeState.On) {
         effTurbo = PowerState.Off; // Sleep and Turbo are mutually exclusive
-        if (options.fanSpeed === undefined && (effFan === FanSpeed.Turbo || effFan === FanSpeed.Auto)) {
-          effFan = FanSpeed.Low;
+        if (options.fanSpeed === undefined && (effFan === FanSpeed.Turbo || effFan === FanSpeed.Auto || current.fan_mode === FanSpeed.Turbo)) {
+          effFan = FanSpeed.Low; // If sleep is turning on, and fan was Turbo/Auto, set to Low
         }
       }
+      // If turbo is being turned OFF, and fan was Turbo (because of it), and no new fanSpeed is specified
+      if (options.turbo === PowerState.Off && current.opt_turbo === PowerState.On && effFan === FanSpeed.Turbo) {
+        if (options.fanSpeed === undefined) {
+          effFan = FanSpeed.Auto; // Revert fan to Auto
+        }
+      }
+
       if (effFan === FanSpeed.Turbo && effTurbo === PowerState.Off) {
-        effTurbo = PowerState.On;
+        effTurbo = PowerState.On; // If fan is set to Turbo, ensure Turbo mode is on
         if ((typeof effSleep === 'string' && effSleep !== 'off') || effSleep === SleepModeState.On) {
           effSleep = SleepModeState.Off; // Ensure sleep is off if turbo is forced by fan speed
         }
@@ -415,50 +437,44 @@ export class AirConditionerAPI extends EventEmitter {
     await this._sendCommandPayload(payload, optimisticUpdate, 'setDeviceOptions');
   }
 
-  async turnOn(): Promise<void> {
-    await this.setDeviceOptions({ power: PowerState.On });
-  }
+  // --- Start of Refactored Combo Methods for Step 3 ---
 
-  async turnOff(): Promise<void> {
-    if (!this.lastStatus) {
-      await this.updateState();
+  public async setPower(state: PowerState): Promise<void> {
+    if (state === PowerState.On) {
+      await this.setDeviceOptions({ power: PowerState.On });
+    } else {
+      const existingMode = this.lastStatus?.operation_mode;
+      let modeToSet: OperationMode;
+
+      if (existingMode && Object.values(OperationMode).includes(existingMode as OperationMode)) {
+        modeToSet = existingMode as OperationMode;
+      } else {
+        // If existingMode is a string not in enum, or undefined, default to Auto.
+        modeToSet = OperationMode.Auto;
+      }
+      
+      const currentTemp = this.lastStatus?.target_temp || 24; // Default temp if not available
+      await this.setDeviceOptions({ power: PowerState.Off, mode: modeToSet, temp: currentTemp });
     }
-    const currentMode = this.lastStatus?.operation_mode as OperationMode || OperationMode.Auto;
-    const currentTemp = this.lastStatus?.target_temp || 24;
-    await this.setDeviceOptions({ power: PowerState.Off, mode: currentMode, temp: currentTemp });
   }
 
-  async setOperationMode(mode: OperationMode, targetTemp?: number): Promise<void> {
+  public async setMode(mode: OperationMode, targetTemp?: number): Promise<void> {
     await this.setDeviceOptions({ power: PowerState.On, mode: mode, temp: targetTemp });
   }
 
-  async setTargetTemperature(temp: number): Promise<void> {
-    await this.setDeviceOptions({ power: PowerState.On, temp: temp });
+  public async setFanAndSleep(fanSpeed: FanSpeed, sleep: SleepModeState | string): Promise<void> {
+    await this.setDeviceOptions({ power: PowerState.On, fanSpeed: fanSpeed, sleep: sleep });
   }
 
-  async setFanSpeed(speed: FanSpeed): Promise<void> {
-    await this.setDeviceOptions({ power: PowerState.On, fanSpeed: speed });
+  public async setSleepAndTurbo(sleep: SleepModeState | string, turbo: PowerState): Promise<void> {
+    await this.setDeviceOptions({ power: PowerState.On, sleep: sleep, turbo: turbo });
   }
 
-  async setTurboState(state: PowerState): Promise<void> {
-    await this.setDeviceOptions({ power: PowerState.On, turbo: state });
+  public async setFanOnly(fanSpeed: FanSpeed): Promise<void> {
+    await this.setDeviceOptions({ power: PowerState.On, mode: OperationMode.FanOnly, fanSpeed: fanSpeed });
   }
 
-  async setSleepState(state: SleepModeState | string): Promise<void> {
-    await this.setDeviceOptions({ power: PowerState.On, sleep: state });
-  }
-
-  async setDisplayState(state: PowerState): Promise<void> {
-    await this.setDeviceOptions({ display: state });
-  }
-
-  async setEcoState(state: PowerState): Promise<void> {
-    await this.setDeviceOptions({ power: PowerState.On, eco: state });
-  }
-
-  async setBeepState(state: PowerState): Promise<void> {
-    await this.setDeviceOptions({ beep: state });
-  }
+  // --- End of Refactored Combo Methods ---
 
   private mapWindDirectionToSwingMode(status: StatusUpdateMsg): string {
     const value =

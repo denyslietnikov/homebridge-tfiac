@@ -63,7 +63,7 @@ describe('AirConditionerAPI - Error Handling', () => {
     // Mock setDeviceOptions to resolve, simulating it handles the null lastStatus (e.g., by calling updateState)
     setDeviceOptionsSpy.mockResolvedValue(undefined);
 
-    await api.setBeepState(PowerState.On);
+    await api.setDeviceOptions({ beep: PowerState.On });
 
     expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ beep: PowerState.On });
   });
@@ -75,7 +75,7 @@ describe('AirConditionerAPI - Error Handling', () => {
 
     let thrownError: Error | undefined;
     try {
-      await api.setBeepState(PowerState.On); // setBeepState calls setDeviceOptions
+      await api.setDeviceOptions({ beep: PowerState.On }); // setDeviceOptions for beep
     } catch (err) {
       thrownError = err as Error;
     }
@@ -92,7 +92,7 @@ describe('AirConditionerAPI - Error Handling', () => {
 
     let thrownError: Error | undefined;
     try {
-      await api.setBeepState(PowerState.On); // setBeepState calls setDeviceOptions
+      await api.setDeviceOptions({ beep: PowerState.On }); // setDeviceOptions for beep
     } catch (err) {
       thrownError = err as Error;
     }

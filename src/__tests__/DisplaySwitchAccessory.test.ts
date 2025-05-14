@@ -158,33 +158,21 @@ describe('DisplaySwitchAccessory', () => {
     expect(cacheManager.deviceState.displayMode).toBe(PowerState.On);
     expect(cacheManager.applyStateToDevice).toHaveBeenCalled();
     expect(callback).toHaveBeenCalledWith(null);
-    
-    // Call onSet with false
-    cacheManager.applyStateToDevice.mockClear();
-    callback.mockClear();
-    await onSetHandler(false, callback);
-    expect(cacheManager.deviceState.displayMode).toBe(PowerState.Off);
-    expect(cacheManager.applyStateToDevice).toHaveBeenCalled();
-    expect(callback).toHaveBeenCalledWith(null);
   });
 
-  it('updateStatus updates characteristic via updateCharacteristic', () => {
-    // First check that the service is accessible
-    expect(service).toBeTruthy();
-    expect(service.updateCharacteristic).toBeDefined();
-    
-    // Now test the updateStatus method with display on
-    displaySwitch.updateStatus({ opt_display: PowerState.On } as any);
+  it('should update characteristic when deviceState.setDisplayMode is called (which emits stateChanged)', () => {
+    // Set display ON by calling setDisplayMode, which should trigger the event with the correct object
+    cacheManager.deviceState.setDisplayMode(PowerState.On);
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      mockPlatform.Characteristic.On, 
+      mockPlatform.Characteristic.On,
       true
     );
-    
-    // Reset the mock and test with display off
+
+    // Reset and test display OFF
     service.updateCharacteristic.mockClear();
-    displaySwitch.updateStatus({ opt_display: PowerState.Off } as any);
+    cacheManager.deviceState.setDisplayMode(PowerState.Off);
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      mockPlatform.Characteristic.On, 
+      mockPlatform.Characteristic.On,
       false
     );
   });

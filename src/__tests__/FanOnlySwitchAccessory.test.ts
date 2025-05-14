@@ -98,13 +98,13 @@ describe('FanOnlySwitchAccessory', () => {
 
   describe('handleGet (inherited from BaseSwitchAccessory)', () => {
     it('should return true when operation_mode is FanOnly', () => {
-      inst.cachedStatus = { operation_mode: OperationMode.FanOnly };
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ operation_mode: OperationMode.FanOnly } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(true);
     });
 
     it('should return false when operation_mode is not FanOnly', () => {
-      inst.cachedStatus = { operation_mode: OperationMode.Auto };
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ operation_mode: OperationMode.Auto } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(false);
     });

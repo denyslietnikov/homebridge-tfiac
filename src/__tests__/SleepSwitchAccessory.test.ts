@@ -102,46 +102,26 @@ describe('SleepSwitchAccessory', () => {
   });
 
   describe('handleGet (inherited from BaseSwitchAccessory)', () => {
-    it('should return true when sleepMode is ON in cachedStatus', () => {
-      inst.cachedStatus = { 
-        opt_sleepMode: SleepModeState.On, 
-        is_on: PowerState.On, 
-        opt_turbo: PowerState.Off,
-        opt_sleep: PowerState.On
-      };
+    it('should return true when sleepMode is ON and AC is ON and turbo is OFF', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On, opt_turbo: PowerState.Off, opt_sleep: PowerState.On } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(true);
     });
 
-    it('should return false when sleepMode is OFF in cachedStatus', () => {
-      inst.cachedStatus = { 
-        opt_sleepMode: SleepModeState.Off, 
-        is_on: PowerState.On, 
-        opt_turbo: PowerState.Off,
-        opt_sleep: PowerState.Off
-      };
+    it('should return false when sleepMode is OFF even if AC is ON', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_sleepMode: SleepModeState.Off, is_on: PowerState.On, opt_turbo: PowerState.Off, opt_sleep: PowerState.Off } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(false);
     });
 
-    it('should return false when AC is OFF', () => {
-      inst.cachedStatus = { 
-        opt_sleepMode: SleepModeState.On, 
-        is_on: PowerState.Off, 
-        opt_turbo: PowerState.Off,
-        opt_sleep: PowerState.On
-      };
+    it('should return false when AC is OFF regardless of sleepMode', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_sleepMode: SleepModeState.On, is_on: PowerState.Off, opt_turbo: PowerState.Off, opt_sleep: PowerState.On } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(false);
     });
 
-    it('should return false when turbo is ON', () => {
-      inst.cachedStatus = { 
-        opt_sleepMode: SleepModeState.On, 
-        is_on: PowerState.On, 
-        opt_turbo: PowerState.On,
-        opt_sleep: PowerState.On
-      };
+    it('should return false when turbo is ON even if sleepMode is ON and AC is ON', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_sleepMode: SleepModeState.On, is_on: PowerState.On, opt_turbo: PowerState.On, opt_sleep: PowerState.On } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(false);
     });

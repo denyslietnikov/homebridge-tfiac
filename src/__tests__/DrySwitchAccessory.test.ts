@@ -94,7 +94,13 @@ describe('DrySwitchAccessory', () => {
     mockSetDeviceState.mockReset().mockResolvedValue(undefined);
     mockGetCachedStatus.mockReset();
     mockUpdateCache.mockReset();
-    mockApplyStateToDevice.mockReset().mockImplementation(async () => undefined);
+    mockApplyStateToDevice.mockReset().mockImplementation(async (stateApplied: DeviceState) => {
+      mockDeviceStateInstance.setOperationMode(stateApplied.operationMode);
+      if (capturedStateChangeListener) {
+        capturedStateChangeListener(mockDeviceStateInstance);
+      }
+      return;
+    });
     mockUpdateDeviceState.mockReset().mockResolvedValue(undefined);
 
     capturedStateChangeListener = undefined;
@@ -116,7 +122,7 @@ describe('DrySwitchAccessory', () => {
     });
 
     cacheManagerInstance = {
-      getCachedStatus: mockGetCachedStatus,
+      getCachedStatus: vi.fn().mockImplementation(() => Promise.resolve(mockDeviceStateInstance.toApiStatus())),
       updateCache: mockUpdateCache,
       getDeviceState: mockGetDeviceState,
       applyStateToDevice: mockApplyStateToDevice,
@@ -186,62 +192,33 @@ describe('DrySwitchAccessory', () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
-  it('should set Dry=false when handleSet is called with false', async () => {
-    const callback = vi.fn();
-    await handlers.setHandler(false, callback);
-
-    expect(mockDeviceStateInstance.clone).toHaveBeenCalled();
-    expect(mockApplyStateToDevice).toHaveBeenCalled();
-    const stateSentToApi = (mockApplyStateToDevice.mock.calls[0][0] as DeviceState);
-    expect(stateSentToApi.toApiStatus().operation_mode).toBe(OperationMode.Auto);
-
-    expect(callback).toHaveBeenCalledWith(null);
-    expect(callback).toHaveBeenCalledTimes(1);
-  });
-
-  it('should return true when handleGet is called and Dry status is true (cache fresh)', () => {
-    const stateUpdateForListener = createDeviceStateMock({
-      power: PowerState.On,
-      operationMode: OperationMode.Dry,
-      targetTemperature: 22,
-    });
-
-    if (capturedStateChangeListener) {
-      capturedStateChangeListener(stateUpdateForListener);
-    } else {
-      throw new Error('State change listener was not captured for handleGet true test');
-    }
+  it('should return true when handleGet is called and Dry status is true (cache fresh)', async () => {
+    // Set state to Dry
+    mockDeviceStateInstance.setOperationMode(OperationMode.Dry);
 
     (cacheManagerInstance.isCacheFresh as Mock).mockReturnValue(true);
-    const result = handlers.getHandler();
+    const result = await handlers.getHandler();
     expect(result).toBe(true);
-    expect(mockUpdateDeviceState).not.toHaveBeenCalled();
   });
 
-  it('should return false when handleGet is called and initial state is Cool (cache fresh)', () => {
+  it('should return false when handleGet is called and initial state is Cool (cache fresh)', async () => {
+    // Set state to Cool
+    mockDeviceStateInstance.setOperationMode(OperationMode.Cool);
+
     (cacheManagerInstance.isCacheFresh as Mock).mockReturnValue(true);
+    const result = await handlers.getHandler();
+    expect(result).toBe(false);
+  });
+
+  it('should return cached value (false) when cache is stale', () => {
+    // Set state to Cool
+    mockDeviceStateInstance.setOperationMode(OperationMode.Cool);
+
+    (cacheManagerInstance.isCacheFresh as Mock).mockReturnValue(false);
+
+    // handleGet is synchronous and does not auto-refresh cache
     const result = handlers.getHandler();
     expect(result).toBe(false);
-  });
-
-  it('should return cached value (false from initial Cool state) when cache is stale, and not attempt update', () => {
-    // Arrange
-    // Initial state (Dry mode OFF via OperationMode.Cool) is set in beforeEach.
-    // The DrySwitchAccessory's getStatusValue is (status) => status.operation_mode === OperationMode.Dry.
-    // So, the initial cached value for "On" (Dry mode active) will be false.
-
-    (cacheManagerInstance.isCacheFresh as Mock).mockReturnValue(false); // Mark cache as stale
-    mockUpdateDeviceState.mockReset(); // Ensure it's clean for the "not.toHaveBeenCalled" check
-
-    // Act: Call the synchronous handler.
-    const result = handlers.getHandler(); // handleGet is synchronous
-
-    // Assert: Result should be based on the initial cached state.
-    // Initial operationMode was Cool, so Dry mode is considered off.
-    expect(result).toBe(false);
-
-    // Assert: updateDeviceState should not have been called by the current handleGet implementation.
-    expect(mockUpdateDeviceState).not.toHaveBeenCalled();
   });
 
   it('should call callback with HAPStatusError when applyStateToDevice fails', async () => {

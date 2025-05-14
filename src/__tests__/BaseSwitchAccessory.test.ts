@@ -216,18 +216,14 @@ describe('BaseSwitchAccessory', () => {
     expect(result).toBe(true);
   });
   
-  it('should return false when no cached status is available', async () => {
-    // We need to create a new instance with a modified cacheManager that returns null
-    // First, create a new instance of TestSwitchAccessory
+  it('should return false when no status is available', async () => {
+    // Create a new instance of TestSwitchAccessory
     const specialTestInst = new TestSwitchAccessory(platform, accessory);
-    
-    // Now directly set the cachedStatus to null for the test
-    specialTestInst['cachedStatus'] = null;
-    
+    // Stub deviceState.toApiStatus to return null
+    (specialTestInst as any).deviceState.toApiStatus = vi.fn().mockReturnValue(null);
     // Call the method
     const result = await specialTestInst.exposedHandleGet();
-    
-    // Since cachedStatus is null, we should get false
+    // Should return false when no status available
     expect(result).toBe(false);
   });
   

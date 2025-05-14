@@ -47,12 +47,10 @@ export abstract class BaseSwitchAccessory {
   private readonly nameChar: WithUUID<new () => Characteristic>;
   protected readonly onChar: WithUUID<new () => Characteristic>;
   protected readonly deviceConfig: TfiacDeviceConfig;
-  public cachedStatus: Partial<AirConditionerStatus> | null = null;
   protected isPolling = false;
   protected cacheManager: CacheManager;
   protected deviceState: DeviceState;
 
-  private statusListener: (status: AirConditionerStatus | null) => void;
   private stateChangeListener: (state: DeviceState) => void;
 
   constructor(
@@ -92,7 +90,6 @@ export abstract class BaseSwitchAccessory {
     this.nameChar = this.platform.Characteristic.Name;
     this.onChar = this.platform.Characteristic.On;
 
-    this.statusListener = this.updateStatus.bind(this);
     this.stateChangeListener = this.handleStateChange.bind(this);
 
     // Try to reuse existing service or create a new one
@@ -142,15 +139,9 @@ export abstract class BaseSwitchAccessory {
     this.handleStateChange(this.deviceState);
   }
 
-  /** Unsubscribe from centralized status updates */
+  /** Unsubscribe from centralized state change updates */
   public stopPolling(): void {
     this.deviceState.removeListener('stateChanged', this.stateChangeListener);
-
-    // Assuming this.cacheManager.api has EventEmitter methods like 'off'
-    if (this.cacheManager?.api && typeof this.cacheManager.api.off === 'function') {
-      this.cacheManager.api.off('status', this.statusListener);
-      this.cacheManager.api.off('statusChanged', this.statusListener);
-    }
     this.platform.log.debug(`[${this.logPrefix}] Polling stopped and listeners removed.`);
   }
 
@@ -161,8 +152,8 @@ export abstract class BaseSwitchAccessory {
     const apiStatus = state.toApiStatus(); // Call toApiStatus only once
 
     if (apiStatus === null) {
-      this.platform.log.warn(`[${this.logPrefix}] DeviceState provided null apiStatus. Passing null to updateStatus.`);
-      this.updateStatus(null); // updateStatus is designed to handle null
+      this.platform.log.warn(`[${this.logPrefix}] DeviceState provided null apiStatus. Passing null to _updateCharacteristicFromState.`);
+      this._updateCharacteristicFromState(null); // _updateCharacteristicFromState is designed to handle null
       return;
     }
 
@@ -171,7 +162,7 @@ export abstract class BaseSwitchAccessory {
     this.platform.log.debug(
       `[${this.logPrefix}] StateChanged. Power: ${state.power}, Val: ${relevantValue}, OpM: ${apiStatus.operation_mode}`,
     );
-    this.updateStatus(apiStatus);
+    this._updateCharacteristicFromState(apiStatus);
   }
 
   /**
@@ -196,44 +187,37 @@ export abstract class BaseSwitchAccessory {
     }
   }
 
-  /** Update this switch based on centralized status. */
-  public updateStatus(status: Partial<AirConditionerStatus> | null): void {
+  /** Update this switch based on centralized status. Now private. */
+  private _updateCharacteristicFromState(status: Partial<AirConditionerStatus> | null): void {
     if (!this.service) {
-      this.platform.log.warn(`[${this.logPrefix}] UpdateStatus called but service is not available.`);
+      this.platform.log.warn(`[${this.logPrefix}] _updateCharacteristicFromState called but service is not available.`);
       return;
     }
 
-    if (status === null) {
-      this.platform.log.debug(`[${this.logPrefix}] Received null status, clearing cachedStatus.`);
-      this.cachedStatus = null;
-      return;
-    }
+    // Determine the new value based on the status from DeviceState.
+    // Default to false if status is null (e.g., device unavailable or initial state unknown).
+    const newValue = status ? this.getStatusValue(status) : false;
 
-    const isFirst = this.cachedStatus === null;
-    const oldValue = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : !this.getStatusValue(status);
-
-    this.cachedStatus = status;
-    const newValue = this.getStatusValue(status);
-
-    this.platform.log.debug(
-      `[${this.logPrefix}] Update. Old: ${oldValue}, New: ${newValue}, First: ${isFirst}, Pw: ${status.is_on}, OpM: ${status.operation_mode}`,
-    );
-
-    // Determine if characteristic update should proceed, considering actual characteristic value
-    // Get the characteristic instance from the service
+    // Get the characteristic instance from the service to read its current value in HomeKit.
     const charInstance = this.service.getCharacteristic(this.onChar)!;
     const currentValue = (charInstance as unknown as { value: boolean }).value;
 
-    if (isFirst || newValue !== oldValue) {
-      // If not first update and desired value matches characteristic's current value, skip
-      if (!isFirst && newValue === currentValue) {
-        this.platform.log.debug(`[${this.logPrefix}] Characteristic (${newValue}) already set. Skipping update.`);
-      } else {
-        this.platform.log.info(`[${this.logPrefix}] State changed to ${newValue}. Updating characteristic.`);
-        this.service.updateCharacteristic(this.onChar, newValue);
-      }
+    this.platform.log.debug(
+      `[${this.logPrefix}] _updateCharacteristicFromState. Desired new value from DeviceState: ${newValue}, ` +
+      `Current HomeKit characteristic value: ${currentValue}. ` +
+      `Device power: ${status?.is_on}, OpMode: ${status?.operation_mode}`,
+    );
+
+    // Update the HomeKit characteristic only if the new value differs from the current characteristic value.
+    if (newValue !== currentValue) {
+      this.platform.log.info(
+        `[${this.logPrefix}] Desired state ${newValue} differs from HomeKit characteristic ${currentValue}. Updating characteristic.`,
+      );
+      this.service.updateCharacteristic(this.onChar, newValue);
     } else {
-      this.platform.log.debug(`[${this.logPrefix}] State (${newValue}) hasn't changed. No characteristic update needed.`);
+      this.platform.log.debug(
+        `[${this.logPrefix}] Desired state ${newValue} matches HomeKit characteristic. No characteristic update needed.`,
+      );
     }
   }
 
@@ -242,8 +226,13 @@ export abstract class BaseSwitchAccessory {
    */
   public handleGet(): CharacteristicValue { // Changed to return CharacteristicValue directly
     this.platform.log.debug(`[${this.logPrefix}] Triggered GET.`);
-    const isOn = this.cachedStatus ? this.getStatusValue(this.cachedStatus) : false;
-    this.platform.log.debug(`[${this.logPrefix}] Current value from cachedStatus: ${isOn}`);
+    if (!this.deviceState) {
+      this.platform.log.warn(`[${this.logPrefix}] deviceState is null in handleGet, returning false`);
+      return false;
+    }
+    const currentApiStatus = this.deviceState.toApiStatus();
+    const isOn = currentApiStatus ? this.getStatusValue(currentApiStatus) : false;
+    this.platform.log.debug(`[${this.logPrefix}] Current value for GET from DeviceState: ${isOn}`);
     return isOn;
   }
 

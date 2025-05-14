@@ -125,19 +125,19 @@ export interface MockLogger extends Partial<Logging> {
 }
 
 export interface MockApiActions {
-  updateState: Mock<(...args: any[]) => any>;
-  turnOn: Mock<(...args: any[]) => any>;
-  turnOff: Mock<(...args: any[]) => any>;
-  setAirConditionerState: Mock<(...args: any[]) => any>;
-  setFanSpeed: Mock<(...args: any[]) => any>;
-  setSwingMode: Mock<(...args: any[]) => any>;
-  setTurboState: Mock<(...args: any[]) => any>;
-  setEcoState: Mock<(...args: any[]) => any>;
-  setDisplayState: Mock<(...args: any[]) => any>;
-  setBeepState: Mock<(...args: any[]) => any>;
-  setSleepState: Mock<(...args: any[]) => any>;
-  setFanAndSleepState: Mock<(...args: any[]) => any>;
-  cleanup: Mock<(...args: any[]) => any>;
+  updateState: Mock<(force?: boolean) => Promise<AirConditionerStatus>>;
+  setDeviceOptions: Mock<(options: ApiPartialDeviceOptions) => Promise<void>>;
+  setPower: Mock<(state: PowerState) => Promise<void>>;
+  setMode: Mock<(mode: OperationMode, targetTemp?: number) => Promise<void>>;
+  setFanAndSleep: Mock<(fanSpeed: FanSpeed, sleep: SleepModeState | string) => Promise<void>>;
+  setSleepAndTurbo: Mock<(sleep: SleepModeState | string, turbo: PowerState) => Promise<void>>;
+  setFanOnly: Mock<(fanSpeed: FanSpeed) => Promise<void>>;
+  turnOn: Mock<() => Promise<void>>;
+  turnOff: Mock<() => Promise<void>>;
+  setAirConditionerState: Mock<() => Promise<void>>;
+  setFanSpeed: Mock<() => Promise<void>>;
+  setSwingMode: Mock<() => Promise<void>>;
+  cleanup: Mock<() => void>;
   api: {
     on: Mock<(...args: any[]) => any>;
     off: Mock<(...args: any[]) => any>;
@@ -466,20 +466,21 @@ export function createMockLogger(): MockLogger {
   };
 }
 
-export function createMockApiActions(initialStatus = {}): MockApiActions & { api: any } {
+export function createMockApiActions(initialStatus: Partial<AirConditionerStatus> = {}): MockApiActions & { api: any } {
   const actions = {
     updateState: vi.fn().mockResolvedValue(initialStatus),
+    setDeviceOptions: vi.fn().mockResolvedValue(undefined),
+    setPower: vi.fn().mockResolvedValue(undefined),
+    setMode: vi.fn().mockResolvedValue(undefined),
+    setFanAndSleep: vi.fn().mockResolvedValue(undefined),
+    setSleepAndTurbo: vi.fn().mockResolvedValue(undefined),
+    setFanOnly: vi.fn().mockResolvedValue(undefined),
+    // Add methods expected by core tests
     turnOn: vi.fn().mockResolvedValue(undefined),
     turnOff: vi.fn().mockResolvedValue(undefined),
     setAirConditionerState: vi.fn().mockResolvedValue(undefined),
     setFanSpeed: vi.fn().mockResolvedValue(undefined),
     setSwingMode: vi.fn().mockResolvedValue(undefined),
-    setTurboState: vi.fn().mockResolvedValue(undefined),
-    setEcoState: vi.fn().mockResolvedValue(undefined),
-    setDisplayState: vi.fn().mockResolvedValue(undefined),
-    setBeepState: vi.fn().mockResolvedValue(undefined),
-    setSleepState: vi.fn().mockResolvedValue(undefined),
-    setFanAndSleepState: vi.fn().mockResolvedValue(undefined),
     cleanup: vi.fn(),
     api: { on: vi.fn(), off: vi.fn() },
   };

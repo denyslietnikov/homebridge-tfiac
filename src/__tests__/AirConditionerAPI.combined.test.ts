@@ -1,4 +1,4 @@
-import { vi, describe, beforeEach, it, expect, afterEach } from 'vitest';
+import { vi, describe, beforeEach, it, expect, afterEach, beforeAll } from 'vitest';
 import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from '../enums.js'; // Import enums
 
 // Mock dgram before imports to avoid hoisting issues
@@ -14,6 +14,15 @@ import * as dgram from 'dgram';
 import { AirConditionerAPI, AirConditionerStatus } from '../AirConditionerAPI.js';
 
 let mockSocket: any;
+
+// Add mockHttpService definition for HTTP calls
+let mockHttpService: { post: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+
+beforeAll(() => {
+  // Initialize mockHttpService before tests
+  mockHttpService = { post: vi.fn(), get: vi.fn() };
+});
+
 
 // Types for mocking
 type MessageCallback = (msg: Buffer) => void;
@@ -166,18 +175,16 @@ describe('AirConditionerAPI - Combined Commands', () => {
   describe('setSleepState', () => {
     it('should call setDeviceOptions with correct parameters for turning sleep on', async () => {
       vi.useRealTimers();
-      await api.setSleepState(SleepModeState.On);
+      await api.setDeviceOptions({ sleep: SleepModeState.On });
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({
-        power: PowerState.On,
         sleep: SleepModeState.On,
       });
     });
 
     it('should call setDeviceOptions with correct parameters for turning sleep off', async () => {
       vi.useRealTimers();
-      await api.setSleepState(SleepModeState.Off);
+      await api.setDeviceOptions({ sleep: SleepModeState.Off });
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({
-        power: PowerState.On,
         sleep: SleepModeState.Off,
       });
     });
@@ -186,7 +193,7 @@ describe('AirConditionerAPI - Combined Commands', () => {
   describe('setBeepState', () => {
     it('should call setDeviceOptions to set beep on', async () => {
       vi.useRealTimers();
-      await api.setBeepState(PowerState.On);
+      await api.setDeviceOptions({ beep: PowerState.On });
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({
         beep: PowerState.On,
       });
@@ -194,7 +201,7 @@ describe('AirConditionerAPI - Combined Commands', () => {
 
     it('should call setDeviceOptions to set beep off', async () => {
       vi.useRealTimers();
-      await api.setBeepState(PowerState.Off);
+      await api.setDeviceOptions({ beep: PowerState.Off });
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({
         beep: PowerState.Off,
       });

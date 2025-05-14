@@ -35,36 +35,22 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
         return true;
       },
       async (value) => {
+        const currentDeviceState = this.cacheManager.getDeviceState();
+        // Do not enable Sleep mode if AC power is off
+        if (value && currentDeviceState.power !== PowerState.On) {
+          this.platform.log.info(
+            `[${this.logPrefix}] Cannot enable Sleep mode when AC is off. Request ignored.`,
+          );
+          return;
+        }
         const targetSleepValue = value ? SleepModeState.On : SleepModeState.Off;
         
-        const currentDeviceState = this.cacheManager.getDeviceState();
-        
-        if (value && currentDeviceState.power !== PowerState.On) {
-          this.platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode when AC is off. Command not sent.');
-          // The UI will remain off because BaseSwitchAccessory's stateChanged listener
-          // will use getStatusValue, which checks if AC is on.
-          return; 
-        }
-
-        // Create a new DeviceState object representing the desired state.
         const desiredState = currentDeviceState.clone();
-        
-        // Set the desired sleep mode.
-        // According to Refactoring Plan Point 5, DeviceState setters (like setSleepMode)
-        // should handle internal harmonization (e.g., if sleep=true -> turbo=false).
         desiredState.setSleepMode(targetSleepValue);
         
-        // If DeviceState.setSleepMode doesn't fully handle related changes like turning off turbo,
-        // it might be set explicitly on desiredState here. However, Point 5 aims for this
-        // logic to be within DeviceState setters.
-        // Example: if (value) { desiredState.setTurboMode(PowerState.Off); }
-
-
-        this.platform.log.debug(`[SleepSwitchAccessory] Requesting state change via CacheManager. Desired sleep state: ${targetSleepValue}`);
-        // CacheManager.applyStateToDevice will diff the desiredState with the actual current state
-        // (after potentially refreshing it) and send the appropriate setOptionsCombined command.
-        // It will also ensure the central DeviceState is updated, triggering the stateChanged event
-        // for BaseSwitchAccessory to update the characteristic.
+        this.platform.log.debug(
+          `[SleepSwitchAccessory] Requesting state change via CacheManager. Desired sleep state: ${targetSleepValue}`,
+        );
         await this.cacheManager.applyStateToDevice(desiredState);
       },
       'Sleep',

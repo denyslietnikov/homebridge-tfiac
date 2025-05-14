@@ -24,4 +24,9 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
       'Dry Mode', // characteristicName
     );
   }
+
+  // Override to allow Dry switch to work regardless of AC power state
+  protected shouldRespectMasterPowerState(): boolean {
+    return false;
+  }
 }

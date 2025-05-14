@@ -1,7 +1,7 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import { PowerState, FanSpeed, SleepModeState } from './enums.js';
+import { PowerState, SleepModeState, FanSpeed } from './enums.js';
 
 export class TurboSwitchAccessory extends BaseSwitchAccessory {
   constructor(
@@ -24,21 +24,17 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
         if (value) { // Turbo ON
           this.platform.log.info('[TurboSwitchAccessory] Requesting Turbo ON');
           modifiedState.setTurboMode(PowerState.On);
-          // If available, explicitly ensure sleep mode is off
-          if (typeof modifiedState.setSleepMode === 'function') {
-            modifiedState.setSleepMode(SleepModeState.Off);
-          }
+          // Turn off sleep mode when turbo is enabled
+          modifiedState.setSleepMode(SleepModeState.Off);
         } else { // Turbo OFF
           this.platform.log.info('[TurboSwitchAccessory] Requesting Turbo OFF');
           modifiedState.setTurboMode(PowerState.Off);
-          // If available, explicitly reset fan speed to auto
-          if (typeof modifiedState.setFanSpeed === 'function') {
-            modifiedState.setFanSpeed(FanSpeed.Auto);
-          }
+          // Reset fan speed to Auto when turbo is disabled
+          modifiedState.setFanSpeed(FanSpeed.Auto);
         }
         
         // Apply the state changes through CacheManager.
-        // CacheManager will diff and send the appropriate command (e.g., setOptionsCombined).
+        // CacheManager will diff and send the appropriate command.
         // It also updates the central DeviceState, triggering listeners for UI updates.
         await this.cacheManager.applyStateToDevice(modifiedState);
       },

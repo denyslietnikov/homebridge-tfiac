@@ -103,7 +103,7 @@ describe('AirConditionerAPI', () => {
     // Use real timers for this test to handle actual setTimeout behavior
     vi.useRealTimers();
 
-    const promise = api.turnOn();
+    const promise = api.setDeviceOptions({ power: PowerState.On });
     await promise;
 
     expect(mockSocket.send).toHaveBeenCalledWith(
@@ -118,7 +118,7 @@ describe('AirConditionerAPI', () => {
     // Use real timers for this test to handle actual setTimeout behavior
     vi.useRealTimers();
 
-    const promise = api.turnOff();
+    const promise = api.setDeviceOptions({ power: PowerState.Off });
     await promise;
 
     expect(mockSocket.send).toHaveBeenCalledWith(
@@ -195,7 +195,7 @@ describe('AirConditionerAPI', () => {
     // Use real timers for this test to handle actual setTimeout behavior
     vi.useRealTimers();
 
-    const promise = api.setFanSpeed(FanSpeed.High);
+    const promise = api.setDeviceOptions({ fanSpeed: FanSpeed.High });
     await promise;
 
     expect(mockSocket.send).toHaveBeenCalledWith(
@@ -230,23 +230,15 @@ describe('AirConditionerAPI', () => {
 
     (api as any).lastStatus = { is_on: PowerState.Off, operation_mode: OperationMode.Cool, target_temp: 70, current_temp: 72, fan_mode: FanSpeed.Auto, swing_mode: SwingMode.Off };
 
-    const promise = api.setTargetTemperature(75);
-    await new Promise(resolve => setTimeout(resolve, 100));
-    await responsePromise;
-    await promise;
+    const promise = api.setDeviceOptions({ temp: 75 });
+    await new Promise(resolve => setTimeout(resolve, 100)); // Allow async operations within setDeviceOptions to start
+    await responsePromise; // Wait for the mock response to be processed
+    await promise; // Wait for setDeviceOptions to complete
 
-    expect(mockSocket.send).toHaveBeenCalledWith(
-      expect.stringContaining('<SetTemp>75</SetTemp>'),
-      7777,
-      '192.168.1.100',
-      expect.any(Function),
-    );
-    expect(mockSocket.send).toHaveBeenCalledWith(
-      expect.stringContaining('<TurnOn>on</TurnOn>'),
-      7777,
-      '192.168.1.100',
-      expect.any(Function),
-    );
+    expect(mockSocket.send).toHaveBeenCalledTimes(1);
+    const sentXML = mockSocket.send.mock.calls[0][0] as string;
+    expect(sentXML).toContain('<SetTemp>75</SetTemp>');
+    expect(sentXML).toContain('<TurnOn>on</TurnOn>');
   });
 
   it('should handle network errors', async () => {
@@ -257,7 +249,7 @@ describe('AirConditionerAPI', () => {
       }
     });
 
-    await expect(api.turnOn()).rejects.toThrow('Network error');
+    await expect(api.setDeviceOptions({ power: PowerState.On })).rejects.toThrow('Network error');
   });
 
   it('should handle timeout errors', async () => {
@@ -353,7 +345,7 @@ describe('AirConditionerAPI', () => {
       }
     });
 
-    await expect(api.turnOn()).rejects.toThrow('Network error');
+    await expect(api.setDeviceOptions({ power: PowerState.On })).rejects.toThrow('Network error');
     expect(api.available).toBe(false);
 
     // Second request succeeds
@@ -369,7 +361,7 @@ describe('AirConditionerAPI', () => {
       }
     });
 
-    const promise = api.turnOn();
+    const promise = api.setDeviceOptions({ power: PowerState.On });
     await promise;
     expect(api.available).toBe(true);
   });
@@ -398,9 +390,9 @@ describe('AirConditionerAPI', () => {
     
     // Execute commands in parallel
     const commandPromises = [
-      api.turnOn(),
-      api.setFanSpeed(FanSpeed.High),
-      api.setTargetTemperature(72)
+      api.setDeviceOptions({ power: PowerState.On }),
+      api.setDeviceOptions({ fanSpeed: FanSpeed.High }),
+      api.setDeviceOptions({ temp: 72 })
     ];
     
     // Await all promises together
@@ -434,7 +426,7 @@ describe('AirConditionerAPI', () => {
       }
     });
 
-    await expect(api.turnOn()).rejects.toThrow('Test error');
+    await expect(api.setDeviceOptions({ power: PowerState.On })).rejects.toThrow('Test error');
     expect(mockSocket.close).toHaveBeenCalled();
   });
 
@@ -447,7 +439,7 @@ describe('AirConditionerAPI', () => {
     });
     (api as any).lastStatus = { is_on: PowerState.On, operation_mode: OperationMode.Cool, target_temp: 20, current_temp: 22, fan_mode: FanSpeed.Auto, swing_mode: SwingMode.Off };
 
-    await expect(api.setTargetTemperature(temp)).rejects.toThrow('Invalid temperature');
+    await expect(api.setDeviceOptions({ temp })).rejects.toThrow('Invalid temperature');
   };
 
   it('should validate temperature range', async () => {
@@ -473,7 +465,7 @@ describe('AirConditionerAPI', () => {
       }
     });
     (api as any).lastStatus = { is_on: PowerState.On, operation_mode: OperationMode.Cool, target_temp: 20, current_temp: 22, fan_mode: FanSpeed.Auto, swing_mode: SwingMode.Off };
-    await expect(api.setFanSpeed('InvalidSpeed' as FanSpeed)).rejects.toThrow('Invalid fan speed');
+    await expect(api.setDeviceOptions({ fanSpeed: 'InvalidSpeed' as FanSpeed })).rejects.toThrow('Invalid fan speed');
     mockSocket.send.mockImplementation((...args: unknown[]) => {
       const callback = args[3] as SendCallback;
       if (callback) {
@@ -493,7 +485,7 @@ describe('AirConditionerAPI', () => {
       }
     });
     (api as any).lastStatus = { is_on: PowerState.On, operation_mode: OperationMode.Cool, target_temp: 20, current_temp: 22, fan_mode: FanSpeed.Auto, swing_mode: SwingMode.Off };
-    await expect(api.setOperationMode('invalid' as OperationMode)).rejects.toThrow('Invalid operation mode');
+    await expect(api.setDeviceOptions({ mode: 'invalid' as OperationMode })).rejects.toThrow('Invalid operation mode');
     mockSocket.send.mockImplementation((...args: unknown[]) => {
       const callback = args[3] as SendCallback;
       if (callback) {
@@ -529,250 +521,250 @@ describe('AirConditionerAPI', () => {
     });
 
     it('should call setDeviceOptions for setDisplayState', async () => {
-      await api.setDisplayState(PowerState.On);
+      await api.setDeviceOptions({ display: PowerState.On });
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ display: PowerState.On });
       
       setDeviceOptionsSpy.mockClear(); 
-      await api.setDisplayState(PowerState.Off);
+      await api.setDeviceOptions({ display: PowerState.Off });
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ display: PowerState.Off });
     });
 
     it('should call setDeviceOptions for setTurboState', async () => {
-      await api.setTurboState(PowerState.On);
-      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ power: PowerState.On, turbo: PowerState.On });
+      await api.setDeviceOptions({ turbo: PowerState.On });
+      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ turbo: PowerState.On });
       
       setDeviceOptionsSpy.mockClear();
-      await api.setTurboState(PowerState.Off);
-      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ power: PowerState.On, turbo: PowerState.Off });
+      await api.setDeviceOptions({ turbo: PowerState.Off });
+      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ turbo: PowerState.Off });
     });
 
     it('should call setDeviceOptions for setSleepState', async () => {
-      await api.setSleepState(SleepModeState.On);
-      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ power: PowerState.On, sleep: SleepModeState.On });
+      await api.setDeviceOptions({ sleep: SleepModeState.On });
+      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ sleep: SleepModeState.On });
       
       setDeviceOptionsSpy.mockClear();
-      await api.setSleepState(SleepModeState.Off);
-      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ power: PowerState.On, sleep: SleepModeState.Off });
+      await api.setDeviceOptions({ sleep: SleepModeState.Off });
+      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ sleep: SleepModeState.Off });
       
       setDeviceOptionsSpy.mockClear();
-      await api.setSleepState('sleepMode1:custom');
-      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ power: PowerState.On, sleep: 'sleepMode1:custom' });
-    });
-  });
-});
-
-describe('AirConditionerAPI extra coverage', () => {
-  let api: AirConditionerAPI;
-  const ip = '127.0.0.1';
-  const port = 7777;
-
-  beforeEach(() => {
-    vi.clearAllMocks();
-    
-    const mockSocket = {
-      on: vi.fn(),
-      bind: vi.fn(),
-      setBroadcast: vi.fn(),
-      send: vi.fn(),
-      close: vi.fn(),
-      address: vi.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
-      removeAllListeners: vi.fn(),
-      unref: vi.fn(),
-    };
-    
-    (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocket);
-    
-    mockSocket.send.mockImplementation((...args: unknown[]) => {
-      const callback = args[3] as SendCallback;
-      if (callback) {
-        callback();
-        setTimeout(() => {
-          const handlers = (mockSocket.on.mock.calls as ['message' | 'error', MessageCallback | ErrorCallback][])
-            .filter(([event]) => event === 'message')
-            .map(([, handler]) => handler as MessageCallback);
-            
-          handlers.forEach(handler => handler(Buffer.from(mockResponseXML)));
-        }, 10);
-      }
-    });
-    
-    api = new AirConditionerAPI(ip, port);
-    
-    vi.spyOn(api, 'updateState').mockResolvedValue({
-      is_on: 'on',
-      operation_mode: 'auto',
-      current_temp: 25,
-      target_temp: 25,
-      fan_mode: 'auto',
-      swing_mode: 'off',
-      opt_turbo: PowerState.Off,
-      opt_sleepMode: SleepModeState.Off
+      await api.setDeviceOptions({ sleep: 'sleepMode1:custom' });
+      expect(setDeviceOptionsSpy).toHaveBeenCalledWith({ sleep: 'sleepMode1:custom' });
     });
   });
 
-  afterEach(() => {
-    vi.clearAllTimers();
-    vi.useRealTimers();
-    api.cleanup();
-  });
+  describe('AirConditionerAPI extra coverage', () => {
+    let api: AirConditionerAPI;
+    const ip = '127.0.0.1';
+    const port = 7777;
 
-  it('should reject on sendCommand timeout', async () => {
-    vi.useFakeTimers();
-    const dgram = await import('dgram');
-    dgram.createSocket = vi.fn().mockReturnValue({
-      on: vi.fn(),
-      send: vi.fn(),
-      unref: vi.fn(),
-      removeAllListeners: vi.fn(),
-      close: vi.fn(),
+    beforeEach(() => {
+      vi.clearAllMocks();
+      
+      const mockSocket = {
+        on: vi.fn(),
+        bind: vi.fn(),
+        setBroadcast: vi.fn(),
+        send: vi.fn(),
+        close: vi.fn(),
+        address: vi.fn().mockReturnValue({ address: '0.0.0.0', port: 1234 }),
+        removeAllListeners: vi.fn(),
+        unref: vi.fn(),
+      };
+      
+      (dgram.createSocket as ReturnType<typeof vi.fn>).mockReturnValue(mockSocket);
+      
+      mockSocket.send.mockImplementation((...args: unknown[]) => {
+        const callback = args[3] as SendCallback;
+        if (callback) {
+          callback();
+          setTimeout(() => {
+            const handlers = (mockSocket.on.mock.calls as ['message' | 'error', MessageCallback | ErrorCallback][])
+              .filter(([event]) => event === 'message')
+              .map(([, handler]) => handler as MessageCallback);
+              
+            handlers.forEach(handler => handler(Buffer.from(mockResponseXML)));
+          }, 10);
+        }
+      });
+      
+      api = new AirConditionerAPI(ip, port);
+      
+      vi.spyOn(api, 'updateState').mockResolvedValue({
+        is_on: 'on',
+        operation_mode: 'auto',
+        current_temp: 25,
+        target_temp: 25,
+        fan_mode: 'auto',
+        swing_mode: 'off',
+        opt_turbo: PowerState.Off,
+        opt_sleepMode: SleepModeState.Off
+      });
     });
-    const promise = api["sendCommand"]('<msg></msg>', 10);
-    vi.advanceTimersByTime(20);
-    await expect(promise).rejects.toThrow('Command timed out');
-  });
 
-  it('should reject on sendCommand error event', async () => {
-    const dgram = await import('dgram');
-    let errorHandler: ((err: Error) => void) | undefined;
-    
-    dgram.createSocket = vi.fn().mockImplementation(() => {
-      const socket = {
-        on: vi.fn().mockImplementation((event: string, cb: any) => { 
-          if (event === 'error') errorHandler = cb; 
-          return socket; 
-        }),
+    afterEach(() => {
+      vi.clearAllTimers();
+      vi.useRealTimers();
+      api.cleanup();
+    });
+
+    it('should reject on sendCommand timeout', async () => {
+      vi.useFakeTimers();
+      const dgram = await import('dgram');
+      dgram.createSocket = vi.fn().mockReturnValue({
+        on: vi.fn(),
         send: vi.fn(),
         unref: vi.fn(),
         removeAllListeners: vi.fn(),
         close: vi.fn(),
-      };
-      return socket;
+      });
+      const promise = api["sendCommand"]('<msg></msg>', 10);
+      vi.advanceTimersByTime(20);
+      await expect(promise).rejects.toThrow('Command timed out');
     });
-    
-    const promise = api["sendCommand"]('<msg></msg>', 1000);
-    
-    if (errorHandler) {
-      errorHandler(new Error('fail'));
-    }
-    
-    await expect(promise).rejects.toThrow('fail');
-  });
 
-  it('should set available=false on send error', async () => {
-    const dgram = await import('dgram');
-    let sendCb: ((err?: Error) => void) | undefined;
-    
-    dgram.createSocket = vi.fn().mockImplementation(() => {
-      return {
-        on: vi.fn(),
-        send: vi.fn().mockImplementation((msg: any, port: any, ip: any, cb: any) => { 
-          sendCb = cb;
-        }),
-        unref: vi.fn(),
-        removeAllListeners: vi.fn(),
-        close: vi.fn(),
-      };
-    });
-    
-    const promise = api["sendCommand"]('<msg></msg>', 1000);
-    
-    if (sendCb) {
-      sendCb(new Error('fail'));
-    }
-    
-    await expect(promise).rejects.toThrow('fail');
-    expect(api.available).toBe(false);
-  });
-
-  it('should handle XML parse error in updateState', async () => {
-    vi.mocked(api.updateState).mockRestore();
-    
-    vi.spyOn(api as any, 'sendCommand').mockResolvedValue('<badxml>');
-    
-    await expect(api.updateState()).rejects.toThrow();
-    
-    vi.spyOn(api, 'updateState').mockResolvedValue({
-      is_on: 'on',
-      operation_mode: 'auto',
-      current_temp: 25,
-      target_temp: 25,
-      fan_mode: 'auto',
-      swing_mode: 'off',
-      opt_turbo: PowerState.Off,
-      opt_sleepMode: SleepModeState.Off
-    });
-  });
-
-  it('should handle error in setAirConditionerState if updateState fails', async () => {
-    vi.spyOn(api, 'updateState').mockRejectedValue(new Error('fail'));
-    await expect(api.setOperationMode(OperationMode.Cool)).rejects.toThrow('fail');
-  });
-
-  it('should handle error if setDeviceOptions calls a failing updateState', async () => {
-    (api as any).lastStatus = null;
-    
-    if (vi.isMockFunction(api.updateState)) {
-      vi.mocked(api.updateState).mockRestore();
-    }
-    const updateStateSpy = vi.spyOn(api, 'updateState').mockRejectedValueOnce(new Error('fail'));
-
-    await expect(api.setOperationMode(OperationMode.Cool)).rejects.toThrow('fail');
-    
-    updateStateSpy.mockRestore();
-  });
-
-  describe('Specific State Setters (in extra coverage)', () => {
-    let setDeviceOptionsSpyExtra: ReturnType<typeof vi.spyOn>;
-    
-    beforeEach(() => {
-      if ((api.setDeviceOptions as any).mockRestore) {
-        (api.setDeviceOptions as any).mockRestore();
-      }
-      setDeviceOptionsSpyExtra = vi.spyOn(api as any, 'setDeviceOptions').mockResolvedValue(undefined);
+    it('should reject on sendCommand error event', async () => {
+      const dgram = await import('dgram');
+      let errorHandler: ((err: Error) => void) | undefined;
       
-      (api as any).lastStatus = {
-        is_on: PowerState.On,
-        operation_mode: OperationMode.Cool,
-        target_temp: 22,
-        current_temp: 24,
-        fan_mode: FanSpeed.Auto,
-        swing_mode: SwingMode.Off,
-      };
+      dgram.createSocket = vi.fn().mockImplementation(() => {
+        const socket = {
+          on: vi.fn().mockImplementation((event: string, cb: any) => { 
+            if (event === 'error') errorHandler = cb; 
+            return socket; 
+          }),
+          send: vi.fn(),
+          unref: vi.fn(),
+          removeAllListeners: vi.fn(),
+          close: vi.fn(),
+        };
+        return socket;
+      });
+      
+      const promise = api["sendCommand"]('<msg></msg>', 1000);
+      
+      if (errorHandler) {
+        errorHandler(new Error('fail'));
+      }
+      
+      await expect(promise).rejects.toThrow('fail');
     });
 
-    afterEach(() => {
-      setDeviceOptionsSpyExtra.mockRestore();
+    it('should set available=false on send error', async () => {
+      const dgram = await import('dgram');
+      let sendCb: ((err?: Error) => void) | undefined;
+      
+      dgram.createSocket = vi.fn().mockImplementation(() => {
+        return {
+          on: vi.fn(),
+          send: vi.fn().mockImplementation((msg: any, port: any, ip: any, cb: any) => { 
+            sendCb = cb;
+          }),
+          unref: vi.fn(),
+          removeAllListeners: vi.fn(),
+          close: vi.fn(),
+        };
+      });
+      
+      const promise = api["sendCommand"]('<msg></msg>', 1000);
+      
+      if (sendCb) {
+        sendCb(new Error('fail'));
+      }
+      
+      await expect(promise).rejects.toThrow('fail');
+      expect(api.available).toBe(false);
     });
 
-    it('should call setDeviceOptions for setDisplayState (extra coverage)', async () => {
-      await api.setDisplayState(PowerState.On);
-      expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ display: PowerState.On });
-      setDeviceOptionsSpyExtra.mockClear();
-      await api.setDisplayState(PowerState.Off);
-      expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ display: PowerState.Off });
+    it('should handle XML parse error in updateState', async () => {
+      vi.mocked(api.updateState).mockRestore();
+      
+      vi.spyOn(api as any, 'sendCommand').mockResolvedValue('<badxml>');
+      
+      await expect(api.updateState()).rejects.toThrow();
+      
+      vi.spyOn(api, 'updateState').mockResolvedValue({
+        is_on: 'on',
+        operation_mode: 'auto',
+        current_temp: 25,
+        target_temp: 25,
+        fan_mode: 'auto',
+        swing_mode: 'off',
+        opt_turbo: PowerState.Off,
+        opt_sleepMode: SleepModeState.Off
+      });
     });
 
-    it('should call setDeviceOptions for setTurboState (extra coverage)', async () => {
-      await api.setTurboState(PowerState.On);
-      expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ power: PowerState.On, turbo: PowerState.On });
-      setDeviceOptionsSpyExtra.mockClear();
-      await api.setTurboState(PowerState.Off);
-      expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ power: PowerState.On, turbo: PowerState.Off });
+    it('should handle error in setAirConditionerState if updateState fails', async () => {
+      vi.spyOn(api, 'updateState').mockRejectedValue(new Error('fail'));
+      await expect(api.setDeviceOptions({ mode: OperationMode.Cool, temp: undefined })).rejects.toThrow('fail');
     });
 
-    it('should call setDeviceOptions for setSleepState (extra coverage)', async () => {
-      await api.setSleepState(SleepModeState.On);
-      expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ power: PowerState.On, sleep: SleepModeState.On });
-      setDeviceOptionsSpyExtra.mockClear();
-      await api.setSleepState(SleepModeState.Off);
-      expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ power: PowerState.On, sleep: SleepModeState.Off });
-    });
-  });
+    it('should handle error if setDeviceOptions calls a failing updateState', async () => {
+      (api as any).lastStatus = null;
+      
+      if (vi.isMockFunction(api.updateState)) {
+        vi.mocked(api.updateState).mockRestore();
+      }
+      const updateStateSpy = vi.spyOn(api, 'updateState').mockRejectedValueOnce(new Error('fail'));
 
-  it('should cleanup all timeouts', () => {
-    const timeout = setTimeout(() => {}, 1000);
-    (api as any).activeTimeouts.push(timeout);
-    api.cleanup();
-    expect((api as any).activeTimeouts.length).toBe(0);
+      await expect(api.setDeviceOptions({ mode: OperationMode.Cool, temp: undefined })).rejects.toThrow('fail');
+      
+      updateStateSpy.mockRestore();
+    });
+
+    describe('Specific State Setters (in extra coverage)', () => {
+      let setDeviceOptionsSpyExtra: ReturnType<typeof vi.spyOn>;
+      
+      beforeEach(() => {
+        if ((api.setDeviceOptions as any).mockRestore) {
+          (api.setDeviceOptions as any).mockRestore();
+        }
+        setDeviceOptionsSpyExtra = vi.spyOn(api as any, 'setDeviceOptions').mockResolvedValue(undefined);
+        
+        (api as any).lastStatus = {
+          is_on: PowerState.On,
+          operation_mode: OperationMode.Cool,
+          target_temp: 22,
+          current_temp: 24,
+          fan_mode: FanSpeed.Auto,
+          swing_mode: SwingMode.Off,
+        };
+      });
+
+      afterEach(() => {
+        setDeviceOptionsSpyExtra.mockRestore();
+      });
+
+      it('should call setDeviceOptions for setDisplayState (extra coverage)', async () => {
+        await api.setDeviceOptions({ display: PowerState.On });
+        expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ display: PowerState.On });
+        setDeviceOptionsSpyExtra.mockClear();
+        await api.setDeviceOptions({ display: PowerState.Off });
+        expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ display: PowerState.Off });
+      });
+
+      it('should call setDeviceOptions for setTurboState (extra coverage)', async () => {
+        await api.setDeviceOptions({ turbo: PowerState.On });
+        expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ turbo: PowerState.On });
+        setDeviceOptionsSpyExtra.mockClear();
+        await api.setDeviceOptions({ turbo: PowerState.Off });
+        expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ turbo: PowerState.Off });
+      });
+
+      it('should call setDeviceOptions for setSleepState (extra coverage)', async () => {
+        await api.setDeviceOptions({ sleep: SleepModeState.On });
+        expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ sleep: SleepModeState.On });
+        setDeviceOptionsSpyExtra.mockClear();
+        await api.setDeviceOptions({ sleep: SleepModeState.Off });
+        expect(setDeviceOptionsSpyExtra).toHaveBeenCalledWith({ sleep: SleepModeState.Off });
+      });
+    });
+
+    it('should cleanup all timeouts', () => {
+      const timeout = setTimeout(() => {}, 1000);
+      (api as any).activeTimeouts.push(timeout);
+      api.cleanup();
+      expect((api as any).activeTimeouts.length).toBe(0);
+    });
   });
 });

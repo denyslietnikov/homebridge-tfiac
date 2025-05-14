@@ -1,6 +1,6 @@
 // filepath: src/state/DeviceState.ts
 import { EventEmitter } from 'events';
-import { AirConditionerStatus } from '../AirConditionerAPI.js';
+import { AirConditionerStatus, PartialDeviceOptions } from '../AirConditionerAPI.js'; // Added import for PartialDeviceOptions
 import { 
   PowerState, 
   OperationMode, 
@@ -8,6 +8,7 @@ import {
   SwingMode, 
   SleepModeState, 
 } from '../enums.js';
+import { Logger } from 'homebridge'; // Added Logger import
 
 // Define and export the interface for the plain object representation
 export interface PlainDeviceState {
@@ -58,8 +59,12 @@ class DeviceState extends EventEmitter {
   // For tracking changes before notification
   private _stateBeforeUpdate: PlainDeviceState | null = null;
 
-  constructor() {
+  private readonly log: Logger; // Added logger instance
+
+  constructor(log?: Logger) { // Modified constructor to accept optional Logger
     super();
+    // Use provided logger or fallback to console as Logger
+    this.log = log ?? (console as unknown as Logger);
   }
 
   // --- Public Getters ---
@@ -113,6 +118,25 @@ class DeviceState extends EventEmitter {
   private _captureStateBeforeUpdate(): void {
     if (!this._stateBeforeUpdate) {
       this._stateBeforeUpdate = this.toPlainObject();
+    }
+  }
+
+  private _logChanges(oldState: PlainDeviceState, newState: PlainDeviceState, context: string): void {
+    const changes: string[] = [];
+    (Object.keys(oldState) as Array<keyof PlainDeviceState>).forEach(key => {
+      if (key === 'lastUpdated' || key === 'currentTemperature' || key === 'outdoorTemperature') { // These change frequently or are read-only for commands
+        return;
+      }
+      // Convert to string for consistent comparison, especially for enums/dates
+      const oldValue = String(oldState[key]);
+      const newValue = String(newState[key]);
+      if (oldValue !== newValue) {
+        changes.push(`${key}: ${oldValue} → ${newValue}`);
+      }
+    });
+
+    if (changes.length > 0) {
+      this.log.debug(`[DeviceState][${context}] Changes: ${changes.join(', ')}`);
     }
   }
 
@@ -191,7 +215,7 @@ class DeviceState extends EventEmitter {
     }
 
     if (iterations >= MAX_ITERATIONS) {
-      console.warn('[DeviceState] Harmonization reached max iterations.');
+      this.log.warn('[DeviceState] Harmonization reached max iterations.');
     }
 
     const finalStateSnapshot = JSON.stringify(this.toPlainObject());
@@ -212,6 +236,7 @@ class DeviceState extends EventEmitter {
       return false;
     }
     this._captureStateBeforeUpdate();
+    const stateBeforeDirectUpdate = this.toPlainObject(); // Capture state just before direct updates
     let changed = false;
 
     if (status.is_on !== undefined) {
@@ -274,6 +299,9 @@ class DeviceState extends EventEmitter {
     }
 
     if (changed) {
+      if (this._stateBeforeUpdate) { // Ensure _stateBeforeUpdate was set
+        this._logChanges(stateBeforeDirectUpdate, this.toPlainObject(), 'MergeFromDevice');
+      }
       this._applyHarmonizationAndNotify();
     } else {
       this._stateBeforeUpdate = null;
@@ -298,10 +326,11 @@ class DeviceState extends EventEmitter {
       display?: PowerState;
       eco?: PowerState;
       beep?: PowerState;
-      swing?: SwingMode;
+      swingMode?: SwingMode; // Corrected from swing
     },
   ): boolean {
     this._captureStateBeforeUpdate();
+    const stateBeforeDirectUpdate = this.toPlainObject(); // Capture state just before direct updates
     let changed = false;
 
     if (options.power !== undefined && this._power !== options.power) {
@@ -320,8 +349,8 @@ class DeviceState extends EventEmitter {
       this._fanSpeed = options.fanSpeed;
       changed = true;
     }
-    if (options.swing !== undefined && this._swingMode !== options.swing) {
-      this._swingMode = options.swing;
+    if (options.swingMode !== undefined && this._swingMode !== options.swingMode) { // Corrected from options.swing
+      this._swingMode = options.swingMode; // Corrected from options.swing
       changed = true;
     }
     if (options.turbo !== undefined && this._turboMode !== options.turbo) {
@@ -355,6 +384,9 @@ class DeviceState extends EventEmitter {
     }
 
     if (changed) {
+      if (this._stateBeforeUpdate) { // Ensure _stateBeforeUpdate was set
+        this._logChanges(stateBeforeDirectUpdate, this.toPlainObject(), 'MergeFromOptions');
+      }
       this._applyHarmonizationAndNotify();
     } else {
       this._stateBeforeUpdate = null;
@@ -512,6 +544,49 @@ class DeviceState extends EventEmitter {
   }
 
   /**
+   * Calculates the difference between this state and another DeviceState object.
+   * Returns a PartialDeviceOptions object representing the changes.
+   */
+  public diff(otherState: DeviceState): PartialDeviceOptions {
+    const changes: PartialDeviceOptions = {};
+
+    if (this.power !== otherState.power) {
+      changes.power = otherState.power;
+    }
+    if (this.operationMode !== otherState.operationMode) {
+      changes.mode = otherState.operationMode;
+    }
+    if (this.targetTemperature !== otherState.targetTemperature) {
+      changes.temp = otherState.targetTemperature;
+    }
+    if (this.fanSpeed !== otherState.fanSpeed) {
+      changes.fanSpeed = otherState.fanSpeed;
+    }
+    if (this.swingMode !== otherState.swingMode) {
+      changes.swingMode = otherState.swingMode; // Corrected from changes.swing
+    }
+    if (this.turboMode !== otherState.turboMode) {
+      changes.turbo = otherState.turboMode;
+    }
+    if (this.ecoMode !== otherState.ecoMode) {
+      changes.eco = otherState.ecoMode;
+    }
+    if (this.sleepMode !== otherState.sleepMode) {
+      // Ensure the correct SleepModeState string is used
+      changes.sleep = otherState.sleepMode === SleepModeState.On ? SleepModeState.On : SleepModeState.Off;
+    }
+    if (this.displayMode !== otherState.displayMode) {
+      changes.display = otherState.displayMode;
+    }
+    if (this.beepMode !== otherState.beepMode) {
+      changes.beep = otherState.beepMode;
+    }
+    // currentTemperature and outdoorTemperature are read-only, so not included in diff for commands.
+
+    return changes;
+  }
+
+  /**
    * Returns a formatted string representation of the state.
    */
   public toString(): string {
@@ -523,7 +598,7 @@ class DeviceState extends EventEmitter {
    * @returns A new DeviceState instance with the same property values.
    */
   public clone(): DeviceState {
-    const clonedState = new DeviceState();
+    const clonedState = new DeviceState(this.log); // Pass logger to cloned instance
 
     clonedState._power = this._power;
     clonedState._operationMode = this._operationMode;

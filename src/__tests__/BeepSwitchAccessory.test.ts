@@ -97,20 +97,20 @@ describe('BeepSwitchAccessory', () => {
   });
 
   describe('handleGet (inherited from BaseSwitchAccessory)', () => {
-    it('should return true when beep is ON in cachedStatus', () => {
-      inst.cachedStatus = { opt_beep: PowerState.On };
+    it('should return true when beep is ON in deviceState', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_beep: PowerState.On } as any);
       const result = inst.handleGet();
       expect(result).toBe(true);
     });
 
-    it('should return false when beep is OFF in cachedStatus', () => {
-      inst.cachedStatus = { opt_beep: PowerState.Off };
+    it('should return false when beep is OFF in deviceState', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_beep: PowerState.Off } as any);
       const result = inst.handleGet();
       expect(result).toBe(false);
     });
 
-    it('should return false when cachedStatus is null', () => {
-      inst.cachedStatus = null;
+    it('should return false when toApiStatus returns null', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue(null as any);
       const result = inst.handleGet();
       expect(result).toBe(false);
     });
@@ -160,47 +160,35 @@ describe('BeepSwitchAccessory', () => {
       mockService.updateCharacteristic.mockClear();
 
       const newApiStatus = { opt_beep: PowerState.On, is_on: PowerState.On } as Partial<AirConditionerStatus>;
-      const mockChangedDeviceState = { ...mockDeviceStateObject, toApiStatus: () => newApiStatus };
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue(newApiStatus);
 
       expect(capturedStateChangeListener).toBeDefined();
-      capturedStateChangeListener(mockChangedDeviceState as DeviceState);
+      capturedStateChangeListener(mockDeviceStateObject as DeviceState);
 
       expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
     });
 
     it('updates characteristic to false when beep state changes to OFF', () => {
-      inst.cachedStatus = { opt_beep: PowerState.On };
-      mockDeviceStateObject.toApiStatus.mockReset().mockReturnValue({ opt_beep: PowerState.On, is_on: PowerState.On });
-      if (capturedStateChangeListener) {
-        const mockInitialDeviceStateOn = { ...mockDeviceStateObject, toApiStatus: () => ({ opt_beep: PowerState.On, is_on: PowerState.On }) };
-        capturedStateChangeListener(mockInitialDeviceStateOn as DeviceState);
-      }
       mockService.updateCharacteristic.mockClear();
-
       const newApiStatus = { opt_beep: PowerState.Off, is_on: PowerState.On } as Partial<AirConditionerStatus>;
-      const mockChangedDeviceState = { ...mockDeviceStateObject, toApiStatus: () => newApiStatus };
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue(newApiStatus);
 
       expect(capturedStateChangeListener).toBeDefined();
-      capturedStateChangeListener(mockChangedDeviceState as DeviceState);
-
+      capturedStateChangeListener(mockDeviceStateObject as DeviceState);
       expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
     });
 
-    it('does not update characteristic if beep state has not changed', () => {
-      inst.cachedStatus = { opt_beep: PowerState.On };
-      mockDeviceStateObject.toApiStatus.mockReset().mockReturnValue({ opt_beep: PowerState.On, is_on: PowerState.On });
-      if (capturedStateChangeListener) {
-        const mockInitialDeviceStateOn = { ...mockDeviceStateObject, toApiStatus: () => ({ opt_beep: PowerState.On, is_on: PowerState.On }) };
-        capturedStateChangeListener(mockInitialDeviceStateOn as DeviceState);
-      }
+    it('does not update characteristic if beep state remains ON', () => {
       mockService.updateCharacteristic.mockClear();
-
       const newApiStatus = { opt_beep: PowerState.On, is_on: PowerState.On } as Partial<AirConditionerStatus>;
-      const mockChangedDeviceState = { ...mockDeviceStateObject, toApiStatus: () => newApiStatus };
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue(newApiStatus);
+      mockCharacteristicOn.value = true;
 
       expect(capturedStateChangeListener).toBeDefined();
-      capturedStateChangeListener(mockChangedDeviceState as DeviceState);
-
+      capturedStateChangeListener(mockDeviceStateObject as DeviceState);
+      capturedStateChangeListener(mockDeviceStateObject as DeviceState);
+      mockService.updateCharacteristic.mockClear();
+      capturedStateChangeListener(mockDeviceStateObject as DeviceState);
       expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
     });
   });

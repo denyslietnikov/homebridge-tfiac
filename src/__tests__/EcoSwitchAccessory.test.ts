@@ -97,14 +97,14 @@ describe('EcoSwitchAccessory', () => {
   });
 
   describe('handleGet (inherited from BaseSwitchAccessory)', () => {
-    it('should return true when eco is ON in cachedStatus', () => {
-      inst.cachedStatus = { opt_eco: PowerState.On };
+    it('should return true when eco is ON in deviceState', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_eco: PowerState.On } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(true);
     });
 
-    it('should return false when eco is OFF in cachedStatus', () => {
-      inst.cachedStatus = { opt_eco: PowerState.Off };
+    it('should return false when eco is OFF in deviceState', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ opt_eco: PowerState.Off } as any);
       const result = (inst as any).handleGet();
       expect(result).toBe(false);
     });

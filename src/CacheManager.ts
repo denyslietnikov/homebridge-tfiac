@@ -7,7 +7,6 @@ import {
   CommandQueue,
   CommandExecutedEvent,
   CommandErrorEvent,
-  CommandRetryEvent,
   CommandMaxRetriesReachedEvent,
 } from './state/CommandQueue.js';
 import { Logger } from 'homebridge';
@@ -16,7 +15,7 @@ import { Logger } from 'homebridge';
  * CacheManager implements caching for API responses and centralizes status updates.
  * It follows the singleton pattern to ensure only one instance exists per device.
  */
-export class CacheManager {
+export class CacheManager extends EventEmitter { // Added extends EventEmitter
   private static instances = new Map<string, CacheManager>();
   public api: AirConditionerAPI & EventEmitter; // Ensure API has EventEmitter capabilities
   private rawApiCache: AirConditionerStatus | null = null; // Renamed from 'cache'
@@ -26,10 +25,22 @@ export class CacheManager {
   private commandQueue: CommandQueue | null = null;
   private logger: Logger;
 
+  // Added for Adaptive Polling
+  private consecutiveFailedPolls = 0;
+  private readonly originalTtl: number;
+  private isPollingDegraded = false;
+  private readonly maxConsecutiveFailedPolls = 4; // e.g., 4 * 30s default interval = 2 minutes
+  private readonly degradedTtl = 60000; // 60 seconds
+  private quickRefreshTimer: NodeJS.Timeout | null = null;
+  private pollingTimer: NodeJS.Timeout | null = null; // Added
+  private readonly quickRefreshDelayMs = 2000; // 2 seconds for quick refresh after command
+  private isUpdating = false;
+
   private constructor(private config: TfiacDeviceConfig) {
+    super(); // Added super() call
     // Create the API instance
     const baseApi = new AirConditionerAPI(config.ip, config.port);
-    
+
     // Add EventEmitter capabilities to the API instance if not already present
     if (!('emit' in baseApi)) {
       // Mix in EventEmitter methods so they become own properties
@@ -47,13 +58,14 @@ export class CacheManager {
         }
       });
     }
-    
+
     // Cast to the combined type
     this.api = baseApi as AirConditionerAPI & EventEmitter;
-    
+
     // Set TTL based on config
     this.ttl = (config.updateInterval || 30) * 1000;
-    
+    this.originalTtl = this.ttl; // Store the initial TTL
+
     // Create a simple logger if none provided
     this.logger = {
       info: (message: string) => console.log(`[INFO] ${message}`),
@@ -103,13 +115,13 @@ export class CacheManager {
     const status = await this.api.updateState();
     this.rawApiCache = status; // Store raw API response
     this.lastFetch = now;
-    
+
     // Update the DeviceState with the new data
     this._deviceState.updateFromDevice(status);
-    
+
     // Emit status update for subscribers (legacy API event)
-    this.api.emit('status', status); 
-    
+    this.api.emit('status', status);
+
     return this._deviceState; // Return the updated DeviceState
   }
 
@@ -125,23 +137,57 @@ export class CacheManager {
    * Updates the device state from the device and returns it.
    * If force=true, it will always make an API call regardless of cache.
    */
-  async updateDeviceState(force: boolean = false): Promise<DeviceState> {
-    const now = Date.now();
-    let status = this.rawApiCache; // Use rawApiCache
-    
-    // If cache is empty, expired, or force is true, fetch new status
-    if (!status || now - this.lastFetch >= this.ttl || force) {
-      status = await this.api.updateState();
-      this.rawApiCache = status; // Update rawApiCache
-      this.lastFetch = now;
-      
-      // Emit status update for subscribers (legacy API)
-      this.api.emit('status', status);
+  public async updateDeviceState(isQuickRefresh = false): Promise<DeviceState | null> {
+    if (this.isUpdating) {
+      this.logger.debug('[CacheManager] Update already in progress. Skipping.');
+      return this._deviceState;
     }
-    
-    // Update the DeviceState with the latest data
-    this._deviceState.updateFromDevice(status);
-    
+    this.isUpdating = true;
+    this.logger.info(isQuickRefresh ? '[CacheManager] Performing quick refresh.' : '[CacheManager] Performing regular state update.');
+
+    try {
+      // Fetch the latest status from the AC unit itself
+      const status: AirConditionerStatus | null = await this.api.updateState(); 
+
+      if (status) {
+        // Update the internal DeviceState instance with the new status from the API
+        const changed = this._deviceState.updateFromDevice(status);
+        if (changed || !this.rawApiCache) { // also emit if it's the first load
+          this.logger.debug('[CacheManager] Device state updated from API:', JSON.stringify(this._deviceState.toPlainObject()));
+          this.emit('stateUpdated', this._deviceState); // Emit event that CacheManager's state has updated
+        }
+        this.rawApiCache = status; // Update raw cache as well
+        this.lastFetch = Date.now();
+        this.consecutiveFailedPolls = 0; // Reset failed polls on success
+        if (this.isPollingDegraded) {
+          this.logger.info('[CacheManager] Polling restored to normal interval.');
+          this.ttl = this.originalTtl;
+          this.isPollingDegraded = false;
+        }
+      } else {
+        this.logger.warn('[CacheManager] Failed to get device status from API. State not updated.');
+        this.consecutiveFailedPolls++;
+        if (this.consecutiveFailedPolls >= this.maxConsecutiveFailedPolls && !this.isPollingDegraded) {
+          this.logger.warn(`[CacheManager] Max consecutive failed polls (${this.consecutiveFailedPolls}) reached. Degrading polling interval.`);
+          this.ttl = this.degradedTtl;
+          this.isPollingDegraded = true;
+        }
+      }
+    } catch (error) {
+      this.logger.error('[CacheManager] Error updating device state:', error);
+      this.consecutiveFailedPolls++;
+      if (this.consecutiveFailedPolls >= this.maxConsecutiveFailedPolls && !this.isPollingDegraded) {
+        this.logger.warn(`[CacheManager] Max consecutive failed polls (${this.consecutiveFailedPolls}) reached during error. Degrading polling interval.`);
+        this.ttl = this.degradedTtl;
+        this.isPollingDegraded = true;
+      }
+      // Optionally, emit an error event from CacheManager itself
+      // this.emit('error', error);
+    } finally {
+      this.isUpdating = false;
+      this.logger.debug(isQuickRefresh ? '[CacheManager] Quick refresh finished.' : '[CacheManager] Regular state update finished.');
+      this.scheduleRefresh(); // Ensure polling continues
+    }
     return this._deviceState;
   }
 
@@ -245,6 +291,15 @@ export class CacheManager {
    * Cleans up resources used by the underlying API instance.
    */
   cleanup(): void {
+    if (this.quickRefreshTimer) {
+      clearTimeout(this.quickRefreshTimer);
+      this.quickRefreshTimer = null;
+    }
+    if (this.pollingTimer) { // Added
+      clearTimeout(this.pollingTimer); // Added
+      this.pollingTimer = null; // Added
+    }
+
     if (this.api && typeof this.api.cleanup === 'function') {
       this.api.cleanup();
     }
@@ -256,6 +311,11 @@ export class CacheManager {
     
     // Remove listeners from DeviceState to prevent memory leaks
     this._deviceState.removeAllListeners();
+
+    // Add cleanup for commandQueue listeners
+    if (this.commandQueue) {
+      this.commandQueue.removeAllListeners();
+    }
   }
 
   /**
@@ -264,50 +324,69 @@ export class CacheManager {
    */
   private initCommandQueue(): CommandQueue {
     if (!this.commandQueue) {
-      // Ensure minRequestDelay is a number, defaulting to 500 if not specified or invalid
-      let minDelay = 500;
-      if (typeof this.config.minRequestDelay === 'number') {
-        minDelay = this.config.minRequestDelay;
-      } else if (typeof this.config.minRequestDelay === 'string') {
-        const parsedDelay = parseInt(this.config.minRequestDelay, 10);
-        if (!isNaN(parsedDelay)) {
-          minDelay = parsedDelay;
-        }
-      }
-      this.commandQueue = new CommandQueue(this.api, this._deviceState, this.logger, minDelay);
-      
+      this.commandQueue = new CommandQueue(this.api, this._deviceState, this.logger);
+
+      // Listener for successful command execution
       this.commandQueue.on('executed', (event: CommandExecutedEvent) => {
-        // Use the event payload in the log message
-        this.logger.info('Command executed successfully', event.command); 
-        setTimeout(async () => {
-          try {
-            this.logger.debug('[CacheManager] Quick feedback: Forcing state update after command execution.');
-            await this.updateDeviceState(true);
-            this.logger.debug('[CacheManager] Quick feedback: State update complete.');
-          } catch (error) {
-            this.logger.error('[CacheManager] Quick feedback: Error during forced state update:', error);
-          }
-        }, 2000);
+        this.logger.debug(`[CacheManager] Command executed: ${JSON.stringify(event.command)}. Scheduling quick refresh.`);
+        this.scheduleQuickRefresh(); // This will lead to updateDeviceState(true), which then calls scheduleRefresh()
       });
-      
+
+      // Listener for command errors
       this.commandQueue.on('error', (event: CommandErrorEvent) => {
-        this.logger.error(`Error executing command: ${event.error.message}`, event.command);
-      });
-      
-      this.commandQueue.on('retry', (event: CommandRetryEvent) => {
-        // Shorten the log line
-        const msg = `Retrying command (attempt ${event.retryCount}): ${event.error.message}`;
-        this.logger.debug(msg, event.command);
+        this.logger.error(`[CacheManager] Command failed: ${JSON.stringify(event.command)}, Error: ${event.error.message}`);
+        // Ensure regular polling resumes after a command error.
+        this.logger.info('[CacheManager] Resuming regular polling due to command error.');
+        this.scheduleRefresh();
       });
       
       this.commandQueue.on('maxRetriesReached', (event: CommandMaxRetriesReachedEvent) => {
-        this.logger.error(`Max retries reached for command: ${event.error.message}`, event.command);
+        this.logger.error(`[CacheManager] Command failed after max retries: ${JSON.stringify(event.command)}, Error: ${event.error.message}`);
+        // The 'error' event listener will handle scheduling the refresh.
+        // This listener is for any specific actions for max retries if needed.
       });
+
     }
     
     return this.commandQueue;
   }
-  
+
+  private scheduleQuickRefresh(): void {
+    if (this.quickRefreshTimer) {
+      clearTimeout(this.quickRefreshTimer);
+    }
+    this.quickRefreshTimer = setTimeout(async () => {
+      this.logger.debug('[CacheManager] Executing quick refresh after command.');
+      try {
+        await this.updateDeviceState(true); // isQuickRefresh = true
+      } catch (error) {
+        this.logger.error(`[CacheManager] Error during quick refresh: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      // updateDeviceState calls scheduleRefresh in its finally block
+    }, this.quickRefreshDelayMs);
+    if (this.quickRefreshTimer && this.quickRefreshTimer.unref) { // Added .unref()
+      this.quickRefreshTimer.unref();
+    }
+  }
+
+  private scheduleRefresh(): void {
+    if (this.pollingTimer) { // Changed to pollingTimer
+      clearTimeout(this.pollingTimer); // Changed to pollingTimer
+    }
+    this.pollingTimer = setTimeout(async () => { // Changed to pollingTimer
+      this.logger.debug(`[CacheManager] Executing regular scheduled refresh using TTL: ${this.ttl / 1000}s.`);
+      try {
+        await this.updateDeviceState(false); // isQuickRefresh = false
+      } catch (error) {
+        this.logger.error(`[CacheManager] Error during regular scheduled refresh: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      // updateDeviceState itself calls scheduleRefresh in its finally block, creating the polling loop.
+    }, this.ttl);
+    if (this.pollingTimer && this.pollingTimer.unref) { // Added .unref() for pollingTimer
+      this.pollingTimer.unref();
+    }
+  }
+
   /**
    * Get the command queue. Creates it if it doesn't exist.
    */

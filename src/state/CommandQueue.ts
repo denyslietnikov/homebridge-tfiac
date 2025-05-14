@@ -67,9 +67,11 @@ export class CommandQueue extends EventEmitter {
         (now - lastQueuedCommand.timestamp) < COMMAND_MERGE_WINDOW_MS &&
         !this.isProcessing
       ) {
+        const originalCmdJson = JSON.stringify(lastQueuedCommand.command);
+        const newCmdJson = JSON.stringify(command);
         lastQueuedCommand.command = { ...lastQueuedCommand.command, ...command };
         lastQueuedCommand.timestamp = now;
-        this.log.debug('Merged command:', lastQueuedCommand.command);
+        this.log.info(`[CommandQueue][MERGE] Original: ${originalCmdJson}, New: ${newCmdJson}, Result: ${JSON.stringify(lastQueuedCommand.command)}`);
         lastQueuedCommand.resolve = resolve;
         lastQueuedCommand.reject = reject;
         return;
@@ -83,7 +85,7 @@ export class CommandQueue extends EventEmitter {
         attempt: 1,
       };
       this.queue.push(queuedCommand);
-      this.log.debug('Enqueued command:', command);
+      this.log.info(`[CommandQueue][ENQUEUE] Enqueued command: ${JSON.stringify(command)}`);
       this.processQueue();
     });
   }
@@ -105,23 +107,47 @@ export class CommandQueue extends EventEmitter {
     const requiredDelay = this.minRequestDelayMs;
     if (this.lastCommandTime !== 0 && timeSinceLastCommand < requiredDelay) {
       const delay = requiredDelay - timeSinceLastCommand;
-      this.log.debug(`Delaying command execution by ${delay}ms to respect minRequestDelay.`);
+      this.log.debug(`[CommandQueue] Delaying command execution by ${delay}ms to respect minRequestDelay.`);
       await new Promise(r => setTimeout(r, delay));
     }
 
-    this.log.info(`Executing command (attempt ${attempt}):`, command);
+    this.log.info(`[CommandQueue][TX] Attempt #${attempt} for command: ${JSON.stringify(command)}`);
 
     try {
       await this.api.setDeviceOptions(command);
-      this.log.debug('Command executed successfully:', command);
+      this.log.info(`[CommandQueue][ACK] Successfully executed command: ${JSON.stringify(command)}`);
       this.lastCommandTime = Date.now();
       this.emit('executed', { command } as CommandExecutedEvent);
+
+      // Step 6: Rapid Feedback After Commands
+      this.log.debug(`[CommandQueue] Scheduling rapid feedback update for command: ${JSON.stringify(command)}`);
+      setTimeout(async () => {
+        try {
+          this.log.debug(`[CommandQueue][RAPID_FEEDBACK] Executing update for: ${JSON.stringify(command)}`);
+          // Call updateState with force=true to bypass throttling
+          const status = await this.api.updateState(true); 
+          if (status) {
+            const changed = this.deviceState.updateFromDevice(status);
+            if (changed) {
+              this.log.info(`[CommandQueue][RAPID_FEEDBACK] Device state updated after command ${JSON.stringify(command)}.`);
+            } else {
+              this.log.debug(`[CommandQueue][RAPID_FEEDBACK] No state changes detected after command ${JSON.stringify(command)}.`);
+            }
+          } else {
+            this.log.warn(`[CommandQueue][RAPID_FEEDBACK] Failed to get status for command ${JSON.stringify(command)}.`);
+          }
+        } catch (e) {
+          const err = e instanceof Error ? e : new Error(String(e));
+          this.log.error(`[CommandQueue][RAPID_FEEDBACK] Error during state update for command ${JSON.stringify(command)}: ${err.message}`);
+        }
+      }, 2000); // 2-second delay
+
       resolve(undefined);
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      this.log.error(`Error executing command (attempt ${attempt}):`, err);
+      this.log.error(`[CommandQueue][ERROR] Error executing command (attempt ${attempt}): ${JSON.stringify(command)}, Error: ${err.message}`);
       if (attempt < MAX_RETRIES) {
-        this.log.info(`Retrying command in ${RETRY_DELAY_MS}ms. Attempt ${attempt + 1}/${MAX_RETRIES}`);
+        this.log.info(`[CommandQueue][RETRY#${attempt + 1}] Retrying command in ${RETRY_DELAY_MS}ms. Command: ${JSON.stringify(command)}`);
         this.emit('retry', { command, retryCount: attempt + 1, error: err } as CommandRetryEvent);
         this.queue.unshift({ command, resolve, reject, timestamp, attempt: attempt + 1 });
         setTimeout(() => {
@@ -130,7 +156,7 @@ export class CommandQueue extends EventEmitter {
         }, RETRY_DELAY_MS);
         return;
       } else {
-        this.log.error(`Command failed after ${MAX_RETRIES} attempts:`, command);
+        this.log.error(`[CommandQueue][FAIL] Command failed after ${MAX_RETRIES} attempts: ${JSON.stringify(command)}, Error: ${err.message}`);
         this.emit('maxRetriesReached', { command, error: err } as CommandMaxRetriesReachedEvent);
         reject(err);
       }
