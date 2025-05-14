@@ -34,7 +34,7 @@ class MockCacheManager {
     this.deviceState.setDisplayMode(stateToApply.displayMode);
     return Promise.resolve(undefined);
   });
-  getStatus = vi.fn().mockImplementation(async function() { // Changed to regular function
+  getStatus = vi.fn().mockImplementation(async function(this: any) {
     return Promise.resolve({ opt_display: this.deviceState.displayMode });
   });
   getLastStatus = vi.fn().mockReturnValue(undefined);

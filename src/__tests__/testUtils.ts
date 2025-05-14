@@ -23,7 +23,21 @@ import { PLATFORM_NAME } from '../settings.js';
 import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState } from '../enums';
 import { EventEmitter } from 'events';
 import type { AirConditionerStatus, DeviceOptions, PartialDeviceOptions as ApiPartialDeviceOptions } from '../AirConditionerAPI';
+import type { DeviceState } from '../state/DeviceState.js';
 console.log('[testUtils.ts] Imported types from AirConditionerAPI (AirConditionerStatus, DeviceOptions, PartialDeviceOptions)');
+
+// Define mock cache manager type for tests
+export type MockCacheManagerType = any;
+
+// Define mock device state with toApiStatus as any so vitest mock methods work
+export interface MockDeviceState extends EventEmitter {
+  status: AirConditionerStatus;
+  updateState(newState: Partial<AirConditionerStatus>): void;
+  toApiCommand(): Partial<MockDeviceCommandPayload>;
+  getPlainState(): AirConditionerStatus;
+  toApiStatus: any;
+  removeListener(event: string, listener: (...args: any[]) => void): this;
+}
 
 // Mock characteristic creation
 export function createMockCharacteristic(): IMockCharacteristic {
@@ -193,24 +207,6 @@ export interface MockAPI {
   };
 }
 
-export interface MockDeviceState extends EventEmitter {
-  status: AirConditionerStatus;
-  updateState(newState: Partial<AirConditionerStatus>): void;
-  toApiCommand(): Partial<MockDeviceCommandPayload>;
-  getPlainState(): AirConditionerStatus;
-  toApiStatus(): AirConditionerStatus;
-  on(event: 'statusChanged', listener: (newStatus: AirConditionerStatus) => void): this;
-  emit(event: 'statusChanged', newStatus: AirConditionerStatus): boolean;
-}
-
-export interface MockCacheManagerType extends EventEmitter {
-  getCachedStatus: Mock<(deviceId: string) => Promise<Partial<AirConditionerStatus> | undefined>>;
-  updateCache: Mock<(deviceId: string, newStatus: Partial<AirConditionerStatus>) => Promise<void>>;
-  getDeviceState: Mock<(deviceId: string) => MockDeviceState | undefined>;
-  on(event: 'cacheUpdated', listener: (deviceId: string, newStatus: Partial<AirConditionerStatus>) => void): this;
-  emit(event: 'cacheUpdated', deviceId: string, newStatus: Partial<AirConditionerStatus>): boolean;
-}
-
 // Mock API creation
 export function createMockAPI(customUuid?: string): MockAPI {
   const mockCharacteristicFunc = (uuid: string): IMockCharacteristic => {
@@ -271,9 +267,19 @@ export function createMockAPI(customUuid?: string): MockAPI {
           ...mockCharacteristicFunc('00000036-0000-1000-8000-0026BB765291'),
           CELSIUS: 0, FAHRENHEIT: 1,
         },
-        Active: mockCharacteristicFunc('000000B0-0000-1000-8000-0026BB765291'),
+        Active: {
+          ...mockCharacteristicFunc('000000B0-0000-1000-8000-0026BB765291'),
+          INACTIVE: 0,
+          ACTIVE: 1,
+        },
         CurrentHeaterCoolerState: mockCharacteristicFunc('000000B1-0000-1000-8000-0026BB765291'),
-        TargetHeaterCoolerState: mockCharacteristicFunc('000000B2-0000-1000-8000-0026BB765291'),
+        TargetHeaterCoolerState: {
+          ...mockCharacteristicFunc('000000B2-0000-1000-8000-0026BB765291'),
+          OFF: 0,
+          HEAT: 1,
+          COOL: 2,
+          AUTO: 3,
+        },
         SwingMode: {
           ...mockCharacteristicFunc('000000B6-0000-1000-8000-0026BB765291'),
           SWING_DISABLED: 0,
@@ -613,6 +619,14 @@ export function createMockPlatformConfig(
   } as PlatformConfig;
 }
 
+// Define helper temperature conversion functions before using them
+export function toFahrenheit(celsius: number): number {
+  return (celsius * 9) / 5 + 32;
+}
+export function toCelsius(fahrenheit: number): number {
+  return ((fahrenheit - 32) * 5) / 9;
+}
+
 export const initialStatusFahrenheit: Partial<AirConditionerStatus> = {
   is_on: PowerState.Off,
   operation_mode: OperationMode.Cool,
@@ -627,12 +641,6 @@ export const initialStatusFahrenheit: Partial<AirConditionerStatus> = {
   opt_beep: PowerState.On,
   outdoor_temp: toFahrenheit(28), // 82.4°F
 };
-export function toFahrenheit(celsius: number): number {
-  return (celsius * 9) / 5 + 32; 
-}
-export function toCelsius(fahrenheit: number): number {
-  return ((fahrenheit - 32) * 5) / 9; 
-}
 
 // Define hapIdentifiers with all necessary characteristic identifiers used in tests
 export const hapIdentifiers = {

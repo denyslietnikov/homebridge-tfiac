@@ -309,7 +309,7 @@ describe('outdoor temperature sensor get', () => {
 
   it('uses callback style', async () => {
     // For this test, we'll set our own implementation that always returns 20
-    inst.handleOutdoorTemperatureSensorCurrentTemperatureGet = function(callback) {
+    inst.handleOutdoorTemperatureSensorCurrentTemperatureGet = function(callback: any) {
       const defaultTemp = 20;
       if (callback) {
         callback(null, defaultTemp);

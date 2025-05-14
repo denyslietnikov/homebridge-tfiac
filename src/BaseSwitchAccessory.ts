@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
   Service,
   PlatformAccessory,
@@ -71,10 +72,10 @@ export abstract class BaseSwitchAccessory {
     
     // Allow test override via accessory.context.cacheManager
      
-    if (accessory?.context?.cacheManager) {
+    if ((accessory?.context as { cacheManager?: CacheManager }).cacheManager) {
       // Use cacheManager provided in accessory context (tests)
       console.log('Using context.cacheManager for tests');
-      this.cacheManager = (accessory.context as any).cacheManager;
+      this.cacheManager = (accessory.context as { cacheManager: CacheManager }).cacheManager;
     } else {
       const overrideCacheMgr = globalThis.__mockCacheManagerInstance;
       if (overrideCacheMgr) {
@@ -110,7 +111,8 @@ export abstract class BaseSwitchAccessory {
         );
       } else {
         // Mock addService(serviceInstance)
-        const serviceInstance = this.platform.Service.Switch(this.serviceName, this.serviceSubtype);
+        // Service.Switch is a constructor, instantiate with new
+        const serviceInstance = new this.platform.Service.Switch(this.serviceName, this.serviceSubtype);
         this.service = this.accessory.addService(serviceInstance);
       }
       if (!this.service) {
@@ -126,14 +128,11 @@ export abstract class BaseSwitchAccessory {
       .onSet(this.handleSet.bind(this));
 
     // Patch accessory.getService to support constructor argument lookup for our service
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const origGetService = (this.accessory as any).getService;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    // Capture original getService method
+    const origGetService = this.accessory.getService.bind(this.accessory);
+    // Override getService to handle Service constructor lookup
     (this.accessory as any).getService = (identifier: any) => {
-      if (identifier === this.platform.Service.Switch) {
-        return this.service;
-      }
-      return origGetService.call(this.accessory, identifier);
+      return origGetService(identifier as any);
     };
 
     this.deviceState.on('stateChanged', this.stateChangeListener);
@@ -262,20 +261,18 @@ export abstract class BaseSwitchAccessory {
       const failedMsg = `[${this.logPrefix}] Error setting state to ${value}: ${errorMessage}`;
       this.platform.log.error(failedMsg);
       
-      // Wrap non-HapStatusError errors as HapStatusError for HomeKit
-      let hapError;
+      // Wrap non-HapStatusError errors as HapStatusError for HomeKit (with status/hapStatus fields)
+      let hapError: any;
       if (error instanceof this.platform.api.hap.HapStatusError) {
         hapError = error;
       } else {
         hapError = new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
       }
-      
-      // Ensure compatibility with tests expecting 'status' property
-      // Set status explicitly to the SERVICE_COMMUNICATION_FAILURE constant
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (hapError as any).status = this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
-      
-      this.platform.log.debug(`[${this.logPrefix}] HapError created with status: ${(hapError as any).status}, hapStatus: ${hapError.hapStatus}`);
+      // Attach status property for test compatibility
+      hapError.status = this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+      this.platform.log.debug(
+        `[${this.logPrefix}] HapError created with status: ${hapError.status}, hapStatus: ${hapError.hapStatus}`,
+      );
       callback(hapError);
     }
   }

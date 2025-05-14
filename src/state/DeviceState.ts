@@ -8,7 +8,6 @@ import {
   SwingMode, 
   SleepModeState, 
 } from '../enums.js';
-import { celsiusToFahrenheit } from '../utils.js'; // Added import
 
 // Define and export the interface for the plain object representation
 export interface PlainDeviceState {

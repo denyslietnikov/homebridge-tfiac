@@ -221,27 +221,22 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       }
     };
     
-    (accessory as any).handleThresholdTemperatureSet = function(value: number, callback: CharacteristicSetCallback) {
+    (accessory as any).handleThresholdTemperatureSet = function(value: number, callback?: CharacteristicSetCallback) {
       const fahrenheitTemp = (this as any).celsiusToFahrenheit(value);
-      
       this.deviceAPI.setAirConditionerState('target_temp', fahrenheitTemp)
         .then(() => {
           const ctx = this as unknown as TestAccessoryContext;
           if (ctx.cachedStatus) {
             ctx.cachedStatus.target_temp = fahrenheitTemp;
           }
-          callback(null);
+          if (typeof callback === 'function') callback(null);
         })
         .catch((error: Error) => {
-          // Create a HAP status error for HomeKit
           const hapError = error instanceof mockPlatform.api.hap.HapStatusError
             ? error
             : new mockPlatform.api.hap.HapStatusError(mockPlatform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-          
-          // Explicitly set status to SERVICE_COMMUNICATION_FAILURE for test compatibility
           (hapError as any).status = mockPlatform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
-          
-          callback(hapError);
+          if (typeof callback === 'function') callback(hapError);
         });
     };
     
@@ -263,7 +258,7 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       }
     };
     
-    (accessory as any).handleRotationSpeedSet = function(value: number, callback: CharacteristicSetCallback) {
+    (accessory as any).handleRotationSpeedSet = function(value: number, callback?: CharacteristicSetCallback) {
       const fanMode = (this as any).mapRotationSpeedToFanMode(value);
       
       this.deviceAPI.setFanSpeed(fanMode)
@@ -272,16 +267,14 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
           if (ctx.cachedStatus) {
             ctx.cachedStatus.fan_mode = fanMode;
           }
-          callback(null);
+          if (typeof callback === 'function') callback(null);
         })
         .catch((error: Error) => {
-          // Create a HAP status error for HomeKit
           const hapError = error instanceof mockPlatform.api.hap.HapStatusError
             ? error
             : new mockPlatform.api.hap.HapStatusError(mockPlatform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-          // Ensure compatibility with tests expecting 'status' property
           (hapError as any).status = hapError.hapStatus;
-          callback(hapError);
+          if (typeof callback === 'function') callback(hapError);
         });
     };
     
@@ -303,7 +296,7 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       }
     };
     
-    (accessory as any).handleSwingModeSet = function(value: number, callback: CharacteristicSetCallback) {
+    (accessory as any).handleSwingModeSet = function(value: number, callback?: CharacteristicSetCallback) {
       const swingMode = value === hapConstants.Characteristic.SwingMode.SWING_ENABLED ? 'Vertical' : 'Off';
       
       this.deviceAPI.setSwingMode(swingMode)
@@ -312,16 +305,14 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
           if (ctx.cachedStatus) {
             ctx.cachedStatus.swing_mode = swingMode;
           }
-          callback(null);
+          if (typeof callback === 'function') callback(null);
         })
         .catch((error: Error) => {
-          // Create a HAP status error for HomeKit
           const hapError = error instanceof mockPlatform.api.hap.HapStatusError
             ? error
             : new mockPlatform.api.hap.HapStatusError(mockPlatform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
-          // Ensure compatibility with tests expecting 'status' property
           (hapError as any).status = hapError.hapStatus;
-          callback(hapError);
+          if (typeof callback === 'function') callback(hapError);
         });
     };
     
@@ -380,11 +371,11 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
           if (ctx.cachedStatus) {
             ctx.cachedStatus.is_on = isActive ? 'on' : 'off';
           }
-          if (callback) callback(null);
+          if (typeof callback === 'function') callback(null);
         })
         .catch((error: Error) => {
-          if (callback) callback(error);
-          throw error;
+          if (typeof callback === 'function') callback(error);
+          // swallow error to prevent unhandled rejection
         });
     };
     
@@ -417,10 +408,10 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
           if (ctx.cachedStatus) {
             ctx.cachedStatus.operation_mode = mode;
           }
-          if (callback) callback(null);
+          if (typeof callback === 'function') callback(null);
         })
         .catch((error: Error) => {
-          if (callback) callback(error);
+          if (typeof callback === 'function') callback(error);
           throw error;
         });
     };
@@ -947,21 +938,12 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
     });
     
     describe('Operation Mode Mapping', () => {
-      it.skip('should map Homebridge modes to API modes correctly', () => {
+      it('should map Homebridge modes to API modes correctly', () => {
         const targetStateChar = hapConstants.Characteristic.TargetHeaterCoolerState;
-        
-        // The test needs to be updated to match how the actual implementation works,
-        // which is to return the lowercase version of the enum rather than the enum itself
-        const coolMode = helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.COOL);
-        const heatMode = helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.HEAT);
-        const autoMode = helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.AUTO);
-        const invalidMode = helperMethods.mapHomebridgeModeToAPIMode(9999);
-        
-        // Test that we get the right values, allowing for lowercase conversion
-        expect(coolMode.toLowerCase()).toBe('cool');
-        expect(heatMode.toLowerCase()).toBe('heat');
-        expect(autoMode.toLowerCase()).toBe('auto');
-        expect(invalidMode.toLowerCase()).toBe('auto');
+        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.COOL)).toBe(OperationMode.Cool);
+        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.HEAT)).toBe(OperationMode.Heat);
+        expect(helperMethods.mapHomebridgeModeToAPIMode(targetStateChar.AUTO)).toBe(OperationMode.Auto);
+        expect(helperMethods.mapHomebridgeModeToAPIMode(9999 as any)).toBe(OperationMode.Auto);
       });
       
       it('should map API modes to Homebridge modes correctly', () => {
@@ -1012,28 +994,17 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       expect(mockApiActions.turnOn).toHaveBeenCalled();
     });
     
-    it.skip('handleActiveSet should handle API errors with callback', async () => {
-      // Modified test to skip validation of the error object
-      // since the mock setup seems to be problematic
-      
-      // Create a custom mock implementation that always calls callback(null)
-      // This is a workaround since the real implementation is difficult to test
-      mockApiActions.turnOff = vi.fn().mockImplementation(() => {
-        return Promise.resolve();
-      });
-      
-      // Access the handler directly
+    it('handleActiveSet should handle API errors with callback', async () => {
+      const apiError = new Error('TurnOff Failed');
+      mockApiActions.turnOff.mockRejectedValueOnce(apiError);
       const handler = (accessory as any).handleActiveSet.bind(accessory);
-      
       await new Promise<void>((resolve) => {
-        handler(hapConstants.Characteristic.Active.INACTIVE, (err) => {
-          // We only verify that the callback is called, not what it's called with
+        const promise = handler(hapConstants.Characteristic.Active.INACTIVE, (err) => {
+          expect(err).toBe(apiError);
           resolve();
         });
+        promise.catch(() => {});
       });
-      
-      // Just verify that turnOff was called
-      expect(mockApiActions.turnOff).toHaveBeenCalled();
     });
   });
 
@@ -1064,28 +1035,17 @@ describe('TfiacPlatformAccessory - Characteristics', () => {
       expect(mockApiActions.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'cool');
     });
     
-    it.skip('handleTargetHeaterCoolerStateSet should handle API errors with callback', async () => {
-      // Modified test to skip validation of the error object
-      // since the mock setup seems to be problematic
-      
-      // Create a custom mock implementation that always calls callback(null)
-      // This is a workaround since the real implementation is difficult to test
-      mockApiActions.setAirConditionerState = vi.fn().mockImplementation(() => {
-        return Promise.resolve();
-      });
-      
-      // Access the handler directly
+    it('handleTargetHeaterCoolerStateSet should handle API errors with callback', async () => {
+      const apiError = new Error('SetMode Failed');
+      mockApiActions.setAirConditionerState.mockRejectedValueOnce(apiError);
       const handler = (accessory as any).handleTargetHeaterCoolerStateSet.bind(accessory);
-      
       await new Promise<void>((resolve) => {
-        handler(hapConstants.Characteristic.TargetHeaterCoolerState.HEAT, (err) => {
-          // We only verify that the callback is called, not what it's called with
+        const promise = handler(hapConstants.Characteristic.TargetHeaterCoolerState.HEAT, (err) => {
+          expect(err).toBe(apiError);
           resolve();
         });
+        promise.catch(() => {});
       });
-      
-      // Just verify that setAirConditionerState was called with the right operation mode
-      expect(mockApiActions.setAirConditionerState).toHaveBeenCalledWith('operation_mode', 'heat');
     });
   });
 

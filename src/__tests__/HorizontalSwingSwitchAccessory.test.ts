@@ -22,7 +22,7 @@ describe('HorizontalSwingSwitchAccessory', () => {
   let inst: HorizontalSwingSwitchAccessory;
   let mockCacheManager: any;
   let mockDeviceStateObject: any;
-  let capturedStateChangeListener: (state: DeviceState) => void;
+  let capturedStateChangeListener: (state: any) => void;
   let capturedOnSetHandler: (value: CharacteristicValue, callback: CharacteristicSetCallback) => Promise<void>;
 
   beforeEach(() => {
