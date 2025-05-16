@@ -1,8 +1,7 @@
-import { AirConditionerAPI } from '../AirConditionerAPI';
-import { PartialDeviceOptions } from '../AirConditionerAPI';
+import { AirConditionerAPI, PartialDeviceOptions } from '../AirConditionerAPI.js';
 import { Logger } from 'homebridge';
 import { EventEmitter } from 'events';
-import { DeviceState } from './DeviceState';
+import { DeviceState } from './DeviceState.js';
 
 // Command type remains the same
 type Command = PartialDeviceOptions;

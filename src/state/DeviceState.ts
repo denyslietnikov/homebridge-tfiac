@@ -9,7 +9,7 @@ import {
   SleepModeState, 
 } from '../enums.js';
 import { Logger } from 'homebridge'; // Added Logger import
-import { fahrenheitToCelsius } from '../utils'; // Removed celsiusToFahrenheit
+import { fahrenheitToCelsius } from '../utils.js'; // Removed celsiusToFahrenheit
 
 // Define and export the interface for the plain object representation
 export interface PlainDeviceState {
