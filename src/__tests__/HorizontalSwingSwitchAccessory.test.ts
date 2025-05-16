@@ -1,359 +1,262 @@
-import { vi, it, expect, describe, beforeEach } from 'vitest';
+import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { HorizontalSwingSwitchAccessory } from '../HorizontalSwingSwitchAccessory.js';
-import { PlatformAccessory } from 'homebridge';
+import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
-import { SwingMode } from '../enums.js';
-import { createMockApiActions, createMockCacheManager } from './testUtils';
+import { createMockCacheManager, createMockDeviceState, createMockPlatform, defaultDeviceOptions } from './testUtils';
+import { PowerState, SwingMode } from '../enums.js';
+import { AirConditionerStatus } from '../AirConditionerAPI.js';
+import { CacheManager } from '../CacheManager.js';
+import { DeviceState } from '../state/DeviceState.js';
 
-// Mock CacheManager module
-vi.mock('../CacheManager.js', () => {
-  const mockCacheManager = {
+vi.mock('../CacheManager.js', () => ({
+  CacheManager: {
     getInstance: vi.fn(),
-    api: {
-      on: vi.fn(),
-      off: vi.fn(),
-    },
-    getStatus: vi.fn(),
-    getLastStatus: vi.fn(),
-    clear: vi.fn(),
-    cleanup: vi.fn(),
-  };
-  
-  return {
-    default: {
-      getInstance: vi.fn().mockReturnValue(mockCacheManager),
-    },
-    CacheManager: {
-      getInstance: vi.fn().mockReturnValue(mockCacheManager),
-    },
-    __esModule: true,
-  };
-});
+  },
+}));
 
 describe('HorizontalSwingSwitchAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: any;
-  let service: any;
+  let mockService: any;
+  let mockCharacteristicOn: any;
   let inst: HorizontalSwingSwitchAccessory;
-  let deviceAPI: any;
-  let setSwingModeMock: any;
   let mockCacheManager: any;
+  let mockDeviceStateObject: any;
+  let capturedStateChangeListener: (state: any) => void;
+  let capturedOnSetHandler: (value: CharacteristicValue, callback: CharacteristicSetCallback) => Promise<void>;
 
   beforeEach(() => {
-    // Reset mocks
     vi.clearAllMocks();
 
-    // Create platform mock
-    platform = {
-      log: {
-        debug: vi.fn(),
-        info: vi.fn(),
-        warn: vi.fn(),
-        error: vi.fn(),
-      },
-      api: {
-        hap: {
-          Service: {
-            Switch: { UUID: 'switch-uuid' },
-          },
-          Characteristic: {
-            On: 'On',
-            Name: 'Name',
-          },
-        },
-      },
-      Service: {
-        Switch: { UUID: 'switch-uuid' },
-      },
-      Characteristic: {
-        On: 'On',
-        Name: 'Name',
-        ConfiguredName: 'ConfiguredName',
-      },
-    } as any;
+    platform = createMockPlatform();
 
-    // Create mock service
-    service = {
+    mockCharacteristicOn = {
+      onGet: vi.fn().mockReturnThis(),
+      onSet: vi.fn((handler) => {
+        capturedOnSetHandler = handler;
+        return mockCharacteristicOn;
+      }),
+      updateValue: vi.fn(),
+    };
+
+    mockService = {
       setCharacteristic: vi.fn().mockReturnThis(),
-      getCharacteristic: vi.fn().mockReturnValue({
-        on: vi.fn(),
-        onGet: vi.fn(),
-        onSet: vi.fn(),
-        value: false,
+      getCharacteristic: vi.fn((char) => {
+        if (char === platform.Characteristic.On) {
+          return mockCharacteristicOn;
+        }
+        return { onGet: vi.fn().mockReturnThis(), onSet: vi.fn().mockReturnThis(), updateValue: vi.fn() };
       }),
       updateCharacteristic: vi.fn(),
     };
 
-    // Create mock accessory
     accessory = {
-      getService: vi.fn().mockReturnValue(null), // Return null to force addService call
-      getServiceById: vi.fn().mockReturnValue(null), // Return null to force addService call
-      addService: vi.fn().mockReturnValue(service),
+      getService: vi.fn().mockReturnValue(null),
+      getServiceById: vi.fn().mockReturnValue(mockService),
+      addService: vi.fn().mockReturnValue(mockService),
       context: {
-        deviceConfig: {
-          ip: '192.168.1.100',
-          port: 8080,
-          name: 'Test AC',
-        },
+        deviceConfig: { ip: '192.168.1.100', port: 8080, name: 'Test AC Horizontal Swing' },
       },
-      displayName: 'Test AC',
-      services: [service],
+      displayName: 'Test AC Horizontal Swing Display',
     };
 
-    // Create API mock with swing methods
-    setSwingModeMock = vi.fn().mockResolvedValue(undefined);
-    deviceAPI = createMockApiActions({ swing_mode: SwingMode.Off });
-    deviceAPI.setSwingMode = setSwingModeMock;
-    
-    // Create mock CacheManager
-    mockCacheManager = createMockCacheManager(deviceAPI, { swing_mode: SwingMode.Off });
-    // No subscription capture needed; tests will call updateStatus directly
-  });
+    mockDeviceStateObject = createMockDeviceState(defaultDeviceOptions);
+    mockDeviceStateObject.on = vi.fn((event, listener) => {
+      if (event === 'stateChanged') {
+        capturedStateChangeListener = listener;
+      }
+      return mockDeviceStateObject;
+    });
+    mockDeviceStateObject.swingMode = SwingMode.Off;
+    mockDeviceStateObject.clone = vi.fn().mockReturnValue(mockDeviceStateObject);
 
-  function createAccessory() {
+    mockCacheManager = createMockCacheManager();
+    mockCacheManager.getDeviceState.mockReturnValue(mockDeviceStateObject);
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
+    mockCacheManager.api = {
+      setDeviceOptions: vi.fn().mockResolvedValue(undefined),
+    };
+    mockCacheManager.getStatus = vi.fn().mockResolvedValue({ swingMode: SwingMode.Off });
+
+    (CacheManager.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockCacheManager);
+
+    mockDeviceStateObject.toApiStatus.mockReturnValue({ 
+      swing_mode: SwingMode.Off
+    });
+
     inst = new HorizontalSwingSwitchAccessory(platform, accessory);
-    // Override CacheManager to use our mock
-    (inst as any).cacheManager = mockCacheManager;
-    // Set onChar to make tests simpler
-    (inst as any).onChar = 'On';
-    return inst;
-  }
-
-  it('should construct and set up polling and handlers', () => {
-    createAccessory();
-    expect(accessory.addService).toHaveBeenCalledWith(
-      platform.Service.Switch,
-      'Horizontal Swing',
-      'horizontal_swing'
-    );
-    expect(service.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Horizontal Swing');
-    expect(service.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
   });
 
-  it('should stop polling and cleanup', () => {
-    createAccessory();
+  it('should construct and set up characteristics and listeners', () => {
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'horizontal_swing');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Horizontal Swing');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    expect(mockCharacteristicOn.onGet).toHaveBeenCalledWith(expect.any(Function));
+    expect(mockCharacteristicOn.onSet).toHaveBeenCalledWith(expect.any(Function));
+    expect(mockDeviceStateObject.on).toHaveBeenCalledWith('stateChanged', expect.any(Function));
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
+  });
+
+  it('should stop polling by removing DeviceState listener', () => {
     inst.stopPolling();
-    expect(mockCacheManager.cleanup).toHaveBeenCalled();
+    expect(mockDeviceStateObject.removeListener).toHaveBeenCalledWith('stateChanged', expect.any(Function));
   });
 
-  it('should update cached status and update characteristic for Horizontal mode', async () => {
-    createAccessory();
-    // Simulate status event
-    inst.updateStatus({ swing_mode: SwingMode.Horizontal });
-    
-    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
-  });
+  describe('handleGet', () => {
+    it('should return true when swing_mode is Horizontal', () => {
+      mockDeviceStateObject.swingMode = SwingMode.Horizontal;
+      const result = inst.handleGet();
+      expect(result).toBe(true);
+    });
 
-  it('should update cached status and update characteristic for Both mode', async () => {
-    createAccessory();
-    inst.updateStatus({ swing_mode: SwingMode.Both });
-    
-    expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
-  });
+    it('should return true when swing_mode is Both', () => {
+      mockDeviceStateObject.swingMode = SwingMode.Both;
+      const result = inst.handleGet();
+      expect(result).toBe(true);
+    });
 
-  it('should handle error during update cached status', async () => {
-    createAccessory();
-    const error = new Error('Network error');
-    
-    // Simulate null status
-    inst.updateStatus(null);
-    
-    expect(platform.log.error).not.toHaveBeenCalled();
-  });
+    it('should return false when swing_mode is Off', () => {
+      mockDeviceStateObject.swingMode = SwingMode.Off;
+      const result = inst.handleGet();
+      expect(result).toBe(false);
+    });
 
-  // Tests for the real handleGet method
-  describe('handleGet method', () => {
-    it('should return true when cached status is Horizontal', () => {
-      createAccessory();
+    it('should return false when swing_mode is Vertical', () => {
+      mockDeviceStateObject.swingMode = SwingMode.Vertical;
+      const result = inst.handleGet();
+      expect(result).toBe(false);
+    });
+
+    it('should handle null deviceState by returning false', () => {
+      Object.defineProperty(inst, 'deviceState', { get: () => null });
+      const result = inst.handleGet();
+      expect(result).toBe(false);
+    });
+
+    it('should call callback with the result if provided', () => {
+      mockDeviceStateObject.swingMode = SwingMode.Horizontal;
       const callback = vi.fn();
-      inst.updateStatus({ swing_mode: SwingMode.Horizontal });
-      
-      const result = inst['handleGet'](callback);
-      
+      const result = inst.handleGet(callback);
       expect(result).toBe(true);
       expect(callback).toHaveBeenCalledWith(null, true);
     });
-    
-    it('should return true when cached status is Both', () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.updateStatus({ swing_mode: SwingMode.Both });
-      
-      const result = inst['handleGet'](callback);
-      
-      expect(result).toBe(true);
-      expect(callback).toHaveBeenCalledWith(null, true);
-    });
-    
-    it('should return false when cached status is Off', () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.updateStatus({ swing_mode: SwingMode.Off });
-      
-      const result = inst['handleGet'](callback);
-      
-      expect(result).toBe(false);
-      expect(callback).toHaveBeenCalledWith(null, false);
-    });
-    
-    it('should return false when cached status is Vertical', () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.updateStatus({ swing_mode: SwingMode.Vertical });
-      
-      const result = inst['handleGet'](callback);
-      
-      expect(result).toBe(false);
-      expect(callback).toHaveBeenCalledWith(null, false);
-    });
-    
-    it('should return false when there is no cached status', () => {
-      createAccessory();
-      const callback = vi.fn();
-      (inst as any).cachedStatus = null;
-      
-      const result = inst['handleGet'](callback);
-      
-      expect(result).toBe(false);
-      expect(callback).toHaveBeenCalledWith(null, false);
-    });
-    
-    it('should handle the case when no callback is provided', () => {
-      createAccessory();
-      inst.updateStatus({ swing_mode: SwingMode.Horizontal });
-      
-      const result = inst['handleGet']();
-      
-      expect(result).toBe(true);
-    });
   });
 
-  // Tests for the real handleSet method
-  describe('handleSet method', () => {
-    it('should set to Horizontal when turning ON with Off mode', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.cachedStatus = { swing_mode: SwingMode.Off };
+  describe('handleSet', () => {
+    it('should set swing_mode to Horizontal when value is true and vertical is off', async () => {
+      const mockCallback = vi.fn();
+      mockDeviceStateObject.swingMode = SwingMode.Off;
       
-      await inst['handleSet'](true, callback);
+      await capturedOnSetHandler(true, mockCallback);
       
-      expect(mockCacheManager.api.setSwingMode).toHaveBeenCalledWith(SwingMode.Horizontal);
-      expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
-      expect(mockCacheManager.clear).not.toHaveBeenCalled();
-      expect(callback).toHaveBeenCalledWith(null);
+      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Horizontal });
+      expect(mockCallback).toHaveBeenCalledWith(null);
     });
-    
-    it('should set to Both when turning ON with Vertical mode', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.cachedStatus = { swing_mode: SwingMode.Vertical };
+
+    it('should set swing_mode to Both when value is true and vertical is on', async () => {
+      const mockCallback = vi.fn();
+      mockDeviceStateObject.swingMode = SwingMode.Vertical;
       
-      await inst['handleSet'](true, callback);
+      await capturedOnSetHandler(true, mockCallback);
       
-      expect(mockCacheManager.api.setSwingMode).toHaveBeenCalledWith(SwingMode.Both);
-      expect(callback).toHaveBeenCalledWith(null);
+      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Both });
+      expect(mockCallback).toHaveBeenCalledWith(null);
     });
-    
-    it('should set to Vertical when turning OFF with Both mode', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.cachedStatus = { swing_mode: SwingMode.Both };
+
+    it('should set swing_mode to Off when value is false and vertical is off', async () => {
+      const mockCallback = vi.fn();
+      mockDeviceStateObject.swingMode = SwingMode.Horizontal;
       
-      await inst['handleSet'](false, callback);
+      await capturedOnSetHandler(false, mockCallback);
       
-      expect(mockCacheManager.api.setSwingMode).toHaveBeenCalledWith(SwingMode.Vertical);
-      expect(callback).toHaveBeenCalledWith(null);
+      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Off });
+      expect(mockCallback).toHaveBeenCalledWith(null);
     });
-    
-    it('should set to Off when turning OFF with Horizontal mode', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.cachedStatus = { swing_mode: SwingMode.Horizontal };
+
+    it('should set swing_mode to Vertical when value is false and vertical is on', async () => {
+      const mockCallback = vi.fn();
+      mockDeviceStateObject.swingMode = SwingMode.Both;
       
-      await inst['handleSet'](false, callback);
+      await capturedOnSetHandler(false, mockCallback);
       
-      expect(mockCacheManager.api.setSwingMode).toHaveBeenCalledWith(SwingMode.Off);
-      expect(callback).toHaveBeenCalledWith(null);
+      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Vertical });
+      expect(mockCallback).toHaveBeenCalledWith(null);
     });
-    
-    it('should fetch current status when no cached status exists', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      (inst as any).cachedStatus = null;
-      mockCacheManager.getStatus.mockResolvedValueOnce({ swing_mode: SwingMode.Off });
+
+    it('should handle errors and call callback with error', async () => {
+      const mockCallback = vi.fn();
+      const mockError = new Error('Test error');
+      mockCacheManager.api.setDeviceOptions.mockRejectedValue(mockError);
       
-      await inst['handleSet'](true, callback);
+      await capturedOnSetHandler(true, mockCallback);
+      
+      expect(mockCallback).toHaveBeenCalledWith(expect.any(Error));
+    });
+
+    it('should fetch status from API if deviceState swingMode is not available', async () => {
+      const mockCallback = vi.fn();
+      mockDeviceStateObject.swingMode = undefined;
+      const mockStatus = { swingMode: SwingMode.Vertical };
+      mockCacheManager.getStatus.mockResolvedValue(mockStatus);
+      
+      await capturedOnSetHandler(true, mockCallback);
       
       expect(mockCacheManager.getStatus).toHaveBeenCalled();
-      expect(mockCacheManager.api.setSwingMode).toHaveBeenCalledWith(SwingMode.Horizontal);
-      expect(callback).toHaveBeenCalledWith(null);
+      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Both });
+      expect(mockCallback).toHaveBeenCalledWith(null);
     });
-    
-    it('should handle error when status fetch fails and callback exists', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      (inst as any).cachedStatus = null;
-      const error = new Error('Could not retrieve status');
-      mockCacheManager.getStatus.mockRejectedValueOnce(error);
+
+    it('should handle error when status cannot be retrieved', async () => {
+      const mockCallback = vi.fn();
+      mockDeviceStateObject.swingMode = undefined;
+      mockCacheManager.getStatus.mockResolvedValue(null);
       
-      await inst['handleSet'](true, callback);
+      await capturedOnSetHandler(true, mockCallback);
       
-      expect(platform.log.error).toHaveBeenCalledWith(expect.stringContaining('Error setting Horizontal Swing'), error);
-      expect(callback).toHaveBeenCalledWith(error);
+      expect(mockCacheManager.getStatus).toHaveBeenCalled();
+      expect(mockCallback).toHaveBeenCalledWith(expect.any(Error));
     });
-    
-    it('should handle API errors when setting swing mode', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      const error = new Error('API error');
-      inst.cachedStatus = { swing_mode: SwingMode.Off };
-      mockCacheManager.api.setSwingMode.mockRejectedValueOnce(error);
+  });
+
+  describe('stateChanged listener', () => {
+    it('should update characteristic when state changes to horizontal on', () => {
+      // Trigger the stateChanged listener with new state
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Horizontal });
       
-      await inst['handleSet'](true, callback);
+      capturedStateChangeListener(newState);
       
-      expect(platform.log.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error setting Horizontal Swing'),
-        error
-      );
-      expect(callback).toHaveBeenCalledWith(error);
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
     });
-    
-    it('should handle case when service is not found', async () => {
-      createAccessory();
-      const callback = vi.fn();
-      inst.cachedStatus = { swing_mode: SwingMode.Off };
-      (inst as any).service = null;
+
+    it('should update characteristic when state changes to both on', () => {
+      // Trigger the stateChanged listener with new state
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Both });
       
-      await inst['handleSet'](true, callback);
+      capturedStateChangeListener(newState);
       
-      expect(platform.log.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Service not found for')
-      );
-      expect(callback).toHaveBeenCalledWith(null);
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
     });
-    
-    it('should handle promise-based API with no callback', async () => {
-      createAccessory();
-      inst.cachedStatus = { swing_mode: SwingMode.Off };
+
+    it('should update characteristic when state changes to off', () => {
+      // Trigger the stateChanged listener with new state
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Off });
       
-      await inst['handleSet'](true);
+      capturedStateChangeListener(newState);
       
-      expect(mockCacheManager.api.setSwingMode).toHaveBeenCalledWith(SwingMode.Horizontal);
-      expect(service.updateCharacteristic).toHaveBeenCalledWith('On', true);
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
     });
-    
-    it('should throw error for promise-based API when no callback', async () => {
-      createAccessory();
-      const error = new Error('API error');
-      inst.cachedStatus = { swing_mode: SwingMode.Off };
-      mockCacheManager.api.setSwingMode.mockRejectedValueOnce(error);
+
+    it('should update characteristic when state changes to vertical only', () => {
+      // Trigger the stateChanged listener with new state
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Vertical });
       
-      await expect(inst['handleSet'](true)).rejects.toThrow('API error');
+      capturedStateChangeListener(newState);
       
-      expect(platform.log.error).toHaveBeenCalledWith(
-        expect.stringContaining('Error setting Horizontal Swing'),
-        error
-      );
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
     });
   });
 });

@@ -16,7 +16,16 @@ export class BeepSwitchAccessory extends BaseSwitchAccessory {
       (status) => status.opt_beep === PowerState.On,
       async (value) => {
         const state = value ? PowerState.On : PowerState.Off;
-        await this.cacheManager.api.setBeepState(state);
+        
+        // Get device state
+        const deviceState = this.cacheManager.getDeviceState();
+        
+        // Create a modified state for optimistic updates
+        const modifiedState = deviceState.clone();
+        modifiedState.setBeepMode(state);
+        
+        // Apply the state changes through command queue
+        await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Beep',
     );

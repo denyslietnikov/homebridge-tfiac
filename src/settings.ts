@@ -40,6 +40,7 @@ export interface TfiacDeviceConfig {
  */
 export interface TfiacPlatformConfig extends PlatformConfig {
     devices?: TfiacDeviceConfig[];
-    enableDiscovery?: boolean; // Add this line
+    enableDiscovery?: boolean; 
     debug?: boolean; // enable plugin-specific debug logging
+    minRequestDelay?: number; // Minimum delay in milliseconds between sending commands to the AC
 }

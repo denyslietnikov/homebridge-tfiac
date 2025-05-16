@@ -13,9 +13,9 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       'Horizontal Swing',
       'horizontal_swing',
-      (status) => status.swing_mode === SwingMode.Horizontal || status.swing_mode === SwingMode.Both,
+      (status) => status.swing_mode === SwingMode.Horizontal || status.swing_mode === SwingMode.Both, // status here is Partial<AirConditionerStatus>
       async (value) => {
-        const currentMode = this.cachedStatus?.swing_mode;
+        const currentMode = this.deviceState.swingMode;
         let newMode: SwingMode;
         if (value) {
           // Turn horizontal swing on
@@ -24,7 +24,8 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
           // Turn horizontal swing off
           newMode = currentMode === SwingMode.Both ? SwingMode.Vertical : SwingMode.Off;
         }
-        await this.cacheManager.api.setSwingMode(newMode);
+        // Updated to use setDeviceOptions
+        await this.cacheManager.api.setDeviceOptions({ swingMode: newMode });
       },
       'Horizontal Swing',
     );
@@ -32,8 +33,8 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
 
   // Override handleGet to check if swing_mode includes Horizontal
   public handleGet(callback?: (error: Error | null, value?: boolean) => void): boolean {
-    const value = this.cachedStatus ? 
-      (this.cachedStatus.swing_mode === SwingMode.Horizontal || this.cachedStatus.swing_mode === SwingMode.Both) : 
+    const value = this.deviceState ? 
+      (this.deviceState.swingMode === SwingMode.Horizontal || this.deviceState.swingMode === SwingMode.Both) : 
       false;
     
     if (callback && typeof callback === 'function') {
@@ -50,15 +51,15 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
 
     try {
       let currentVerticalOn = false;
-      const currentCachedMode = this.cachedStatus?.swing_mode;
+      const currentDeviceSwingMode = this.deviceState.swingMode; 
 
-      if (currentCachedMode) {
-        currentVerticalOn = currentCachedMode === SwingMode.Vertical || currentCachedMode === SwingMode.Both;
-        this.platform.log.debug(`Using cached vertical swing state: ${currentVerticalOn}`);
+      if (currentDeviceSwingMode) {
+        currentVerticalOn = currentDeviceSwingMode === SwingMode.Vertical || currentDeviceSwingMode === SwingMode.Both;
+        this.platform.log.debug(`Using cached vertical swing state from DeviceState: ${currentVerticalOn}`);
       } else {
-        this.platform.log.debug('Fetching current status to determine vertical swing state...');
-        const currentStatus = await this.cacheManager.getStatus();
-        if (!currentStatus) {
+        this.platform.log.debug('DeviceState has no swingMode, fetching current status from device...');
+        const currentStatusFromAPI = await this.cacheManager.getStatus(); 
+        if (!currentStatusFromAPI) {
           const error = new Error('Could not retrieve status');
           this.platform.log.warn(`Could not retrieve status for ${this.accessory.displayName} to determine current swing state.`);
           if (callback && typeof callback === 'function') {
@@ -67,9 +68,9 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
           }
           throw error;
         }
-        this.cachedStatus = currentStatus;
-        currentVerticalOn = currentStatus?.swing_mode === SwingMode.Vertical || currentStatus?.swing_mode === SwingMode.Both;
-        this.platform.log.debug(`Fetched vertical swing state: ${currentVerticalOn}`);
+        currentVerticalOn = currentStatusFromAPI.swingMode === SwingMode.Vertical || 
+                            currentStatusFromAPI.swingMode === SwingMode.Both;
+        this.platform.log.debug(`Fetched vertical swing state from API (via DeviceState): ${currentVerticalOn}`);
       }
 
       let newMode: SwingMode;
@@ -80,17 +81,12 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       }
 
       this.platform.log.info(`Setting combined swing mode to ${newMode} for ${this.accessory.displayName}`);
-      await this.cacheManager.api.setSwingMode(newMode);
+      // Updated to use setDeviceOptions
+      await this.cacheManager.api.setDeviceOptions({ swingMode: newMode });
 
-      if (this.cachedStatus) {
-        this.cachedStatus.swing_mode = newMode;
-      }
-      if (this.service && newMode === SwingMode.Horizontal) {
-        this.service.updateCharacteristic(this.onChar, requestedState);
-      } else if (!this.service) {
-        this.platform.log.warn(`Service not found for ${this.accessory.displayName} during set operation.`);
-      }
-      
+      // Removed manual characteristic update and local cache update
+      // These will be handled by BaseSwitchAccessory's stateChanged listener
+
       if (callback && typeof callback === 'function') {
         callback(null);
       }

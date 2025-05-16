@@ -16,7 +16,17 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
       (status) => status.opt_eco === PowerState.On,
       async (value) => {
         const state = value ? PowerState.On : PowerState.Off;
-        await this.cacheManager.api.setEcoState(state);
+        
+        // Get device state
+        const deviceState = this.cacheManager.getDeviceState();
+        
+        // Create a modified state
+        const modifiedState = deviceState.clone();
+        modifiedState.setEcoMode(state);
+        
+        // Apply the state changes through command queue
+        // This will trigger DeviceState update and subsequently the BaseSwitchAccessory listener
+        await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Eco',
     );
@@ -24,11 +34,19 @@ export class EcoSwitchAccessory extends BaseSwitchAccessory {
 
   public async setEcoState(value: boolean): Promise<void> {
     const state = value ? PowerState.On : PowerState.Off;
-    // Check if cacheManager and api exist before trying to access methods
-    if (!this.cacheManager?.api?.setEcoState) {
-      throw new Error('API or setEcoState method is not available');
-    }
-    await this.cacheManager.api.setEcoState(state);
-    this.cacheManager.clear();
+    
+    // Get device state
+    const deviceState = this.cacheManager.getDeviceState();
+    
+    // Create a modified state
+    const modifiedState = deviceState.clone();
+    modifiedState.setEcoMode(state);
+    
+    // Apply the state changes through command queue
+    // This will trigger DeviceState update and subsequently the BaseSwitchAccessory listener
+    await this.cacheManager.applyStateToDevice(modifiedState);
+    
+    // Removed manual UI update: if (this.service) { ... }
+    // The characteristic update is now handled by the BaseSwitchAccessory's stateChanged listener.
   }
 }

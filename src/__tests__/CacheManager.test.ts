@@ -2,6 +2,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import CacheManager from '../CacheManager.js';
 import { TfiacDeviceConfig } from '../settings.js';
+import { PowerState } from '../enums.js';
 
 describe('CacheManager', () => {
   let cacheManager: CacheManager;
@@ -125,17 +126,21 @@ describe('CacheManager', () => {
   });
   
   describe('getStatus', () => {
-    it('should return cached value if fresh', async () => {
+    it('should return DeviceState if cache is fresh', async () => {
       // Set up cache with fresh data
       const mockStatus = { is_on: 'on', current_temp: 22 };
-      (cacheManager as any).cache = mockStatus;
+      (cacheManager as any).rawApiCache = mockStatus;
       (cacheManager as any).lastFetch = Date.now();
+      
+      // Update deviceState to match mockStatus
+      const deviceState = (cacheManager as any)._deviceState;
+      deviceState.updateFromDevice(mockStatus);
       
       // Get status
       const status = await cacheManager.getStatus();
       
-      // Should return the cached value
-      expect(status).toBe(mockStatus);
+      // Should return the DeviceState instance
+      expect(status).toBe(deviceState);
       // API should not be called
       expect(cacheManager.api.updateState).not.toHaveBeenCalled();
     });
@@ -143,7 +148,7 @@ describe('CacheManager', () => {
     it('should fetch new data if cache is expired', async () => {
       // Set up cache with stale data
       const mockStatus = { is_on: 'on', current_temp: 22 };
-      (cacheManager as any).cache = mockStatus;
+      (cacheManager as any).rawApiCache = mockStatus;
       // Set lastFetch to beyond TTL
       const ttl = (cacheManager as any).ttl;
       (cacheManager as any).lastFetch = Date.now() - (ttl + 1000);
@@ -157,17 +162,19 @@ describe('CacheManager', () => {
       
       // Should fetch new data
       expect(cacheManager.api.updateState).toHaveBeenCalled();
-      // Should return new status
-      expect(status).toBe(newStatus);
-      // Should update cache
-      expect((cacheManager as any).cache).toBe(newStatus);
+      // Should return DeviceState instance
+      expect(status).toBe((cacheManager as any)._deviceState);
+      // Should update rawApiCache
+      expect((cacheManager as any).rawApiCache).toBe(newStatus);
       // Should update lastFetch
       expect((cacheManager as any).lastFetch).toBeGreaterThan(Date.now() - 100);
+      // Should update DeviceState
+      expect(status.power).toBe(PowerState.Off);
     });
     
     it('should fetch new data if cache is null', async () => {
       // Ensure cache is null
-      (cacheManager as any).cache = null;
+      (cacheManager as any).rawApiCache = null;
       
       // Set up new data from API
       const newStatus = { is_on: 'off', current_temp: 24 };
@@ -178,13 +185,15 @@ describe('CacheManager', () => {
       
       // Should fetch new data
       expect(cacheManager.api.updateState).toHaveBeenCalled();
-      // Should return new status
-      expect(status).toBe(newStatus);
+      // Should return DeviceState instance
+      expect(status).toBe((cacheManager as any)._deviceState);
+      // Should have updated DeviceState with new status
+      expect(status.power).toBe(PowerState.Off);
     });
     
     it('should emit status event after fetching new data', async () => {
       // Ensure cache is null
-      (cacheManager as any).cache = null;
+      (cacheManager as any).rawApiCache = null;
       
       // Set up spy for emit
       const emitSpy = vi.spyOn(cacheManager.api, 'emit');
@@ -201,47 +210,56 @@ describe('CacheManager', () => {
     });
   });
   
-  describe('getLastStatus', () => {
-    it('should return the cached status without API call', () => {
-      // Set up cache
-      const mockStatus = { is_on: 'on', current_temp: 22 };
-      (cacheManager as any).cache = mockStatus;
-      
-      // Get last status
-      const status = cacheManager.getLastStatus();
-      
-      // Should return the cached value
-      expect(status).toBe(mockStatus);
+  describe('getCurrentDeviceState', () => { // Renamed from getLastStatus
+    it('should return the current device state from DeviceState instance', async () => { // Added async
+      // Set up a mock DeviceState
+      const actualDeviceStateModule = await vi.importActual('../state/DeviceState.js') as { DeviceState: new () => any };
+      const mockDeviceState = new actualDeviceStateModule.DeviceState();
+      // Use the setter method instead of direct property assignment
+      mockDeviceState.setPower(PowerState.On);
+      (cacheManager as any)._deviceState = mockDeviceState; // Inject mock DeviceState
+
+      // Get current device state
+      const state = cacheManager.getCurrentDeviceState(); // Changed from getLastStatus
+
+      // Should return the mock DeviceState instance
+      expect(state).toBe(mockDeviceState);
       // API should not be called
       expect(cacheManager.api.updateState).not.toHaveBeenCalled();
     });
-    
-    it('should return null if no cache is available', () => {
-      // Ensure cache is null
-      (cacheManager as any).cache = null;
-      
-      // Get last status
-      const status = cacheManager.getLastStatus();
-      
-      // Should return null
-      expect(status).toBeNull();
+
+    it('should return the initial DeviceState if no updates have occurred', async () => { // Added async
+      // Create a new instance to ensure fresh state
+      cacheManager = CacheManager.getInstance(config);
+      (cacheManager as any).api = mockApi; // Re-assign mockApi as getInstance creates a new one
+
+      const actualDeviceStateModule = await vi.importActual('../state/DeviceState.js') as { DeviceState: new () => any };
+
+      // Get current device state
+      const state = cacheManager.getCurrentDeviceState(); // Changed from getLastStatus
+
+      // Should return the initial DeviceState instance
+      // We expect it to be an instance of DeviceState
+      expect(state).toBeInstanceOf(actualDeviceStateModule.DeviceState);
+      // Default power state is PowerState.Off as defined in the DeviceState class
+      expect(state.power).toBe(PowerState.Off);
       // API should not be called
       expect(cacheManager.api.updateState).not.toHaveBeenCalled();
     });
   });
-  
+
   describe('clear', () => {
-    it('should clear the cache and reset lastFetch', () => {
+    it('should clear the rawApiCache and reset lastFetch', () => {
       // Set up cache
       const mockStatus = { is_on: 'on', current_temp: 22 };
-      (cacheManager as any).cache = mockStatus;
+      (cacheManager as any).rawApiCache = mockStatus;
       (cacheManager as any).lastFetch = Date.now();
       
       // Clear the cache
       cacheManager.clear();
       
-      // Cache should be null
-      expect((cacheManager as any).cache).toBeNull();
+      // rawApiCache should be null
+      expect((cacheManager as any).rawApiCache).toBeNull();
       // lastFetch should be reset to 0
       expect((cacheManager as any).lastFetch).toBe(0);
     });

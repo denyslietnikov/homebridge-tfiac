@@ -1,7 +1,7 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import { SleepModeState, PowerState, FanSpeed } from './enums.js';
+import { SleepModeState, PowerState } from './enums.js';
 import type { AirConditionerStatus } from './AirConditionerAPI.js';
 
 export class SleepSwitchAccessory extends BaseSwitchAccessory {
@@ -35,28 +35,23 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
         return true;
       },
       async (value) => {
-        const state = value ? SleepModeState.On : SleepModeState.Off;
-        
-        // Get current status
-        const status = await this.cacheManager.api.updateState();
-        
-        if (value) {
-          // Only allow enabling Sleep if AC is on
-          if (status.is_on !== PowerState.On) {
-            this.platform.log.info('Cannot enable Sleep mode when AC is off');
-            // Update the switch to reflect the actual state (off)
-            if (this.service) {
-              this.service.updateCharacteristic(this.platform.Characteristic.On, false);
-            }
-            return;
-          }
-
-          // Disable Turbo and enable Sleep in one atomic command
-          await this.cacheManager.api.setTurboAndSleep(FanSpeed.Low, state);
-        } else {
-          // Simply turn off Sleep mode
-          await this.cacheManager.api.setSleepState(state);
+        const currentDeviceState = this.cacheManager.getDeviceState();
+        // Do not enable Sleep mode if AC power is off
+        if (value && currentDeviceState.power !== PowerState.On) {
+          this.platform.log.info(
+            `[${this.logPrefix}] Cannot enable Sleep mode when AC is off. Request ignored.`,
+          );
+          return;
         }
+        const targetSleepValue = value ? SleepModeState.On : SleepModeState.Off;
+        
+        const desiredState = currentDeviceState.clone();
+        desiredState.setSleepMode(targetSleepValue);
+        
+        this.platform.log.debug(
+          `[SleepSwitchAccessory] Requesting state change via CacheManager. Desired sleep state: ${targetSleepValue}`,
+        );
+        await this.cacheManager.applyStateToDevice(desiredState);
       },
       'Sleep',
     );
