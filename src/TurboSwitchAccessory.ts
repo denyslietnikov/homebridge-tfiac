@@ -13,7 +13,13 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       'Turbo',
       'turbo',
-      (status) => status.opt_turbo === PowerState.On,
+      (status) => {
+        // Add null/undefined check for the status object
+        if (!status || status.opt_turbo === undefined) {
+          return false;
+        }
+        return status.opt_turbo === PowerState.On;
+      },
       async (value) => {
         // Get current device state from CacheManager
         const deviceState = this.cacheManager.getDeviceState();

@@ -331,12 +331,14 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     let serviceRemoved = false;
 
     servicesToRemove.forEach(({ name, displayName }) => {
-      // Check only for enable format
+      // Check for both legacy format and enable format
+      const settingNameLegacy = name.toLowerCase() as keyof TfiacDeviceConfig;
       const settingNameNew = `enable${name}` as keyof TfiacDeviceConfig;
       const settingNameSwitch = `enable${name}Switch` as keyof TfiacDeviceConfig;
 
       // If any of these settings is explicitly false, remove the service
-      const isDisabled = deviceConfig[settingNameNew] === false || 
+      const isDisabled = deviceConfig[settingNameLegacy] === false || 
+                        deviceConfig[settingNameNew] === false || 
                         deviceConfig[settingNameSwitch] === false;
 
       if (isDisabled) {
@@ -399,14 +401,20 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     for (const config of this.optionalAccessoryConfigs) {
       const { name, displayName, accessoryClass, enabledByDefault, accessoryMap } = config;
       
-      // Check only for enable formats
+      // Check for both legacy format and enable formats
+      const settingNameLegacy = name.toLowerCase() as keyof TfiacDeviceConfig;
       const settingNameNew = `enable${name}` as keyof TfiacDeviceConfig;
       const settingNameSwitch = `enable${name}Switch` as keyof TfiacDeviceConfig;
       
       // Check settings, prioritizing explicit settings over defaults
       let isEnabled = enabledByDefault;
       
-      // Check enable format (e.g., "enableDisplay: true")
+      // Check legacy format (e.g., "display: false")
+      if (deviceConfig[settingNameLegacy] !== undefined) {
+        isEnabled = Boolean(deviceConfig[settingNameLegacy]);
+      }
+      
+      // Check enable format (e.g., "enableDisplay: true") - higher priority than legacy
       if (deviceConfig[settingNameNew] !== undefined) {
         isEnabled = Boolean(deviceConfig[settingNameNew]);
       }

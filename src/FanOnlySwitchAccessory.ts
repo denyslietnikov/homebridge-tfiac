@@ -11,9 +11,15 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
     super(
       platform,
       accessory,
-      'Fan Only',
+      'FanOnly',
       'fanonly',
-      (status) => status.operation_mode === OperationMode.FanOnly,
+      (status) => {
+        // Add null/undefined check for the status object
+        if (!status || status.operation_mode === undefined) {
+          return false;
+        }
+        return status.operation_mode === OperationMode.FanOnly;
+      },
       async (value) => {
         const mode = value ? OperationMode.FanOnly : OperationMode.Auto;
         const deviceState = this.cacheManager.getDeviceState();
@@ -21,7 +27,7 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
         desiredState.setOperationMode(mode);
         await this.cacheManager.applyStateToDevice(desiredState);
       },
-      'Fan Only',
+      'FanOnly',
     );
   }
 }

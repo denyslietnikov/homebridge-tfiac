@@ -11,7 +11,7 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
     super(
       platform,
       accessory,
-      'Dry Mode', // serviceName
+      'Dry', // serviceName
       'dry', // subType
       (status) => {
         // Add null/undefined check for the status object
@@ -27,7 +27,7 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
         desiredState.setOperationMode(mode);
         await this.cacheManager.applyStateToDevice(desiredState);
       },
-      'Dry Mode', // characteristicName
+      'Dry', // characteristicName
     );
   }
 

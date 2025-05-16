@@ -83,7 +83,7 @@ describe('FanOnlySwitchAccessory', () => {
 
   it('should construct and set up characteristics and listeners', () => {
     expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'fanonly');
-    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Fan Only');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'FanOnly');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
     expect(mockCharacteristicOn.onGet).toHaveBeenCalledWith(expect.any(Function));
     expect(mockCharacteristicOn.onSet).toHaveBeenCalledWith(expect.any(Function));

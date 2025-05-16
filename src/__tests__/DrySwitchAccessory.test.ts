@@ -156,7 +156,7 @@ describe('DrySwitchAccessory', () => {
       services: [], reachable: true, on: vi.fn(), emit: vi.fn(), removeAllListeners: vi.fn(),
     } as unknown as PlatformAccessory;
 
-    service = createMockService(hapConstants.Service.Switch.UUID, 'Dry Mode');
+    service = createMockService(hapConstants.Service.Switch.UUID, 'Dry');
 
     const mockOnCharacteristic = {
       onGet: vi.fn((handler) => { handlers.getHandler = handler; return mockOnCharacteristic; }),
@@ -166,7 +166,7 @@ describe('DrySwitchAccessory', () => {
 
     service.getCharacteristic = vi.fn().mockImplementation((char) => {
       if (char === platform.Characteristic.On || char === platform.Characteristic.On.UUID) return mockOnCharacteristic;
-      if (char === platform.Characteristic.Name) return { updateValue: vi.fn(), value: 'Dry Mode' };
+      if (char === platform.Characteristic.Name) return { updateValue: vi.fn(), value: 'Dry' };
       return { onGet: vi.fn().mockReturnThis(), onSet: vi.fn().mockReturnThis(), updateValue: vi.fn(), props: {}, displayName: 'Unknown', UUID: 'unknown' };
     });
     service.setCharacteristic = vi.fn().mockReturnThis();
