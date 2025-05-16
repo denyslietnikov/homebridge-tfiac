@@ -101,9 +101,9 @@ export class StandaloneFanAccessory {
   private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
     try {
       if (value) {
-        await this.deviceAPI.turnOn();
+        await this.deviceAPI.setPower(PowerState.On);
       } else {
-        await this.deviceAPI.turnOff();
+        await this.deviceAPI.setPower(PowerState.Off);
       }
       // State updates will flow via DeviceState
       if (callback && typeof callback === 'function') {
@@ -131,7 +131,11 @@ export class StandaloneFanAccessory {
 
   private async handleRotationSpeedSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
     try {
-      await this.deviceAPI.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
+      // Use the setFanAndSleep method from AirConditionerAPI
+      await this.deviceAPI.setFanAndSleep(
+        this.mapRotationSpeedToFanMode(value as number),
+        this.deviceState.sleepMode, // Maintain current sleep mode
+      );
       // State updates will flow via DeviceState
       if (callback && typeof callback === 'function') {
         callback(null);

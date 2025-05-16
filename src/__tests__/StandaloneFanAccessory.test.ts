@@ -126,9 +126,8 @@ describe('StandaloneFanAccessory', () => {
     mockCacheManager = createMockCacheManager();
     mockCacheManager.getDeviceState = vi.fn().mockReturnValue(mockDeviceState);
     mockCacheManager.api = {
-      turnOn: vi.fn().mockResolvedValue(undefined),
-      turnOff: vi.fn().mockResolvedValue(undefined),
-      setFanSpeed: vi.fn().mockResolvedValue(undefined)
+      setPower: vi.fn().mockResolvedValue(undefined),
+      setFanAndSleep: vi.fn().mockResolvedValue(undefined)
     };
     
     // Mock the CacheManager.getInstance function properly
@@ -260,8 +259,8 @@ describe('StandaloneFanAccessory', () => {
     // Call the handleSet method with true
     await (inst as any).handleSet(true, callback);
     
-    // Should call turnOn and call the callback
-    expect(mockCacheManager.api.turnOn).toHaveBeenCalled();
+    // Should call setPower with PowerState.On and call the callback
+    expect(mockCacheManager.api.setPower).toHaveBeenCalledWith(PowerState.On);
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -272,8 +271,8 @@ describe('StandaloneFanAccessory', () => {
     // Call the handleSet method with false
     await (inst as any).handleSet(false, callback);
     
-    // Should call turnOff and call the callback
-    expect(mockCacheManager.api.turnOff).toHaveBeenCalled();
+    // Should call setPower with PowerState.Off and call the callback
+    expect(mockCacheManager.api.setPower).toHaveBeenCalledWith(PowerState.Off);
     expect(callback).toHaveBeenCalledWith(null);
   });
 
@@ -283,7 +282,7 @@ describe('StandaloneFanAccessory', () => {
     const error = new Error('Test error');
     
     // Make the API call fail
-    mockCacheManager.api.turnOn.mockRejectedValueOnce(error);
+    mockCacheManager.api.setPower.mockRejectedValueOnce(error);
     
     // Call the handleSet method with true
     await (inst as any).handleSet(true, callback);
@@ -315,8 +314,11 @@ describe('StandaloneFanAccessory', () => {
     // Call the handleRotationSpeedSet method with 75 (High)
     await (inst as any).handleRotationSpeedSet(75, callback);
     
-    // Should call setFanSpeed with FanSpeed.High
-    expect(mockCacheManager.api.setFanSpeed).toHaveBeenCalledWith(FanSpeed.High);
+    // Should call setFanAndSleep with FanSpeed.High and current sleep mode
+    expect(mockCacheManager.api.setFanAndSleep).toHaveBeenCalledWith(
+      FanSpeed.High,
+      mockDeviceState.sleepMode
+    );
     expect(callback).toHaveBeenCalledWith(null);
   });
 

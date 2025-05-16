@@ -61,19 +61,30 @@ export class CommandQueue extends EventEmitter {
     return new Promise((resolve, reject) => {
       const now = Date.now();
 
+      // Check if there's a command in the queue that can be merged with
       const lastQueuedCommand = this.queue[this.queue.length - 1];
       if (
         lastQueuedCommand &&
-        (now - lastQueuedCommand.timestamp) < COMMAND_MERGE_WINDOW_MS &&
-        !this.isProcessing
+        (now - lastQueuedCommand.timestamp) < COMMAND_MERGE_WINDOW_MS
       ) {
         const originalCmdJson = JSON.stringify(lastQueuedCommand.command);
         const newCmdJson = JSON.stringify(command);
         lastQueuedCommand.command = { ...lastQueuedCommand.command, ...command };
         lastQueuedCommand.timestamp = now;
         this.log.info(`[CommandQueue][MERGE] Original: ${originalCmdJson}, New: ${newCmdJson}, Result: ${JSON.stringify(lastQueuedCommand.command)}`);
-        lastQueuedCommand.resolve = resolve;
-        lastQueuedCommand.reject = reject;
+        
+        // Create callbacks that will call both resolvers/rejecters
+        const originalResolve = lastQueuedCommand.resolve;
+        lastQueuedCommand.resolve = (val) => {
+          originalResolve(val);
+          resolve(val);
+        };
+        
+        const originalReject = lastQueuedCommand.reject;
+        lastQueuedCommand.reject = (err) => {
+          originalReject(err);
+          reject(err);
+        };
         return;
       }
 
@@ -86,7 +97,11 @@ export class CommandQueue extends EventEmitter {
       };
       this.queue.push(queuedCommand);
       this.log.info(`[CommandQueue][ENQUEUE] Enqueued command: ${JSON.stringify(command)}`);
-      this.processQueue();
+      
+      // Only start processing if we're not already processing
+      if (!this.isProcessing) {
+        this.processQueue();
+      }
     });
   }
 
@@ -160,7 +175,6 @@ export class CommandQueue extends EventEmitter {
         this.emit('maxRetriesReached', { command, error: err } as CommandMaxRetriesReachedEvent);
         reject(err);
       }
-      this.emit('error', { command, error: err } as CommandErrorEvent);
     }
 
     this.isProcessing = false;

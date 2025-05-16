@@ -8,7 +8,7 @@ import {
   createMockPlatform,
   createMockService,
   createMockPlatformAccessory
-} from './testUtils';
+} from './testUtils.js';
 import { PowerState, OperationMode, FanSpeed, FanSpeedPercentMap, SleepModeState } from '../enums.js'; // Import Enums
 import { fahrenheitToCelsius, celsiusToFahrenheit } from '../utils.js'; // Import utils
 
