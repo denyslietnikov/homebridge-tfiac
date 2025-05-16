@@ -20,19 +20,38 @@ export interface TfiacDeviceConfig {
     ip: string;              // mandatory
     port?: number;           // optional
     updateInterval?: number; // optional
-    enableSleep?: boolean;            // show sleep mode switch
-    enableDisplay?: boolean;          // show display switch
-    enableDry?: boolean;              // show dry mode switch
-    enableFanOnly?: boolean;          // show fan-only mode switch
-    enableStandaloneFan?: boolean;    // show standalone fan switch
-    enableHorizontalSwing?: boolean;  // show horizontal swing switch
-    enableTurbo?: boolean;            // show turbo mode switch
-    enableEco?: boolean;              // show eco mode switch
-    enableBeep?: boolean;             // show beep switch
-    enableFanSpeed?: boolean;         // show fan speed control
-    enableTemperature?: boolean;      // show temperature sensor
-    enableIFeelSensor?: boolean;      // show iFeel mode sensor
-    [key: string]: string | number | boolean | undefined;  // Add index signature
+    
+    // Services configuration settings
+    enableDisplay?: boolean;         // show display switch
+    enableSleep?: boolean;           // show sleep mode switch
+    enableDry?: boolean;             // show dry mode switch
+    enableFanOnly?: boolean;         // show fan-only mode switch
+    enableStandaloneFan?: boolean;   // show standalone fan switch
+    enableHorizontalSwing?: boolean; // show horizontal swing switch
+    enableTurbo?: boolean;           // show turbo mode switch
+    enableEco?: boolean;             // show eco mode switch
+    enableBeep?: boolean;            // show beep switch
+    enableFanSpeed?: boolean;        // show fan speed control
+    enableTemperature?: boolean;     // show temperature sensor
+    enableIFeelSensor?: boolean;     // show iFeel mode sensor
+    
+    // Alternative format (for backwards compatibility)
+    enableDisplaySwitch?: boolean;   // show display switch
+    enableSleepSwitch?: boolean;     // show sleep mode switch
+    enableDrySwitch?: boolean;       // show dry mode switch
+    enableFanOnlySwitch?: boolean;   // show fan-only mode switch
+    enableStandaloneFanSwitch?: boolean; // show standalone fan switch  
+    enableHorizontalSwingSwitch?: boolean; // show horizontal swing switch
+    enableTurboSwitch?: boolean;     // show turbo mode switch
+    enableEcoSwitch?: boolean;       // show eco mode switch
+    enableBeepSwitch?: boolean;      // show beep switch
+    enableFanSpeedSwitch?: boolean;  // show fan speed control
+    
+    // Other settings
+    temperatureCorrection?: number;  // temperature correction offset
+    debug?: boolean;                 // enable debug logging for this device
+    
+    [key: string]: string | number | boolean | undefined;  // Support for additional properties
 }
 
 /**

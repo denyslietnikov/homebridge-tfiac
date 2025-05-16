@@ -74,8 +74,20 @@ export class StandaloneFanAccessory {
    * Handle state change events from the DeviceState
    */
   private handleStateChange(state: DeviceState): void {
-    const apiStatus = state.toApiStatus();
-    this.updateStatus(apiStatus);
+    try {
+      // Check if state is a valid DeviceState object with toApiStatus method
+      if (!state || typeof state.toApiStatus !== 'function') {
+        this.platform.log.warn('[StandaloneFan] Invalid DeviceState object received, toApiStatus is not a function');
+        this.updateStatus(null);
+        return;
+      }
+      
+      const apiStatus = state.toApiStatus();
+      this.updateStatus(apiStatus);
+    } catch (error) {
+      this.platform.log.error(`[StandaloneFan] Error in handleStateChange: ${error}`);
+      this.updateStatus(null);
+    }
   }
 
   private updateStatus(status: Partial<AirConditionerStatus> | null): void {

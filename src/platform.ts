@@ -331,8 +331,15 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     let serviceRemoved = false;
 
     servicesToRemove.forEach(({ name, displayName }) => {
-      const settingName = `enable${name}Switch` as keyof TfiacDeviceConfig;
-      if (deviceConfig[settingName] === false) {
+      // Check only for enable format
+      const settingNameNew = `enable${name}` as keyof TfiacDeviceConfig;
+      const settingNameSwitch = `enable${name}Switch` as keyof TfiacDeviceConfig;
+
+      // If any of these settings is explicitly false, remove the service
+      const isDisabled = deviceConfig[settingNameNew] === false || 
+                        deviceConfig[settingNameSwitch] === false;
+
+      if (isDisabled) {
         let service = accessory.getService(displayName);
         if (!service) {
           const subtype = displayName.toLowerCase().replace(/ /g, '');
@@ -355,7 +362,10 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       }
     });
 
-    if (deviceConfig.enableTemperature === false) {
+    // Special case for temperature sensors
+    const isTemperatureDisabled = deviceConfig.enableTemperature === false;
+    
+    if (isTemperatureDisabled) {
       const tempSensorServices = accessory.services.filter(
         service => service.UUID === this.api.hap.Service.TemperatureSensor.UUID,
       );
@@ -388,8 +398,23 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   ): void {
     for (const config of this.optionalAccessoryConfigs) {
       const { name, displayName, accessoryClass, enabledByDefault, accessoryMap } = config;
-      const settingName = `enable${name}Switch` as keyof TfiacDeviceConfig;
-      const isEnabled = deviceConfig[settingName] ?? enabledByDefault;
+      
+      // Check only for enable formats
+      const settingNameNew = `enable${name}` as keyof TfiacDeviceConfig;
+      const settingNameSwitch = `enable${name}Switch` as keyof TfiacDeviceConfig;
+      
+      // Check settings, prioritizing explicit settings over defaults
+      let isEnabled = enabledByDefault;
+      
+      // Check enable format (e.g., "enableDisplay: true")
+      if (deviceConfig[settingNameNew] !== undefined) {
+        isEnabled = Boolean(deviceConfig[settingNameNew]);
+      }
+      
+      // Check switch format (e.g., "enableDisplaySwitch: true") - highest priority
+      if (deviceConfig[settingNameSwitch] !== undefined) {
+        isEnabled = Boolean(deviceConfig[settingNameSwitch]);
+      }
 
       if (isEnabled) {
         const instance = new accessoryClass(this, accessory, cacheManager);

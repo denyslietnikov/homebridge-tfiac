@@ -119,6 +119,14 @@ export abstract class BaseSwitchAccessory {
     }
 
     this.service.setCharacteristic(this.nameChar, this.serviceName);
+    
+    // Set ConfiguredName for better display in Home app
+    if (typeof this.platform.Characteristic.ConfiguredName !== 'undefined') {
+      this.service.setCharacteristic(
+        this.platform.Characteristic.ConfiguredName,
+        this.serviceName,
+      );
+    }
 
     this.service.getCharacteristic(this.onChar)
       .onGet(this.handleGet.bind(this))

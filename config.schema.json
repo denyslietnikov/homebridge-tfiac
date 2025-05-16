@@ -35,42 +35,15 @@
               "minimum": 0.5,
               "maximum": 1
             },
-            "display": {
+            "enableDisplay": {
               "title": "Display",
               "type": "boolean",
               "required": false
             },
-            "health": {
-              "title": "Health",
-              "type": "boolean",
-              "required": false
-            },
-            "clean": {
-              "title": "Clean",
-              "type": "boolean",
-              "required": false
-            },
-            "sleep": {
+            "enableSleep": {
               "title": "Sleep",
               "type": "boolean",
               "required": false
-            },
-            "mildew": {
-              "title": "Mildew",
-              "type": "boolean",
-              "required": false
-            },
-            "auto": {
-              "title": "Auto Fan Speed",
-              "type": "boolean",
-              "required": false
-            },
-            "swing": {
-              "title": "Swing",
-              "type": "integer",
-              "required": false,
-              "minimum": 1,
-              "maximum": 3
             },
             "enableDry": {
               "title": "Dry",
