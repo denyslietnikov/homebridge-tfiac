@@ -592,15 +592,20 @@ export function createMockCacheManager(
 export function setupTestPlatform(
   config: Partial<PlatformConfig> = {},
   customLogger?: MockLogger,
+  customAPI?: MockAPI,
 ): TfiacPlatform {
   const logger = customLogger || createMockLogger();
-  const api = sharedMockAPI;
+  const api = customAPI || sharedMockAPI;
   const defaultConfig = {
     name: PLATFORM_NAME, platform: PLATFORM_NAME,
     devices: [{ name: 'Test AC', ip: '192.168.1.99', port: 7777, id: 'default-test-id' }],
     ...config,
   };
-  return new TfiacPlatform(logger as unknown as Logging, defaultConfig as PlatformConfig, api as unknown as API);
+  return new TfiacPlatform(
+    logger as unknown as Logging,
+    defaultConfig as PlatformConfig,
+    api as unknown as API,
+  );
 }
 
 export const mockPlatform = setupTestPlatform();

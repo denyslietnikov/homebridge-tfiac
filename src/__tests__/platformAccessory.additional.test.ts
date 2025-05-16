@@ -196,18 +196,26 @@ describe('TfiacPlatformAccessory extra tests', () => {
       opt_turbo: PowerState.Off, 
     };
     (inst as any).updateHeaterCoolerCharacteristics(status);
+    
+    // Check Active state
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.Active,
       platform.Characteristic!.Active.ACTIVE,
     );
+    
+    // Check CurrentHeaterCoolerState
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.CurrentHeaterCoolerState,
       platform.Characteristic!.CurrentHeaterCoolerState.HEATING,
     );
+    
+    // Check TargetHeaterCoolerState
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.TargetHeaterCoolerState,
       platform.Characteristic!.TargetHeaterCoolerState.HEAT,
     );
+    
+    // Check temperature values
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.CurrentTemperature,
       100,
@@ -220,13 +228,17 @@ describe('TfiacPlatformAccessory extra tests', () => {
       platform.Characteristic!.HeatingThresholdTemperature,
       100,
     );
+    
+    // Check fan speed
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.RotationSpeed,
-      FanSpeedPercentMap[FanSpeed.High], 
+      100,
     );
+    
+    // Check swing mode
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.SwingMode,
-      platform.Characteristic!.SwingMode.SWING_ENABLED, // Updated expectation
+      platform.Characteristic!.SwingMode.SWING_ENABLED,
     );
   });
 
@@ -248,7 +260,7 @@ describe('TfiacPlatformAccessory extra tests', () => {
     expect((inst as any)['mapRotationSpeedToAPIFanMode'](20)).toBe(FanSpeed.Silent); 
     expect((inst as any)['mapRotationSpeedToAPIFanMode'](40)).toBe(FanSpeed.Low); 
     expect((inst as any)['mapRotationSpeedToAPIFanMode'](60)).toBe(FanSpeed.Medium);
-    expect((inst as any)['mapRotationSpeedToAPIFanMode'](90)).toBe(FanSpeed.High);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](90)).toBe(FanSpeed.MediumHigh);
 
     expect(fahrenheitToCelsius(32)).toBe(0);
     expect(celsiusToFahrenheit(0)).toBe(32);

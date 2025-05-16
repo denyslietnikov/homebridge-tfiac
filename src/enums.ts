@@ -44,7 +44,7 @@ export const FanSpeedPercentMap: Record<FanSpeed, number> = {
   [FanSpeed.MediumLow]: 45,
   [FanSpeed.Medium]: 60, // Was Middle, percentage adjusted
   [FanSpeed.MediumHigh]: 75,
-  [FanSpeed.High]: 90, // Percentage adjusted
+  [FanSpeed.High]: 100, // Changed from 90 to 100
   [FanSpeed.Turbo]: 100,
 };
 

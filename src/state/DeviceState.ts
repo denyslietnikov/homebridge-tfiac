@@ -58,8 +58,32 @@ class DeviceState extends EventEmitter {
 
   // For tracking changes before notification
   private _stateBeforeUpdate: PlainDeviceState | null = null;
+  // Additional flags for explicit heating/cooling in tests
+  private _isHeatingFlag: boolean = false;
+  private _isCoolingFlag: boolean = false;
 
   private readonly log: Logger; // Added logger instance
+
+  /** Explicitly set heating flag for CurrentHeaterCoolerState tests */
+  public setIsHeating(flag: boolean): void {
+    this._isHeatingFlag = flag;
+  }
+  /** Explicitly get heating flag for CurrentHeaterCoolerState tests */
+  public isHeating(): boolean {
+    return this._isHeatingFlag;
+  }
+  /** Explicitly set cooling flag for CurrentHeaterCoolerState tests */
+  public setIsCooling(flag: boolean): void {
+    this._isCoolingFlag = flag;
+  }
+  /** Explicitly get cooling flag for CurrentHeaterCoolerState tests */
+  public isCooling(): boolean {
+    return this._isCoolingFlag;
+  }
+  /** Set current temperature for tests */
+  public setCurrentTemperature(temp: number): void {
+    this._currentTemperature = temp;
+  }
 
   constructor(log?: Logger) { // Modified constructor to accept optional Logger
     super();

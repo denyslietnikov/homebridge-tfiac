@@ -205,12 +205,10 @@ export class FanSpeedAccessory {
     if (speed <= (FanSpeedPercentMap[FanSpeed.MediumHigh] + FanSpeedPercentMap[FanSpeed.High]) / 2) {
       return FanSpeed.MediumHigh;
     }
-    if (speed <= FanSpeedPercentMap[FanSpeed.High]) {
+    if (speed < FanSpeedPercentMap[FanSpeed.High]) {
       return FanSpeed.High;
     }
-    if (speed <= (FanSpeedPercentMap[FanSpeed.High] + FanSpeedPercentMap[FanSpeed.Turbo]) / 2) {
-      return FanSpeed.High;
-    }
+    // When speed is exactly 100 or more, return Turbo
     return FanSpeed.Turbo;
   }
 }

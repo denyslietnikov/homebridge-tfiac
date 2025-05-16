@@ -114,7 +114,7 @@ export abstract class BaseSwitchAccessory {
       }
       if (!this.service) {
         this.platform.log.error(`[${this.logPrefix}] Failed to add Switch service: ${this.serviceName}. Accessory will not function correctly.`);
-        return;
+        throw new Error(`Service was added but is still null for ${this.serviceName}`);
       }
     }
 

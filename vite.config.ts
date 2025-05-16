@@ -30,7 +30,7 @@ export default defineConfig({
         '**/fix-deprecations.js',
         '**/eslint.config.js',
         '**/vite.config.ts',  // Trailing comma added
-        '*/srs/state/index.ts',
+        './src/state/index.ts',
       ],
     },
     mockReset: true,

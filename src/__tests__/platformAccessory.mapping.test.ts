@@ -200,7 +200,8 @@ beforeEach(() => {
   inst.cacheManager = {
     clear: vi.fn(),
     getCachedStatus: vi.fn().mockResolvedValue(inst.cachedStatus),
-    getDeviceState: vi.fn().mockReturnValue(mockDeviceState)
+    getDeviceState: vi.fn().mockReturnValue(mockDeviceState),
+    applyStateToDevice: vi.fn().mockResolvedValue(undefined)
   };
   
   // Mock updateCachedStatus to prevent hanging
@@ -351,9 +352,27 @@ describe('handleActiveSet skip logic', () => {
     inst.cachedStatus = { is_on: PowerState.On };
     inst['deviceAPI'].turnOn = vi.fn();
     inst['deviceAPI'].turnOff = vi.fn();
-    inst['cacheManager'] = { clear: vi.fn() };
+    
+    // Create a complete mock for cacheManager with getDeviceState and applyStateToDevice
+    const mockDevState = {
+      getPowerState: vi.fn().mockReturnValue(PowerState.On),
+      clone: vi.fn().mockReturnValue({
+        setPower: vi.fn(),
+        power: PowerState.On
+      })
+    };
+    
+    inst['cacheManager'] = { 
+      clear: vi.fn(),
+      getDeviceState: vi.fn().mockReturnValue(mockDevState),
+      applyStateToDevice: vi.fn().mockResolvedValue(undefined)
+    };
+    
     inst['updateCachedStatus'] = vi.fn(); // stub to avoid hanging
     await inst.handleActiveSet(mockPlatform.Characteristic.Active.ACTIVE);
+    
+    // Verify that applyStateToDevice was called instead of direct deviceAPI call
+    expect(inst['cacheManager'].applyStateToDevice).toHaveBeenCalled();
     expect(inst['deviceAPI'].turnOn).not.toHaveBeenCalled();
   });
 });
