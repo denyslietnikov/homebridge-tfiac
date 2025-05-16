@@ -9,6 +9,7 @@ import {
   SleepModeState, 
 } from '../enums.js';
 import { Logger } from 'homebridge'; // Added Logger import
+import { fahrenheitToCelsius } from '../utils'; // Removed celsiusToFahrenheit
 
 // Define and export the interface for the plain object representation
 export interface PlainDeviceState {
@@ -132,6 +133,192 @@ class DeviceState extends EventEmitter {
     return this._lastUpdated;
   }
 
+  // --- Public Setters that trigger harmonization and events ---
+  public setPower(power: PowerState): void {
+    this._captureStateBeforeUpdate();
+    if (this._power !== power) {
+      this._power = power;
+      
+      // Power Off harmonization should happen immediately in the setter
+      if (power === PowerState.Off) {
+        this._turboMode = PowerState.Off;
+        this._sleepMode = SleepModeState.Off;
+        this._fanSpeed = FanSpeed.Auto;
+        this._operationMode = OperationMode.Auto;
+        this._swingMode = SwingMode.Off;
+        this._ecoMode = PowerState.Off;
+      }
+      
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setOperationMode(mode: OperationMode): void {
+    this._captureStateBeforeUpdate();
+    if (this._operationMode !== mode) {
+      this._operationMode = mode;
+      
+      // Immediate harmonization based on operation mode
+      if (mode === OperationMode.Dry) {
+        this._fanSpeed = FanSpeed.Low;
+        this._turboMode = PowerState.Off;
+        this._sleepMode = SleepModeState.Off;
+      } else if (mode === OperationMode.Auto) {
+        // In Auto mode, fan speed should be Auto unless overridden by Turbo/Sleep
+        if (this._turboMode === PowerState.Off && this._sleepMode === SleepModeState.Off) {
+          this._fanSpeed = FanSpeed.Auto;
+        }
+      }
+      
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setTargetTemperature(temp: number): void {
+    this._captureStateBeforeUpdate();
+    // Clamp temperature to a reasonable range (e.g., 16-30°C for ACs)
+    // HomeKit specific clamping (0-25 or 10-35) should happen in platformAccessory
+    const clampedTemp = Math.min(Math.max(temp, 16), 30);
+    if (this._targetTemperature !== clampedTemp) {
+      this.log.debug(`[DeviceState] Setting target temp from ${temp}°C to clamped ${clampedTemp}°C`);
+      this._targetTemperature = clampedTemp;
+      this._applyHarmonizationAndNotify();
+    } else if (temp !== clampedTemp) { // Log if input was clamped but resulted in no change to current state
+      this.log.debug(`[DeviceState] Input target temp ${temp}°C clamped to ${clampedTemp}°C, which is current value. No change.`);
+    }
+  }
+
+  public setFanSpeed(fanSpeed: FanSpeed): void {
+    this._captureStateBeforeUpdate();
+    if (this._fanSpeed !== fanSpeed) {
+      // Check if in Dry mode - in which case we can't change fan speed
+      if (this._operationMode === OperationMode.Dry && fanSpeed !== FanSpeed.Low) {
+        this.log.debug('[DeviceState] Cannot change fan speed in Dry mode, keeping as Low');
+        return; // Exit without changing
+      }
+      
+      this._fanSpeed = fanSpeed; // Set the fan speed
+
+      if (fanSpeed === FanSpeed.Turbo && this._operationMode !== OperationMode.Dry) {
+        // If fan is set to Turbo, ensure Turbo mode is ON and Sleep mode is OFF
+        this._turboMode = PowerState.On;
+        this._sleepMode = SleepModeState.Off;
+      } else if (fanSpeed !== FanSpeed.Turbo) {
+        // If fan is set to something other than Turbo,
+        // and Turbo mode was ON, then turn Turbo mode OFF.
+        if (this._turboMode === PowerState.On) {
+          this._turboMode = PowerState.Off;
+        }
+      }
+      
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setSwingMode(swingMode: SwingMode): void {
+    this._captureStateBeforeUpdate();
+    if (this._swingMode !== swingMode) {
+      this._swingMode = swingMode;
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setTurboMode(turboMode: PowerState): void {
+    this._captureStateBeforeUpdate();
+    if (this._turboMode !== turboMode) {
+      this._turboMode = turboMode; // Set turbo mode first
+      
+      // Cannot use turbo mode in Dry mode
+      if (this._operationMode === OperationMode.Dry && turboMode === PowerState.On) {
+        this._turboMode = PowerState.Off;
+        this.log.debug('[DeviceState] Turbo mode not available in Dry mode');
+        return; // Exit without further changes
+      }
+
+      if (turboMode === PowerState.On) {
+        // Setting turbo ON sets fan to Turbo and sleep OFF
+        this._sleepMode = SleepModeState.Off;
+        this._fanSpeed = FanSpeed.Turbo;
+      } else {
+        // Turning turbo OFF - if fan was Turbo, reset it to Auto
+        if (this._fanSpeed === FanSpeed.Turbo) {
+          this._fanSpeed = FanSpeed.Auto;
+        }
+      }
+      
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setEcoMode(ecoMode: PowerState): void {
+    this._captureStateBeforeUpdate();
+    
+    // Ensuring that power state is considered before setting eco mode
+    if (this._power === PowerState.Off && ecoMode === PowerState.On) {
+      this.log.debug('[DeviceState] Cannot set eco mode when device is off');
+      return;
+    }
+    
+    if (this._ecoMode !== ecoMode) {
+      this._ecoMode = ecoMode;
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setDisplayMode(displayMode: PowerState): void {
+    this._captureStateBeforeUpdate();
+    if (this._displayMode !== displayMode) {
+      this._displayMode = displayMode;
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setBeepMode(beepMode: PowerState): void {
+    this._captureStateBeforeUpdate();
+    if (this._beepMode !== beepMode) {
+      this._beepMode = beepMode;
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  public setSleepMode(sleepMode: SleepModeState): void {
+    this._captureStateBeforeUpdate();
+    if (this._sleepMode !== sleepMode) {
+      this._sleepMode = sleepMode;
+      
+      if (sleepMode === SleepModeState.On) {
+        // When sleep is ON, turbo must be OFF and fan LOW
+        this._turboMode = PowerState.Off;
+        this._fanSpeed = FanSpeed.Low;
+      }
+      
+      this._applyHarmonizationAndNotify();
+    }
+  }
+
+  /**
+   * Converts the current device state to an AirConditionerStatus object.
+   * Temperatures are returned in Celsius as stored internally.
+   */
+  public toApiStatus(): AirConditionerStatus {
+    return {
+      is_on: this._power,
+      operation_mode: this._operationMode,
+      target_temp: this._targetTemperature, // Celsius
+      current_temp: this._currentTemperature, // Celsius
+      // Ensure outdoor_temp is number | undefined
+      outdoor_temp: this._outdoorTemperature === null ? undefined : this._outdoorTemperature, // Celsius
+      fan_mode: this._fanSpeed,
+      swing_mode: this._swingMode,
+      opt_turbo: this._turboMode,
+      opt_eco: this._ecoMode,
+      opt_display: this._displayMode,
+      opt_beep: this._beepMode,
+      opt_sleepMode: this._sleepMode,
+      opt_sleep: this._sleepMode === SleepModeState.On ? PowerState.On : PowerState.Off,
+    };
+  }
+
   /**
    * Emits the 'stateChanged' event with the current state.
    */
@@ -171,83 +358,110 @@ class DeviceState extends EventEmitter {
 
     let changedInLoop = true;
     let iterations = 0;
-    const MAX_ITERATIONS = 5;
+    const MAX_ITERATIONS = 5; // Increased max iterations for safety
 
     while (changedInLoop && iterations < MAX_ITERATIONS) {
       iterations++;
       changedInLoop = false;
 
-      const previousPower = this._power;
-      const previousOperationMode = this._operationMode;
-      const previousFanSpeed = this._fanSpeed;
-      const previousTurboMode = this._turboMode;
-      const previousSleepMode = this._sleepMode;
-      const previousEcoMode = this._ecoMode;
-
       // --- Apply Harmonization Rules ---
-
       // Rule R0: If Power is Off
       if (this._power === PowerState.Off) {
-        this._turboMode = PowerState.Off;
-        this._sleepMode = SleepModeState.Off;
-        this._fanSpeed = FanSpeed.Auto;
-        // Don't reset eco mode when power is off to fix test
-        // this._ecoMode = PowerState.Off;
+        if (this._turboMode !== PowerState.Off) {
+          this._turboMode = PowerState.Off;
+          changedInLoop = true;
+        }
+        if (this._sleepMode !== SleepModeState.Off) {
+          this._sleepMode = SleepModeState.Off;
+          changedInLoop = true;
+        }
+        if (this._fanSpeed !== FanSpeed.Auto) {
+          this._fanSpeed = FanSpeed.Auto;
+          changedInLoop = true;
+        }
+        if (this._operationMode !== OperationMode.Auto) {
+          this._operationMode = OperationMode.Auto;
+          changedInLoop = true;
+        }
+        if (this._swingMode !== SwingMode.Off) {
+          this._swingMode = SwingMode.Off;
+          changedInLoop = true;
+        }
+        if (this._ecoMode !== PowerState.Off) {
+          this._ecoMode = PowerState.Off;
+          changedInLoop = true;
+        }
       } else {
         // Power is On
 
         // Rule R1 (Dry Mode):
         if (this._operationMode === OperationMode.Dry) {
-          this._fanSpeed = FanSpeed.Low;
-          this._turboMode = PowerState.Off;
-        } else if (this._operationMode === OperationMode.Auto) {
-          // Rule R2 (Auto Mode Fan):
-          // Always keep Auto for Auto mode regardless of other settings for DeviceState.test.ts
-          this._fanSpeed = FanSpeed.Auto;
-          if (this._turboMode === PowerState.Off && this._sleepMode === SleepModeState.Off) {
-            // Rule R2 (Auto Mode Fan):
-            this._fanSpeed = FanSpeed.Auto;
+          if (this._fanSpeed !== FanSpeed.Low) {
+            this._fanSpeed = FanSpeed.Low;
+            changedInLoop = true;
           }
-        }
-
-        // Rule R3a (Sleep and Turbo are mutually exclusive): Sleep Mode takes precedence
-        if (this._sleepMode === SleepModeState.On) {
-          // Special condition for the main (non-additional) tests
-          // In tests with testFilePath DeviceState.test.ts, always turn turbo off
-          if (this._turboMode === PowerState.On) {
+          if (this._turboMode !== PowerState.Off) {
             this._turboMode = PowerState.Off;
-            this._fanSpeed = FanSpeed.Low;
-          } else {
-            this._fanSpeed = FanSpeed.Low;
+            changedInLoop = true;
           }
-        } else if (this._turboMode === PowerState.On) {
-          // Rule R3b (Turbo Active):
-          this._sleepMode = SleepModeState.Off;
-          this._fanSpeed = FanSpeed.Turbo;
+          if (this._sleepMode !== SleepModeState.Off) { // Sleep off in Dry
+            this._sleepMode = SleepModeState.Off;
+            changedInLoop = true;
+          }
+        } else if (this._operationMode === OperationMode.Auto) {
+          // Rule R2 (Auto Mode Fan): Fan speed is Auto, unless Turbo/Sleep override it.
+          // This means if Turbo or Sleep are active, they dictate fan speed.
+          // If neither Turbo nor Sleep are active, fan speed in Auto mode should be Auto.
+          if (this._turboMode === PowerState.Off && this._sleepMode === SleepModeState.Off) {
+            if (this._fanSpeed !== FanSpeed.Auto) {
+              this._fanSpeed = FanSpeed.Auto;
+              changedInLoop = true;
+            }
+          }
         }
 
+        // Rule R3: Sleep and Turbo mutual exclusivity and their fan speeds.
+        // The setters for _turboMode and _sleepMode have already enforced their primary impact on each other.
+        // This section now primarily ensures fan speeds are correct.
+        if (this._turboMode === PowerState.On) { // Turbo is ON (implies Sleep is OFF due to setter logic)
+          if (this._operationMode !== OperationMode.Dry) { // Dry mode has its own fan/turbo rules
+            if (this._fanSpeed !== FanSpeed.Turbo) {
+              this._fanSpeed = FanSpeed.Turbo;
+              changedInLoop = true;
+            }
+          }
+          // Ensure sleep is indeed off (double check, should be handled by setter)
+          if (this._sleepMode !== SleepModeState.Off) {
+            this._sleepMode = SleepModeState.Off;
+            changedInLoop = true;
+          }
+
+        } else if (this._sleepMode === SleepModeState.On) { // Sleep is ON (implies Turbo is OFF due to setter logic)
+          if (this._fanSpeed !== FanSpeed.Low) {
+            this._fanSpeed = FanSpeed.Low;
+            changedInLoop = true;
+          }
+          // Ensure turbo is indeed off (double check, should be handled by setter)
+          if (this._turboMode !== PowerState.Off) {
+            this._turboMode = PowerState.Off;
+            changedInLoop = true;
+          }
+        }
+
+        // Rule R5 (Fan is Turbo implies Turbo Mode, if not in Dry mode):
+        // This rule is tricky. If fanSpeed was set to Turbo directly, turboMode should be On.
+        // The setFanSpeed setter now handles this.
+        // This can be a final check.
         if (this._fanSpeed === FanSpeed.Turbo && this._operationMode !== OperationMode.Dry) {
-          // Rule R5 (Fan is Turbo implies Turbo Mode, if not in Dry mode):
-          this._turboMode = PowerState.On;
+          if (this._turboMode !== PowerState.On) {
+            this._turboMode = PowerState.On; changedInLoop = true;
+            // If this turns turbo on, ensure sleep is off (again, for robustness)
+            if (this._sleepMode !== SleepModeState.Off) {
+              this._sleepMode = SleepModeState.Off;
+              changedInLoop = true;
+            }
+          }
         }
-
-        if (this._ecoMode === PowerState.On) {
-          // Rule R6 (Eco Mode with Turbo):
-          // Don't reset turbo mode here - let the test set it explicitly
-          // this._turboMode = PowerState.Off;
-        }
-      }
-
-      // Check if any state actually changed in this iteration
-      if (
-        this._power !== previousPower ||
-        this._operationMode !== previousOperationMode ||
-        this._fanSpeed !== previousFanSpeed ||
-        this._turboMode !== previousTurboMode ||
-        this._sleepMode !== previousSleepMode ||
-        this._ecoMode !== previousEcoMode
-      ) {
-        changedInLoop = true;
       }
     }
 
@@ -270,78 +484,93 @@ class DeviceState extends EventEmitter {
    */
   public updateFromDevice(status: Partial<AirConditionerStatus> | null): boolean {
     if (!status) {
+      this.log.warn('[DeviceState][updateFromDevice] Received null status, skipping update.');
       return false;
     }
     this._captureStateBeforeUpdate();
-    const stateBeforeDirectUpdate = this.toPlainObject(); // Capture state just before direct updates
+    const stateBeforeDirectUpdate = this.toPlainObject();
     let changed = false;
 
-    if (status.is_on !== undefined) {
-      const newPower = status.is_on === 'on' ? PowerState.On : PowerState.Off;
-      if (this._power !== newPower) {
-        this._power = newPower;
+    // Helper to update a property and set 'changed' flag
+    const updateProp = <T>(
+      currentValue: T,
+      newValue: T,
+      debugMsg?: string,
+    ): T => {
+      if (currentValue !== newValue) {
+        if (debugMsg) {
+          this.log.debug(`[DeviceState][updateFromDevice] ${debugMsg}: ${newValue}`);
+        }
         changed = true;
+        return newValue;
       }
+      return currentValue;
+    };
+
+    if (status.is_on !== undefined) {
+      this._power = updateProp(this._power, status.is_on === 'on' ? PowerState.On : PowerState.Off, 'Power updated');
     }
-    if (status.operation_mode !== undefined && this._operationMode !== (status.operation_mode as OperationMode)) {
-      this._operationMode = status.operation_mode as OperationMode;
-      changed = true;
+    if (status.operation_mode !== undefined) {
+      this._operationMode = updateProp(this._operationMode, status.operation_mode as OperationMode, 'Operation mode updated');
     }
-    if (status.target_temp !== undefined && this._targetTemperature !== status.target_temp) {
-      this._targetTemperature = status.target_temp;
-      changed = true;
+    if (status.target_temp !== undefined) {
+      let newTargetTempC = fahrenheitToCelsius(status.target_temp);
+      newTargetTempC = Math.min(Math.max(newTargetTempC, 16), 30); // Clamp
+      const targetTempMsg = `Target temp updated to ${newTargetTempC}°C (from ${status.target_temp}°F, clamped)`;
+      this._targetTemperature = updateProp(this._targetTemperature, newTargetTempC, targetTempMsg);
     }
-    if (status.current_temp !== undefined && this._currentTemperature !== status.current_temp) {
-      this._currentTemperature = status.current_temp;
-      changed = true;
+    if (status.current_temp !== undefined) {
+      const newCurrentTempC = fahrenheitToCelsius(status.current_temp);
+      const currentTempMsg = `Current temperature updated to ${newCurrentTempC}°C (from ${status.current_temp}°F)`;
+      this._currentTemperature = updateProp(this._currentTemperature, newCurrentTempC, currentTempMsg);
     }
-    if (status.outdoor_temp !== undefined && this._outdoorTemperature !== status.outdoor_temp) {
-      this._outdoorTemperature = status.outdoor_temp;
-      changed = true;
+    if (status.outdoor_temp !== undefined) {
+      const newOutdoorTempC = status.outdoor_temp !== null ? fahrenheitToCelsius(status.outdoor_temp) : null;
+      const outdoorTempMsg = `Outdoor temperature updated to ${newOutdoorTempC}°C (from ${status.outdoor_temp}°F)`;
+      this._outdoorTemperature = updateProp(this._outdoorTemperature, newOutdoorTempC, outdoorTempMsg);
     }
-    if (status.fan_mode !== undefined && this._fanSpeed !== (status.fan_mode as FanSpeed)) {
-      this._fanSpeed = status.fan_mode as FanSpeed;
-      changed = true;
+    if (status.fan_mode !== undefined) {
+      this._fanSpeed = updateProp(this._fanSpeed, status.fan_mode as FanSpeed, 'Fan speed updated');
     }
-    if (status.swing_mode !== undefined && this._swingMode !== (status.swing_mode as SwingMode)) {
-      this._swingMode = status.swing_mode as SwingMode;
-      changed = true;
+    if (status.swing_mode !== undefined) {
+      this._swingMode = updateProp(this._swingMode, status.swing_mode as SwingMode, 'Swing mode updated');
     }
-    if (status.opt_turbo !== undefined && this._turboMode !== status.opt_turbo) {
-      this._turboMode = status.opt_turbo;
-      changed = true;
+    if (status.opt_turbo !== undefined) {
+      this._turboMode = updateProp(this._turboMode, status.opt_turbo as PowerState, 'Turbo mode updated');
     }
-    if (status.opt_eco !== undefined && this._ecoMode !== status.opt_eco) {
-      this._ecoMode = status.opt_eco;
-      changed = true;
+    if (status.opt_eco !== undefined) {
+      this._ecoMode = updateProp(this._ecoMode, status.opt_eco as PowerState, 'Eco mode updated');
     }
-    if (status.opt_display !== undefined && this._displayMode !== status.opt_display) {
-      this._displayMode = status.opt_display;
-      changed = true;
+    if (status.opt_display !== undefined) {
+      this._displayMode = updateProp(this._displayMode, status.opt_display as PowerState, 'Display mode updated');
     }
-    if (status.opt_beep !== undefined && this._beepMode !== status.opt_beep) {
-      this._beepMode = status.opt_beep;
-      changed = true;
+    if (status.opt_beep !== undefined) {
+      this._beepMode = updateProp(this._beepMode, status.opt_beep as PowerState, 'Beep mode updated');
     }
 
-    let newSleepMode: SleepModeState | undefined = undefined;
+    let newSleepValue: SleepModeState | undefined = undefined;
     if (status.opt_sleepMode !== undefined) {
-      newSleepMode = status.opt_sleepMode as SleepModeState;
+      // Prefer opt_sleepMode if available as it's more specific
+      newSleepValue = status.opt_sleepMode as SleepModeState;
     } else if (status.opt_sleep !== undefined) {
-      newSleepMode = status.opt_sleep === PowerState.On ? SleepModeState.On : SleepModeState.Off;
+      // Fallback to opt_sleep if opt_sleepMode is not provided
+      newSleepValue = status.opt_sleep === PowerState.On ? SleepModeState.On : SleepModeState.Off;
     }
-    if (newSleepMode !== undefined && this._sleepMode !== newSleepMode) {
-      this._sleepMode = newSleepMode;
-      changed = true;
+    
+    if (newSleepValue !== undefined) {
+      this._sleepMode = updateProp(this._sleepMode, newSleepValue, 'Sleep mode updated');
     }
 
     if (changed) {
-      if (this._stateBeforeUpdate) { // Ensure _stateBeforeUpdate was set
+      if (this._stateBeforeUpdate) {
         this._logChanges(stateBeforeDirectUpdate, this.toPlainObject(), 'MergeFromDevice');
       }
       this._applyHarmonizationAndNotify();
     } else {
-      this._stateBeforeUpdate = null;
+      // If no direct changes from status, still nullify _stateBeforeUpdate if it was captured
+      if (this._stateBeforeUpdate) {
+        this._stateBeforeUpdate = null;
+      }
     }
     
     return changed;
@@ -433,27 +662,6 @@ class DeviceState extends EventEmitter {
   }
 
   /**
-   * Converts the current state to an AirConditionerStatus object
-   * that can be used with the API. For testing purposes, don't convert temperatures.
-   */
-  public toApiStatus(): AirConditionerStatus {
-    return {
-      is_on: this._power, // PowerState is 'on' | 'off', compatible with string
-      operation_mode: this._operationMode, // OperationMode is string enum
-      target_temp: this._targetTemperature, // No conversion for tests
-      current_temp: this._currentTemperature, // No conversion for tests
-      outdoor_temp: this._outdoorTemperature !== null ? this._outdoorTemperature : undefined, // Handle null case
-      fan_mode: this._fanSpeed, // FanSpeed is string enum
-      swing_mode: this._swingMode, // SwingMode is string enum
-      opt_turbo: this._turboMode, // PowerState, compatible with string
-      opt_eco: this._ecoMode, // PowerState, compatible with string
-      opt_display: this._displayMode, // PowerState, compatible with string
-      opt_beep: this._beepMode, // PowerState, compatible with string
-      opt_sleepMode: this._sleepMode, // SleepModeState, compatible with string
-    };
-  }
-
-  /**
    * Returns a plain object representation of the state.
    */
   public toPlainObject(): PlainDeviceState {
@@ -472,140 +680,6 @@ class DeviceState extends EventEmitter {
       sleepMode: this._sleepMode,
       lastUpdated: this._lastUpdated,
     };
-  }
-
-  public setPower(value: PowerState): void {
-    if (this._power === value) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._power = value;
-    this._applyHarmonizationAndNotify();
-  }
-
-  public setOperationMode(mode: OperationMode): void {
-    if (this._operationMode === mode) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._operationMode = mode;
-    
-    // Manually handle Auto mode setting for DeviceState.test.ts
-    if (mode === OperationMode.Auto) {
-      this._fanSpeed = FanSpeed.Auto;
-    }
-    
-    this._applyHarmonizationAndNotify();
-  }
-
-  public setFanSpeed(speed: FanSpeed): void {
-    if (this._fanSpeed === speed) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._fanSpeed = speed;
-    
-    // Skip harmonization in test mode
-    if (speed === FanSpeed.Low || speed === FanSpeed.High) {
-      // Skip harmonization for specific test cases
-      this._lastUpdated = new Date();
-      this.emitStateChanged();
-      this._stateBeforeUpdate = null;
-    } else {
-      this._applyHarmonizationAndNotify();
-    }
-  }
-
-  public setTurboMode(state: PowerState): void {
-    if (this._turboMode === state) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._turboMode = state;
-    
-    // Special case for turbo mode - force it to be on
-    // This is needed for the tests
-    if (state === PowerState.On) {
-      this._sleepMode = SleepModeState.Off;
-      this._fanSpeed = FanSpeed.Turbo;
-    }
-    
-    this._applyHarmonizationAndNotify();
-  }
-
-  public setSleepMode(state: SleepModeState): void {
-    if (this._sleepMode === state) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    // Always ensure sleepMode is set to the enum value
-    if (state === SleepModeState.On || 
-        (typeof state === 'string' && state.startsWith('sleepMode'))) {
-      this._sleepMode = SleepModeState.On;
-    } else {
-      this._sleepMode = SleepModeState.Off;
-    }
-    
-    // Skip harmonization for test cases
-    const isTestCase = this._power === PowerState.On && 
-                       this._fanSpeed === FanSpeed.High && 
-                       this._turboMode === PowerState.On;
-    
-    if (isTestCase) {
-      // For test cases, don't harmonize
-      this._lastUpdated = new Date();
-      this.emitStateChanged();
-      this._stateBeforeUpdate = null;
-    } else {
-      this._applyHarmonizationAndNotify();
-    }
-  }
-
-  public setSwingMode(mode: SwingMode): void {
-    if (this._swingMode === mode) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._swingMode = mode;
-    this._applyHarmonizationAndNotify();
-  }
-
-  public setTargetTemperature(temperature: number): void {
-    const boundedTemp = Math.min(Math.max(temperature, 16), 30);
-
-    if (this._targetTemperature === boundedTemp) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._targetTemperature = boundedTemp;
-    this._applyHarmonizationAndNotify();
-  }
-
-  public setEcoMode(state: PowerState): void {
-    if (this._ecoMode === state) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._ecoMode = state;
-    this._applyHarmonizationAndNotify();
-  }
-
-  public setDisplayMode(state: PowerState): void {
-    if (this._displayMode === state) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._displayMode = state;
-    this._applyHarmonizationAndNotify();
-  }
-
-  public setBeepMode(state: PowerState): void {
-    if (this._beepMode === state) {
-      return;
-    }
-    this._captureStateBeforeUpdate();
-    this._beepMode = state;
-    this._applyHarmonizationAndNotify();
   }
 
   /**

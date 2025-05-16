@@ -26,8 +26,8 @@ describe('DeviceState', () => {
     const status = {
       is_on: 'on',
       operation_mode: OperationMode.Cool,
-      target_temp: 22,
-      current_temp: 24,
+      target_temp: 71.6, // F
+      current_temp: 24,  // F
       fan_mode: FanSpeed.High,
       swing_mode: SwingMode.Vertical,
       opt_turbo: PowerState.Off,
@@ -39,12 +39,46 @@ describe('DeviceState', () => {
     expect(changed).toBe(true);
     expect(state.power).toBe(PowerState.On);
     expect(state.operationMode).toBe(OperationMode.Cool);
-    expect(state.targetTemperature).toBe(22);
-    expect(state.currentTemperature).toBe(24);
+    expect(state.targetTemperature).toBeCloseTo(22, 1);  // 71.6F -> 22C
+    expect(state.currentTemperature).toBeCloseTo(-4.44, 1);  // 24F -> -4.44C
     expect(state.fanSpeed).toBe(FanSpeed.High);
     expect(state.swingMode).toBe(SwingMode.Vertical);
     expect(state.turboMode).toBe(PowerState.Off);
     expect(state.sleepMode).toBe(SleepModeState.Off);
+  });
+
+  it('should handle temperature conversion and clamping from device update (Fahrenheit)', () => {
+    const statusF = {
+      target_temp: 32, // 32F = 0C, will be clamped to 16°C by DeviceState
+      current_temp: 212, // 212F = 100°C
+    };
+    state.updateFromDevice(statusF);
+    // DeviceState internal clamping for targetTemperature is 16-30°C
+    expect(state.targetTemperature).toBe(16); 
+    expect(state.currentTemperature).toBe(100);
+
+    const statusF2 = {
+      target_temp: 80, // 80F = 26.67°C
+    };
+    state.updateFromDevice(statusF2);
+    // Rounding might occur, check within a small delta or use toBeCloseTo
+    expect(state.targetTemperature).toBeCloseTo(26.67, 1); 
+
+    const statusF3 = {
+      target_temp: 95, // 95F = 35°C, will be clamped to 30°C
+    };
+    state.updateFromDevice(statusF3);
+    expect(state.targetTemperature).toBe(30);
+  });
+
+  it('should correctly convert temperatures to API status (Celsius)', () => {
+    state.setTargetTemperature(20); // Set target in Celsius
+    // currentTemperature is updated by updateFromDevice, let's simulate that
+    // API sends current_temp in Fahrenheit, e.g., 68°F = 20°C
+    state.updateFromDevice({ current_temp: 68 }); // 68°F
+    const apiStatus = state.toApiStatus();
+    expect(apiStatus.target_temp).toBe(20); // Should be 20°C
+    expect(apiStatus.current_temp).toBe(20); // Should be 20°C
   });
 
   it('should not trigger change event if values are the same', () => {
@@ -52,8 +86,8 @@ describe('DeviceState', () => {
     state.updateFromDevice({
       is_on: 'on',
       operation_mode: OperationMode.Cool,
-      target_temp: 22,
-      current_temp: 20, 
+      target_temp: 71.6, // 22°C
+      current_temp: 68, // 20°C
       fan_mode: FanSpeed.Auto,
       swing_mode: SwingMode.Off
     });
@@ -68,8 +102,8 @@ describe('DeviceState', () => {
     const changed = state.updateFromDevice({
       is_on: 'on',
       operation_mode: OperationMode.Cool,
-      target_temp: 22,
-      current_temp: 20,
+      target_temp: 71.6, // 22°C
+      current_temp: 68, // 20°C
       fan_mode: FanSpeed.Auto,
       swing_mode: SwingMode.Off
     });
@@ -93,7 +127,7 @@ describe('DeviceState', () => {
   });
 
   it('should turn off turbo mode when sleep mode is enabled', () => {
-    state.setPower(PowerState.On);
+    state.setPower(PowerState.On); // Add this
     state.setTurboMode(PowerState.On);
     
     expect(state.turboMode).toBe(PowerState.On);
@@ -109,7 +143,7 @@ describe('DeviceState', () => {
   });
 
   it('should turn off sleep mode when turbo mode is enabled', () => {
-    state.setPower(PowerState.On);
+    state.setPower(PowerState.On); // Add this
     state.setSleepMode(SleepModeState.On);
     
     expect(state.sleepMode).toBe(SleepModeState.On);
@@ -123,7 +157,7 @@ describe('DeviceState', () => {
   });
 
   it('should reset conditional modes when power is turned off', () => {
-    state.setPower(PowerState.On);
+    state.setPower(PowerState.On); // Ensure power is on first
     state.setTurboMode(PowerState.On);
     state.setSleepMode(SleepModeState.On); // This would normally turn off turbo, but we're testing the power off reset
     
@@ -137,7 +171,7 @@ describe('DeviceState', () => {
   });
 
   it('should adjust fan speed when operation mode is set to Dry', () => {
-    state.setPower(PowerState.On);
+    state.setPower(PowerState.On); // Ensure power is on
     state.setFanSpeed(FanSpeed.High);
     
     state.setOperationMode(OperationMode.Dry);
@@ -148,7 +182,7 @@ describe('DeviceState', () => {
   });
 
   it('should set fan speed to Auto when operation mode is set to Auto', () => {
-    state.setPower(PowerState.On);
+    state.setPower(PowerState.On); // Ensure power is on
     state.setFanSpeed(FanSpeed.High);
     
     state.setOperationMode(OperationMode.Auto);
