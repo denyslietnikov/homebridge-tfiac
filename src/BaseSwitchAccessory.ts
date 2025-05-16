@@ -149,20 +149,32 @@ export abstract class BaseSwitchAccessory {
    * Handle state change events from the DeviceState
    */
   private handleStateChange(state: DeviceState): void {
-    const apiStatus = state.toApiStatus(); // Call toApiStatus only once
+    try {
+      // Check if state is a valid DeviceState object with toApiStatus method
+      if (!state || typeof state.toApiStatus !== 'function') {
+        this.platform.log.warn(`[${this.logPrefix}] Invalid DeviceState object received, toApiStatus is not a function`);
+        this._updateCharacteristicFromState(null);
+        return;
+      }
 
-    if (apiStatus === null) {
-      this.platform.log.warn(`[${this.logPrefix}] DeviceState provided null apiStatus. Passing null to _updateCharacteristicFromState.`);
-      this._updateCharacteristicFromState(null); // _updateCharacteristicFromState is designed to handle null
-      return;
+      const apiStatus = state.toApiStatus(); // Call toApiStatus only once
+
+      if (apiStatus === null) {
+        this.platform.log.warn(`[${this.logPrefix}] DeviceState provided null apiStatus. Passing null to _updateCharacteristicFromState.`);
+        this._updateCharacteristicFromState(null); // _updateCharacteristicFromState is designed to handle null
+        return;
+      }
+
+      // If apiStatus is not null, then proceed
+      const relevantValue = this.getStatusValue(apiStatus);
+      this.platform.log.debug(
+        `[${this.logPrefix}] StateChanged. Power: ${state.power}, Val: ${relevantValue}, OpM: ${apiStatus.operation_mode}`,
+      );
+      this._updateCharacteristicFromState(apiStatus);
+    } catch (error) {
+      this.platform.log.error(`[${this.logPrefix}] Error in handleStateChange: ${error}`);
+      this._updateCharacteristicFromState(null);
     }
-
-    // If apiStatus is not null, then proceed
-    const relevantValue = this.getStatusValue(apiStatus);
-    this.platform.log.debug(
-      `[${this.logPrefix}] StateChanged. Power: ${state.power}, Val: ${relevantValue}, OpM: ${apiStatus.operation_mode}`,
-    );
-    this._updateCharacteristicFromState(apiStatus);
   }
 
   /**
