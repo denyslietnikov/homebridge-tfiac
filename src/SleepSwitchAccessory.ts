@@ -21,6 +21,11 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
           opt_turbo?: PowerState;
         },
       ) => {
+        // Add null/undefined check for the entire status object
+        if (!status) {
+          return false;
+        }
+        
         // Only active when AC is on, Turbo is off, and the low-level sleep flag is on
         if (status.is_on !== PowerState.On || status.opt_turbo === PowerState.On || status.opt_sleep !== PowerState.On) {
           return false;

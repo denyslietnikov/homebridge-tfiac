@@ -22,7 +22,13 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       displayName, // serviceName for BaseSwitchAccessory
       serviceSubtype, // serviceSubtype for BaseSwitchAccessory
       // getStatusValue: (status) => boolean. Fetches current display state from AirConditionerStatus.
-      (status) => status.opt_display === PowerState.On, // Correctly use the status passed by BaseSwitchAccessory
+      (status) => {
+        // Add extra checks to prevent errors with undefined properties
+        if (!status || status.opt_display === undefined) {
+          return false;
+        }
+        return status.opt_display === PowerState.On;
+      },
       // setApiState: (value: boolean) => Promise<void>. Sets display state via CacheManager.
       async (value: boolean) => {
         platform.log.debug(`SET ${displayName} -> ${value ? 'ON' : 'OFF'}`);

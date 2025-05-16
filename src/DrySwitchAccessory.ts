@@ -13,7 +13,13 @@ export class DrySwitchAccessory extends BaseSwitchAccessory {
       accessory,
       'Dry Mode', // serviceName
       'dry', // subType
-      (status) => status.operation_mode === OperationMode.Dry, // isOn
+      (status) => {
+        // Add null/undefined check for the status object
+        if (!status || status.operation_mode === undefined) {
+          return false;
+        }
+        return status.operation_mode === OperationMode.Dry;
+      }, // isOn
       async (value) => { // setOn
         const mode = value ? OperationMode.Dry : OperationMode.Auto;
         // Use this.deviceState from BaseSwitchAccessory
