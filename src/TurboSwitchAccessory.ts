@@ -2,6 +2,7 @@ import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
 import { PowerState, SleepModeState, FanSpeed } from './enums.js';
+import { DeviceState } from './state/DeviceState.js';
 
 export class TurboSwitchAccessory extends BaseSwitchAccessory {
   constructor(
@@ -14,6 +15,12 @@ export class TurboSwitchAccessory extends BaseSwitchAccessory {
       'Turbo',
       'turbo',
       (status) => {
+        // Check if we received a DeviceState object
+        if (status instanceof DeviceState) {
+          // Convert DeviceState to API status format
+          status = status.toApiStatus();
+        }
+        
         // Add null/undefined check for the status object
         if (!status || status.opt_turbo === undefined) {
           return false;

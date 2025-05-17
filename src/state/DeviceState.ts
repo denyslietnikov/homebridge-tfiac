@@ -323,7 +323,7 @@ class DeviceState extends EventEmitter {
    * Emits the 'stateChanged' event with the current state.
    */
   public emitStateChanged(): void {
-    this.emit('stateChanged', this.toPlainObject());
+    this.emit('stateChanged', this);
   }
 
   private _captureStateBeforeUpdate(): void {

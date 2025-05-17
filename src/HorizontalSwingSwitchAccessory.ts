@@ -2,6 +2,7 @@ import { PlatformAccessory, CharacteristicSetCallback, CharacteristicValue } fro
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
 import { SwingMode } from './enums.js';
+import { DeviceState } from './state/DeviceState.js';
 
 export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
   constructor(
@@ -13,7 +14,19 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       accessory,
       'Horizontal Swing',
       'horizontal_swing',
-      (status) => status.swing_mode === SwingMode.Horizontal || status.swing_mode === SwingMode.Both, // status here is Partial<AirConditionerStatus>
+      (status) => {
+        // Check if we received a DeviceState object
+        if (status instanceof DeviceState) {
+          // Convert DeviceState to API status format
+          status = status.toApiStatus();
+        }
+        
+        // Add null/undefined check for the status object
+        if (!status || status.swing_mode === undefined) {
+          return false;
+        }
+        return status.swing_mode === SwingMode.Horizontal || status.swing_mode === SwingMode.Both;
+      }, // status here is Partial<AirConditionerStatus>
       async (value) => {
         const currentMode = this.deviceState.swingMode;
         let newMode: SwingMode;

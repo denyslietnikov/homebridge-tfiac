@@ -208,24 +208,40 @@ export abstract class BaseSwitchAccessory {
   }
 
   /** Update this switch based on centralized status. Now private. */
-  private _updateCharacteristicFromState(status: Partial<AirConditionerStatus> | null): void {
+  private _updateCharacteristicFromState(status: Partial<AirConditionerStatus> | DeviceState | null): void {
     if (!this.service) {
       this.platform.log.warn(`[${this.logPrefix}] _updateCharacteristicFromState called but service is not available.`);
       return;
     }
 
-    // Determine the new value based on the status from DeviceState.
-    // Default to false if status is null (e.g., device unavailable or initial state unknown).
-    const newValue = status ? this.getStatusValue(status) : false;
+    // Convert input to a proper API status format
+    let apiStatus: Partial<AirConditionerStatus> | null = null;
+    if (status) {
+      if ('toApiStatus' in status && typeof status.toApiStatus === 'function') {
+        // Convert DeviceState to API status
+        apiStatus = status.toApiStatus();
+      } else {
+        // Status is already in API format
+        apiStatus = status as Partial<AirConditionerStatus>;
+      }
+    }
+
+    // Determine the new value based on the API status
+    // Default to false if status is null (e.g., device unavailable or initial state unknown)
+    const newValue = apiStatus ? this.getStatusValue(apiStatus) : false;
 
     // Get the characteristic instance from the service to read its current value in HomeKit.
     const charInstance = this.service.getCharacteristic(this.onChar)!;
     const currentValue = (charInstance as unknown as { value: boolean }).value;
 
+    // Use safe access for logging API status properties
+    const powerState = apiStatus?.is_on;
+    const opMode = apiStatus?.operation_mode;
+    
     this.platform.log.debug(
       `[${this.logPrefix}] _updateCharacteristicFromState. Desired new value from DeviceState: ${newValue}, ` +
       `Current HomeKit characteristic value: ${currentValue}. ` +
-      `Device power: ${status?.is_on}, OpMode: ${status?.operation_mode}`,
+      `Device power: ${powerState}, OpMode: ${opMode}`,
     );
 
     // Update the HomeKit characteristic only if the new value differs from the current characteristic value.

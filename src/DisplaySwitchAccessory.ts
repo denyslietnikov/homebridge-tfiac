@@ -2,6 +2,7 @@ import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
 import { PowerState } from './enums.js';
+import { DeviceState } from './state/DeviceState.js';
 
 /**
  * Accessory for controlling the display (light) of the air conditioner.
@@ -23,6 +24,12 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       serviceSubtype, // serviceSubtype for BaseSwitchAccessory
       // getStatusValue: (status) => boolean. Fetches current display state from AirConditionerStatus.
       (status) => {
+        // Check if we received a DeviceState object
+        if (status instanceof DeviceState) {
+          // Convert DeviceState to API status format
+          status = status.toApiStatus();
+        }
+        
         // Add extra checks to prevent errors with undefined properties
         if (!status || status.opt_display === undefined) {
           return false;

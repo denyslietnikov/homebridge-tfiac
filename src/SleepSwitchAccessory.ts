@@ -3,6 +3,7 @@ import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
 import { SleepModeState, PowerState } from './enums.js';
 import type { AirConditionerStatus } from './AirConditionerAPI.js';
+import { DeviceState } from './state/DeviceState.js';
 
 export class SleepSwitchAccessory extends BaseSwitchAccessory {
   constructor(
@@ -21,6 +22,12 @@ export class SleepSwitchAccessory extends BaseSwitchAccessory {
           opt_turbo?: PowerState;
         },
       ) => {
+        // Check if we received a DeviceState object
+        if (status instanceof DeviceState) {
+          // Convert DeviceState to API status format
+          status = status.toApiStatus();
+        }
+        
         // Add null/undefined check for the entire status object
         if (!status) {
           return false;
