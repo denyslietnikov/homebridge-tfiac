@@ -41,6 +41,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly accessories: PlatformAccessory[] = [];
   private readonly optionalAccessoryConfigs: OptionalAccessoryConfig<unknown>[];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory>;
+  private _debugEnabled: boolean = false; // Declare and initialize _debugEnabled
 
   constructor(
     public readonly log: Logger,
@@ -52,13 +53,17 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     this.Characteristic = this.api.hap.Characteristic;
     this.discoveredAccessories = new Map<string, TfiacPlatformAccessory>();
 
-    if (!this.config.debug && Array.isArray(this.config.devices)) {
-      this.config.debug = this.config.devices.some(device => device.debug === true);
+    // Initialize _debugEnabled based on global config first
+    this._debugEnabled = !!this.config.debug;
+
+    // Then, if global debug is not set, check device-specific debug flags
+    if (!this._debugEnabled && Array.isArray(this.config.devices)) {
+      this._debugEnabled = this.config.devices.some(device => device.debug === true);
     }
 
     const originalDebug = this.log.debug.bind(this.log);
     this.log.debug = (...args: [message: string, ...optionalParams: unknown[]]) => {
-      if (this.config.debug) {
+      if (this._debugEnabled) { // Use the class property
         originalDebug(...args);
       }
     };
