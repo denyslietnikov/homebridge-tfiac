@@ -21,9 +21,10 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
   private rawApiCache: AirConditionerStatus | null = null; // Renamed from 'cache'
   private lastFetch = 0;
   private ttl: number;
-  private _deviceState: DeviceState = new DeviceState(); // Renamed to avoid conflict with getter
+  private _deviceState: DeviceState;
   private commandQueue: CommandQueue | null = null;
   private logger: Logger;
+  private readonly debug: boolean;
 
   // Added for Adaptive Polling
   private consecutiveFailedPolls = 0;
@@ -66,6 +67,9 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
     this.ttl = (config.updateInterval || 30) * 1000;
     this.originalTtl = this.ttl; // Store the initial TTL
 
+    // Store debug flag from config
+    this.debug = !!config.debug;
+
     // Create a simple logger if none provided
     this.logger = {
       info: (message: string) => console.log(`[INFO] ${message}`),
@@ -73,6 +77,9 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       error: (message: string) => console.log(`[ERROR] ${message}`),
       debug: (message: string) => console.log(`[DEBUG] ${message}`),
     } as Logger;
+
+    // Initialize DeviceState with the debug flag
+    this._deviceState = new DeviceState(this.logger, this.debug);
   }
 
   static getInstance(config?: TfiacDeviceConfig, logger?: Logger): CacheManager {

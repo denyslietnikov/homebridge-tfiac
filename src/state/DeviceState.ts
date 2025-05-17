@@ -64,6 +64,7 @@ class DeviceState extends EventEmitter {
   private _isCoolingFlag: boolean = false;
 
   private readonly log: Logger; // Added logger instance
+  private _debugEnabled: boolean = false; // Added debug flag
 
   /** Explicitly set heating flag for CurrentHeaterCoolerState tests */
   public setIsHeating(flag: boolean): void {
@@ -86,10 +87,21 @@ class DeviceState extends EventEmitter {
     this._currentTemperature = temp;
   }
 
-  constructor(log?: Logger) { // Modified constructor to accept optional Logger
+  /** Set debug mode for more verbose logging */
+  public setDebugEnabled(enabled: boolean): void {
+    this._debugEnabled = enabled;
+  }
+
+  /** Get current debug mode setting */
+  public isDebugEnabled(): boolean {
+    return this._debugEnabled;
+  }
+
+  constructor(log?: Logger, debugEnabled: boolean = false) { // Modified constructor to accept optional Logger and debug flag
     super();
     // Use provided logger or fallback to console as Logger
     this.log = log ?? (console as unknown as Logger);
+    this._debugEnabled = debugEnabled;
   }
 
   // --- Public Getters ---
@@ -180,11 +192,15 @@ class DeviceState extends EventEmitter {
     // HomeKit specific clamping (0-25 or 10-35) should happen in platformAccessory
     const clampedTemp = Math.min(Math.max(temp, 16), 30);
     if (this._targetTemperature !== clampedTemp) {
-      this.log.debug(`[DeviceState] Setting target temp from ${temp}°C to clamped ${clampedTemp}°C`);
+      if (this._debugEnabled) {
+        this.log.debug(`[DeviceState] Setting target temp from ${temp}°C to clamped ${clampedTemp}°C`);
+      }
       this._targetTemperature = clampedTemp;
       this._applyHarmonizationAndNotify();
     } else if (temp !== clampedTemp) { // Log if input was clamped but resulted in no change to current state
-      this.log.debug(`[DeviceState] Input target temp ${temp}°C clamped to ${clampedTemp}°C, which is current value. No change.`);
+      if (this._debugEnabled) {
+        this.log.debug(`[DeviceState] Input target temp ${temp}°C clamped to ${clampedTemp}°C, which is current value. No change.`);
+      }
     }
   }
 
@@ -193,7 +209,9 @@ class DeviceState extends EventEmitter {
     if (this._fanSpeed !== fanSpeed) {
       // Check if in Dry mode - in which case we can't change fan speed
       if (this._operationMode === OperationMode.Dry && fanSpeed !== FanSpeed.Low) {
-        this.log.debug('[DeviceState] Cannot change fan speed in Dry mode, keeping as Low');
+        if (this._debugEnabled) {
+          this.log.debug('[DeviceState] Cannot change fan speed in Dry mode, keeping as Low');
+        }
         return; // Exit without changing
       }
       
@@ -231,7 +249,9 @@ class DeviceState extends EventEmitter {
       // Cannot use turbo mode in Dry mode
       if (this._operationMode === OperationMode.Dry && turboMode === PowerState.On) {
         this._turboMode = PowerState.Off;
-        this.log.debug('[DeviceState] Turbo mode not available in Dry mode');
+        if (this._debugEnabled) {
+          this.log.debug('[DeviceState] Turbo mode not available in Dry mode');
+        }
         return; // Exit without further changes
       }
 
@@ -255,7 +275,9 @@ class DeviceState extends EventEmitter {
     
     // Ensuring that power state is considered before setting eco mode
     if (this._power === PowerState.Off && ecoMode === PowerState.On) {
-      this.log.debug('[DeviceState] Cannot set eco mode when device is off');
+      if (this._debugEnabled) {
+        this.log.debug('[DeviceState] Cannot set eco mode when device is off');
+      }
       return;
     }
     
@@ -347,7 +369,10 @@ class DeviceState extends EventEmitter {
     });
 
     if (changes.length > 0) {
-      this.log.debug(`[DeviceState][${context}] Changes: ${changes.join(', ')}`);
+      // Only log changes when debug mode is enabled
+      if (this._debugEnabled) {
+        this.log.debug(`[DeviceState][${context}] Changes: ${changes.join(', ')}`);
+      }
     }
   }
 
@@ -498,7 +523,7 @@ class DeviceState extends EventEmitter {
       debugMsg?: string,
     ): T => {
       if (currentValue !== newValue) {
-        if (debugMsg) {
+        if (debugMsg && this._debugEnabled) {
           this.log.debug(`[DeviceState][updateFromDevice] ${debugMsg}: ${newValue}`);
         }
         changed = true;
@@ -761,7 +786,7 @@ class DeviceState extends EventEmitter {
    * @returns A new DeviceState instance with the same property values.
    */
   public clone(): DeviceState {
-    const clonedState = new DeviceState(this.log); // Pass logger to cloned instance
+    const clonedState = new DeviceState(this.log, this._debugEnabled); // Pass logger and debug flag to cloned instance
 
     // Copy all private properties directly to ensure exact copies
     clonedState._power = this._power;

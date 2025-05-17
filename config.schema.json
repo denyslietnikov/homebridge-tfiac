@@ -99,6 +99,21 @@
               "type": "number",
               "title": "Temperature Correction",
               "description": "Correction factor (in Celsius) to be added to the measured indoor temperature. Use negative value to decrease reported temperature."
+            },
+            "updateInterval": {
+              "type": "number",
+              "title": "Update Interval",
+              "description": "Time in seconds between status updates from the device. Lower values provide more responsive status updates but may increase network traffic.",
+              "default": 30,
+              "minimum": 5,
+              "maximum": 300
+            },
+            "debug": {
+              "title": "Device Debug Logging",
+              "description": "Enable debug logging for this specific device",
+              "type": "boolean",
+              "required": false,
+              "default": false
             }
           }
         }
