@@ -249,7 +249,11 @@ export abstract class BaseSwitchAccessory {
       this.platform.log.info(
         `[${this.logPrefix}] Desired state ${newValue} differs from HomeKit characteristic ${currentValue}. Updating characteristic.`,
       );
-      this.service.updateCharacteristic(this.onChar, newValue);
+      try {
+        this.service.updateCharacteristic(this.onChar, newValue);
+      } catch (error) {
+        this.platform.log.error(`[${this.logPrefix}] Error setting state to ${newValue}: ${error}`);
+      }
     } else {
       this.platform.log.debug(
         `[${this.logPrefix}] Desired state ${newValue} matches HomeKit characteristic. No characteristic update needed.`,
@@ -275,30 +279,35 @@ export abstract class BaseSwitchAccessory {
   /**
    * Handle request to set the "On" characteristic
    */
-  protected async handleSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  protected async handleSet(value: CharacteristicValue, callback?: CharacteristicSetCallback): Promise<void> {
     this.platform.log.info(`[${this.logPrefix}] Triggered SET to: ${value}`);
     try {
       await this.setApiState(value as boolean);
-      callback(null); // Success, HomeKit characteristic will update reactively
+      if (typeof callback === 'function') {
+        callback(null); // Success, HomeKit characteristic will update reactively
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       // Log and callback on failure, use consistent message format for BeepSwitchAccessory tests
       const failedMsg = `[${this.logPrefix}] Error setting state to ${value}: ${errorMessage}`;
       this.platform.log.error(failedMsg);
       
-      // Wrap non-HapStatusError errors as HapStatusError for HomeKit (with status/hapStatus fields)
-      let hapError: any;
-      if (error instanceof this.platform.api.hap.HapStatusError) {
-        hapError = error;
-      } else {
-        hapError = new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+      // Only process callback if it is a function
+      if (typeof callback === 'function') {
+        // Wrap non-HapStatusError errors as HapStatusError for HomeKit (with status/hapStatus fields)
+        let hapError: any;
+        if (error instanceof this.platform.api.hap.HapStatusError) {
+          hapError = error;
+        } else {
+          hapError = new this.platform.api.hap.HapStatusError(this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+        }
+        // Attach status property for test compatibility
+        hapError.status = this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+        this.platform.log.debug(
+          `[${this.logPrefix}] HapError created with status: ${hapError.status}, hapStatus: ${hapError.hapStatus}`,
+        );
+        callback(hapError);
       }
-      // Attach status property for test compatibility
-      hapError.status = this.platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
-      this.platform.log.debug(
-        `[${this.logPrefix}] HapError created with status: ${hapError.status}, hapStatus: ${hapError.hapStatus}`,
-      );
-      callback(hapError);
     }
   }
 }
