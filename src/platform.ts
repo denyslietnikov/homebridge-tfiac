@@ -336,56 +336,51 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     let serviceRemoved = false;
 
     servicesToRemove.forEach(({ name, displayName }) => {
-      // Check for both legacy format and enable format
-      const settingNameLegacy = name.toLowerCase() as keyof TfiacDeviceConfig;
-      const settingNameNew = `enable${name}` as keyof TfiacDeviceConfig;
-      const settingNameSwitch = `enable${name}Switch` as keyof TfiacDeviceConfig;
-
-      // If any of these settings is explicitly false, remove the service
-      const isDisabled = deviceConfig[settingNameLegacy] === false || 
-                        deviceConfig[settingNameNew] === false || 
-                        deviceConfig[settingNameSwitch] === false;
-
-      if (isDisabled) {
-        let service = accessory.getService(displayName);
-        if (!service) {
-          const subtype = displayName.toLowerCase().replace(/ /g, '');
-          service = accessory.getServiceById(this.Service.Switch.UUID, subtype);
-          if (!service && displayName === 'Standalone Fan') {
-            service = accessory.getServiceById(this.Service.Fan.UUID, 'standalone_fan');
-          }
-          if (!service && displayName === 'Fan Speed Control') {
-            service = accessory.getServiceById(this.Service.Fanv2.UUID, 'fanspeed');
-          }
+      const configKey = `enable${name}` as keyof TfiacDeviceConfig;
+      if (deviceConfig[configKey] === false) {
+        if (!deviceConfig.debug) {
+          this.log.info(`[${deviceConfig.name}] Skipping ${displayName} as it is disabled in config.`);
         }
-
+        const service = accessory.getService(displayName);
         if (service) {
           accessory.removeService(service);
-          this.log.info(`Removed ${displayName} service from ${accessory.displayName}`);
+          this.log.debug(`[${deviceConfig.name}] Removed service: ${displayName}`);
           serviceRemoved = true;
-        } else {
-          this.log.debug(`${displayName} service already disabled or not found for ${accessory.displayName}.`);
         }
       }
     });
 
     // Special case for temperature sensors
     const isTemperatureDisabled = deviceConfig.enableTemperature === false;
-    
-    if (isTemperatureDisabled) {
-      const tempSensorServices = accessory.services.filter(
-        service => service.UUID === this.api.hap.Service.TemperatureSensor.UUID,
-      );
+    const isIFeelDisabled = deviceConfig.enableIFeelSensor === false;
 
-      if (tempSensorServices.length > 0) {
-        this.log.info(`Temperature sensor is disabled for ${accessory.displayName}. Removing ${tempSensorServices.length} sensor(s).`);
-        tempSensorServices.forEach(service => {
-          accessory.removeService(service);
-          this.log.debug(`Removed temperature sensor service "${service.displayName || 'unnamed'}" (UUID: ${service.UUID}, Subtype: ${service.subtype})`);
-          serviceRemoved = true;
-        });
-      } else {
-        this.log.debug(`Temperature sensor already disabled or not found for ${accessory.displayName}.`);
+    if (isTemperatureDisabled) {
+      if (!deviceConfig.debug) {
+        this.log.info(`Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`);
+      }
+      const indoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'indoor_temperature');
+      if (indoorTempService) {
+        accessory.removeService(indoorTempService);
+        this.log.debug(`[${deviceConfig.name}] Removed existing indoor temperature sensor service.`);
+        serviceRemoved = true;
+      }
+      const outdoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'outdoor_temperature');
+      if (outdoorTempService) {
+        accessory.removeService(outdoorTempService);
+        this.log.debug(`[${deviceConfig.name}] Removed existing outdoor temperature sensor service.`);
+        serviceRemoved = true;
+      }
+    }
+
+    if (isIFeelDisabled) {
+      if (!deviceConfig.debug) {
+        this.log.info(`iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
+      }
+      const iFeelService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'ifeel_temperature');
+      if (iFeelService) {
+        accessory.removeService(iFeelService);
+        this.log.debug(`[${deviceConfig.name}] Removed existing iFeel sensor service.`);
+        serviceRemoved = true;
       }
     }
 
@@ -406,25 +401,20 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     for (const config of this.optionalAccessoryConfigs) {
       const { name, displayName, accessoryClass, enabledByDefault, accessoryMap } = config;
       
-      // Check for both legacy format and enable formats
       const settingNameLegacy = name.toLowerCase() as keyof TfiacDeviceConfig;
       const settingNameNew = `enable${name}` as keyof TfiacDeviceConfig;
       const settingNameSwitch = `enable${name}Switch` as keyof TfiacDeviceConfig;
       
-      // Check settings, prioritizing explicit settings over defaults
       let isEnabled = enabledByDefault;
       
-      // Check legacy format (e.g., "display: false")
       if (deviceConfig[settingNameLegacy] !== undefined) {
         isEnabled = Boolean(deviceConfig[settingNameLegacy]);
       }
       
-      // Check enable format (e.g., "enableDisplay: true") - higher priority than legacy
       if (deviceConfig[settingNameNew] !== undefined) {
         isEnabled = Boolean(deviceConfig[settingNameNew]);
       }
       
-      // Check switch format (e.g., "enableDisplaySwitch: true") - highest priority
       if (deviceConfig[settingNameSwitch] !== undefined) {
         isEnabled = Boolean(deviceConfig[settingNameSwitch]);
       }

@@ -62,11 +62,15 @@ export abstract class BaseSwitchAccessory {
     private readonly setApiState: SetApiStateFn,
     protected readonly logPrefix: string,
   ) {
-    console.log('BaseSwitchAccessory constructor starts', accessory?.UUID || 'no-uuid');
-    console.log('accessory context?', accessory?.context || 'no-context');
+    if (!accessory?.context?.deviceConfig?.debug) {
+      console.log('BaseSwitchAccessory constructor starts', accessory?.UUID || 'no-uuid');
+      console.log('accessory context?', accessory?.context || 'no-context');
+    }
     
     this.deviceConfig = accessory?.context?.deviceConfig;
-    console.log('deviceConfig?', this.deviceConfig || 'no-deviceConfig');
+    if (!this.deviceConfig?.debug) {
+      console.log('deviceConfig?', this.deviceConfig || 'no-deviceConfig');
+    }
     
     // Allow test override via accessory.context.cacheManager
      
@@ -80,8 +84,11 @@ export abstract class BaseSwitchAccessory {
         console.log('Using globalThis.__mockCacheManagerInstance');
         this.cacheManager = overrideCacheMgr;
       } else {
-        console.log('Using CacheManagerClass.getInstance');
+        // Ensure this.deviceConfig is used here
         this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig, this.platform.log);
+        if (!this.deviceConfig?.debug) {
+          console.log('Using CacheManagerClass.getInstance');
+        }
       }
     }
     this.deviceState = this.cacheManager.getDeviceState();
