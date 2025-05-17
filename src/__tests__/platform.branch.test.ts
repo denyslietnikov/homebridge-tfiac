@@ -155,7 +155,7 @@ describe('TfiacPlatform branch coverage tests', () => {
     });
 
     it('removes Display Switch when enableDisplaySwitch is false', () => {
-      const deviceConfig = { name: mockAccessory.displayName, enableDisplay: false, debug: false } as any;
+      const deviceConfig = { name: mockAccessory.displayName, enableDisplay: false, debug: true } as any;
       const expectedServiceToRemove = mockDisplayServiceViaDisplayName;
 
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
@@ -171,7 +171,7 @@ describe('TfiacPlatform branch coverage tests', () => {
     });
 
     it('removes Fan Speed when enableFanSpeedSwitch is false', () => {
-      const deviceConfig = { name: mockAccessory.displayName, enableFanSpeed: false, debug: false } as any;
+      const deviceConfig = { name: mockAccessory.displayName, enableFanSpeed: false, debug: true } as any;
       const expectedServiceToRemove = mockFanSpeedService as any;
 
       mockAccessory.getService = vi.fn((identifier: string | { UUID: string }) => {
@@ -195,7 +195,7 @@ describe('TfiacPlatform branch coverage tests', () => {
     });
 
     it('removes temperature sensor when enableTemperature is false', () => {
-      const deviceConfig = { name: mockAccessory.displayName, enableTemperature: false, debug: false } as any;
+      const deviceConfig = { name: mockAccessory.displayName, enableTemperature: false, debug: true } as any;
 
       mockAccessory.getServiceById = vi.fn((uuid: string, subtype?: string) => {
         if (uuid === mockApi.hap.Service.TemperatureSensor.UUID && subtype === 'indoor_temperature') {

@@ -338,7 +338,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     servicesToRemove.forEach(({ name, displayName }) => {
       const configKey = `enable${name}` as keyof TfiacDeviceConfig;
       if (deviceConfig[configKey] === false) {
-        if (!deviceConfig.debug) {
+        if (deviceConfig.debug) {
           this.log.info(`[${deviceConfig.name}] Skipping ${displayName} as it is disabled in config.`);
         }
         const service = accessory.getService(displayName);
@@ -355,7 +355,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     const isIFeelDisabled = deviceConfig.enableIFeelSensor === false;
 
     if (isTemperatureDisabled) {
-      if (!deviceConfig.debug) {
+      if (deviceConfig.debug) {
         this.log.info(`Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
       const indoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'indoor_temperature');
@@ -373,7 +373,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     }
 
     if (isIFeelDisabled) {
-      if (!deviceConfig.debug) {
+      if (deviceConfig.debug) {
         this.log.info(`iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
       const iFeelService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'ifeel_temperature');
@@ -424,7 +424,9 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         accessoryMap?.set(uuid, instance);
         this.log.info(`Added ${displayName} for ${deviceConfig.name}`);
       } else {
-        this.log.info(`Skipping ${displayName} for ${deviceConfig.name} as it is disabled in config.`);
+        if (deviceConfig.debug) {
+          this.log.info(`Skipping ${displayName} for ${deviceConfig.name} as it is disabled in config.`);
+        }
       }
     }
   }

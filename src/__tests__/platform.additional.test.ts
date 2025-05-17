@@ -376,7 +376,7 @@ describe('TfiacPlatform - Additional Tests', () => {
         name: 'Test AC',
         ip: '192.168.1.100',
         enableTemperature: false, // Disable temperature
-        debug: false, // Ensure debug is false for the log to appear
+        debug: true, // Ensure debug is true for the log to appear
       } as TfiacDeviceConfig,
     };
     mockAccessory.services = [mockTempService];

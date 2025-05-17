@@ -62,13 +62,13 @@ export abstract class BaseSwitchAccessory {
     private readonly setApiState: SetApiStateFn,
     protected readonly logPrefix: string,
   ) {
-    if (!accessory?.context?.deviceConfig?.debug) {
+    if (accessory?.context?.deviceConfig?.debug) {
       console.log('BaseSwitchAccessory constructor starts', accessory?.UUID || 'no-uuid');
       console.log('accessory context?', accessory?.context || 'no-context');
     }
     
     this.deviceConfig = accessory?.context?.deviceConfig;
-    if (!this.deviceConfig?.debug) {
+    if (this.deviceConfig?.debug) {
       console.log('deviceConfig?', this.deviceConfig || 'no-deviceConfig');
     }
     
@@ -76,17 +76,15 @@ export abstract class BaseSwitchAccessory {
      
     if ((accessory?.context as { cacheManager?: CacheManager }).cacheManager) {
       // Use cacheManager provided in accessory context (tests)
-      console.log('Using context.cacheManager for tests');
       this.cacheManager = (accessory.context as { cacheManager: CacheManager }).cacheManager;
     } else {
       const overrideCacheMgr = globalThis.__mockCacheManagerInstance;
       if (overrideCacheMgr) {
-        console.log('Using globalThis.__mockCacheManagerInstance');
         this.cacheManager = overrideCacheMgr;
       } else {
         // Ensure this.deviceConfig is used here
         this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig, this.platform.log);
-        if (!this.deviceConfig?.debug) {
+        if (this.deviceConfig?.debug) {
           console.log('Using CacheManagerClass.getInstance');
         }
       }

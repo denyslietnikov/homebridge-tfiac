@@ -37,7 +37,8 @@
     "watch": "npm run build && npm link && nodemon",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:coverage:dot": "vitest run --coverage --reporter=dot"
   },
   "dependencies": {
     "homebridge-lib": "^7.1.4",
