@@ -376,6 +376,7 @@ describe('TfiacPlatform - Additional Tests', () => {
         name: 'Test AC',
         ip: '192.168.1.100',
         enableTemperature: false, // Disable temperature
+        debug: false, // Ensure debug is false for the log to appear
       } as TfiacDeviceConfig,
     };
     mockAccessory.services = [mockTempService];
@@ -385,12 +386,12 @@ describe('TfiacPlatform - Additional Tests', () => {
       }
       return undefined;
     });
-    mockAccessory.getService = vi.fn().mockReturnValue(undefined);
+    mockAccessory.getService = vi.fn().mockReturnValue(undefined); // Ensure other services are not accidentally returned
 
     (platform as any).removeDisabledServices(mockAccessory as any, mockAccessory.context.deviceConfig);
 
     expect(log.info).toHaveBeenCalledWith(
-      expect.stringContaining('Temperature sensor is disabled for Test AC. Removing 1 sensor(s).') // Updated expected message
+      `Temperature sensors are disabled for ${mockAccessory.context.deviceConfig.name} - removing any that were cached.`
     );
   });
 
@@ -414,13 +415,6 @@ describe('TfiacPlatform - Additional Tests', () => {
     vi.runAllTimers(); // Run all pending timers
 
     expect(log.info).toHaveBeenCalledWith('Network discovery is disabled in the configuration.');
-  });
-
-  // To avoid the timeout, we'll skip this test and update its implementation
-  it.skip('should handle socket binding errors during discovery', async () => {
-    // Test implementation skipped to avoid timeouts
-    // The actual functionality being tested would be that platform logs errors when socket.bind() throws
-    expect(true).toBe(true);
   });
 
   it('should handle socket binding errors synchronously', () => {

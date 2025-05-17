@@ -155,53 +155,61 @@ describe('TfiacPlatform branch coverage tests', () => {
     });
 
     it('removes Display Switch when enableDisplaySwitch is false', () => {
-      const deviceConfig = { enableDisplaySwitch: false } as any;
+      const deviceConfig = { name: mockAccessory.displayName, enableDisplay: false, debug: false } as any;
       const expectedServiceToRemove = mockDisplayServiceViaDisplayName;
 
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
       
       expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
-      // Check for the first log message (service removal)
       expect(mockLog.info).toHaveBeenCalledWith(
-        `Removed Display Light service from ${mockAccessory.displayName}`
+        `[${deviceConfig.name}] Skipping Display Light as it is disabled in config.`
       );
-      // Check for the second log message (accessory update)
       expect(mockLog.info).toHaveBeenCalledWith(
         `Updating accessory ${mockAccessory.displayName} after removing disabled services.`
       );
     });
 
     it('removes Fan Speed when enableFanSpeedSwitch is false', () => {
-      const deviceConfig = { enableFanSpeedSwitch: false } as any;
-      const expectedServiceToRemove = mockFanSpeedService;
+      const deviceConfig = { name: mockAccessory.displayName, enableFanSpeed: false, debug: false } as any;
+      const expectedServiceToRemove = mockFanSpeedService as any;
+
+      mockAccessory.getService = vi.fn((identifier: string | { UUID: string }) => {
+        if (typeof identifier === 'string') {
+          if (identifier === 'Display Light') return mockDisplayServiceViaDisplayName as any;
+          if (identifier === 'Fan Speed Control') return mockFanSpeedService as any;
+        }
+        return undefined;
+      }) as any;
 
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
       
       expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
-      // Check for the first log message (service removal)
       expect(mockLog.info).toHaveBeenCalledWith(
-        `Removed Fan Speed Control service from ${mockAccessory.displayName}`
+        `[${deviceConfig.name}] Skipping Fan Speed Control as it is disabled in config.`
       );
-      // Check for the second log message (accessory update)
       expect(mockLog.info).toHaveBeenCalledWith(
         `Updating accessory ${mockAccessory.displayName} after removing disabled services.`
       );
     });
 
     it('removes temperature sensor when enableTemperature is false', () => {
-      const deviceConfig = { enableTemperature: false } as any;
+      const deviceConfig = { name: mockAccessory.displayName, enableTemperature: false, debug: false } as any;
+
+      mockAccessory.getServiceById = vi.fn((uuid: string, subtype?: string) => {
+        if (uuid === mockApi.hap.Service.TemperatureSensor.UUID && subtype === 'indoor_temperature') {
+          return mockTempSensorServiceInstance as any;
+        }
+        return undefined;
+      }) as any;
+
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
-      const tempServices = mockAccessory.services.filter(
-        s => s.UUID === mockApi.hap.Service.TemperatureSensor.UUID
-      );
-      tempServices.forEach(svc => {
-        expect(mockAccessory.removeService).toHaveBeenCalledWith(svc);
-      });
+
+      expect(mockAccessory.removeService).toHaveBeenCalledWith(mockTempSensorServiceInstance as any);
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
       expect(mockLog.info).toHaveBeenCalledWith(
-        `Temperature sensor is disabled for ${mockAccessory.displayName}. Removing ${tempServices.length} sensor(s).`
+        `Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`
       );
       expect(mockLog.info).toHaveBeenCalledWith(
         `Updating accessory ${mockAccessory.displayName} after removing disabled services.`
