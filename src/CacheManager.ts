@@ -146,11 +146,15 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
    */
   public async updateDeviceState(isQuickRefresh = false): Promise<DeviceState | null> {
     if (this.isUpdating) {
-      this.logger.debug('[CacheManager] Update already in progress. Skipping.');
+      if (this.debug) {
+        this.logger.debug('[CacheManager] Update already in progress. Skipping.');
+      }
       return this._deviceState;
     }
     this.isUpdating = true;
-    this.logger.info(isQuickRefresh ? '[CacheManager] Performing quick refresh.' : '[CacheManager] Performing regular state update.');
+    if (this.debug) {
+      this.logger.info(isQuickRefresh ? '[CacheManager] Performing quick refresh.' : '[CacheManager] Performing regular state update.');
+    }
 
     try {
       // Fetch the latest status from the AC unit itself
@@ -192,7 +196,9 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       // this.emit('error', error);
     } finally {
       this.isUpdating = false;
-      this.logger.debug(isQuickRefresh ? '[CacheManager] Quick refresh finished.' : '[CacheManager] Regular state update finished.');
+      if (this.debug) {
+        this.logger.debug(isQuickRefresh ? '[CacheManager] Quick refresh finished.' : '[CacheManager] Regular state update finished.');
+      }
       this.scheduleRefresh(); // Ensure polling continues
     }
     return this._deviceState;
@@ -204,8 +210,6 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
    */
   async applyStateToDevice(desiredState: DeviceState): Promise<void> {
     this.logger.debug(`[CacheManager] Applying desired state: ${JSON.stringify(desiredState.toPlainObject())}`);
-    // Ensure currentState (this._deviceState) is fresh before diffing.
-    await this.updateDeviceState(true);
     const currentState = this._deviceState;
     this.logger.debug(`[CacheManager] Current actual state before diff: ${JSON.stringify(currentState.toPlainObject())}`);
 
@@ -268,19 +272,21 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
 
     if (changesMade && Object.keys(options).length > 0) {
       this.logger.info(`[CacheManager] Changes detected. Enqueuing command with options: ${JSON.stringify(options)}`);
+      
+      // Optimistically update local DeviceState BEFORE enqueuing.
+      if (typeof this._deviceState.updateFromOptions === 'function') {
+        this._deviceState.updateFromOptions(options);
+        this.logger.debug(`[CacheManager] Optimistically updated local DeviceState to: ${JSON.stringify(this._deviceState.toPlainObject())} BEFORE enqueuing.`);
+      } else {
+        this.logger.warn('[CacheManager] DeviceState.updateFromOptions method not found. Skipping optimistic update before enqueue.');
+      }
+      
       const queue = this.getCommandQueue();
       
       // Changed from addCommand with CommandType to enqueueCommand with options directly
       await queue.enqueueCommand(options);
-
-      // Optimistically update local DeviceState.
-      // A method like `this._deviceState.updateFromOptions(options)` will be added to DeviceState.ts
-      if (typeof this._deviceState.updateFromOptions === 'function') {
-        this._deviceState.updateFromOptions(options);
-        this.logger.debug(`[CacheManager] Optimistically updated local DeviceState to: ${JSON.stringify(this._deviceState.toPlainObject())} after enqueuing.`);
-      } else {
-        this.logger.warn('[CacheManager] DeviceState.updateFromOptions method not found. Skipping optimistic update.');
-      }
+      // The 'executed' event from CommandQueue will trigger scheduleQuickRefresh()
+      // which in turn calls updateDeviceState(true) for rapid feedback.
     } else {
       this.logger.info('[CacheManager] No changes to apply.');
     }

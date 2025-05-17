@@ -114,6 +114,7 @@ describe('TfiacPlatformAccessory extra tests', () => {
 
   it('should remove sensors when disable temperature', () => {
     accessory.context!.deviceConfig.enableTemperature = false;
+    accessory.context!.deviceConfig.debug = true; // Add this line
     // Provide existing sensor services
     const indoorService = {};
     const outdoorService = {};

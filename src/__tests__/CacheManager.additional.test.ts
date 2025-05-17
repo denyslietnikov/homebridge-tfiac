@@ -5,27 +5,18 @@ import { TfiacDeviceConfig } from '../settings.js';
 import { PowerState, OperationMode, FanSpeed } from '../enums.js';
 import { DeviceState } from '../state/DeviceState.js';
 
-// Create a mock CommandQueue for testing
-class MockCommandQueue extends EventEmitter {
-  constructor() {
-    super();
-  }
-  enqueueCommand = vi.fn().mockResolvedValue(undefined);
-  removeAllListeners = vi.fn();
+// We'll no longer mock CommandQueue module, but instead directly mock the initCommandQueue method
+class MockEventEmitter extends EventEmitter {
+  public enqueueCommand = vi.fn().mockResolvedValue(undefined);
+  public removeAllListeners = vi.fn();
 }
-
-// Mock the CommandQueue module
-vi.mock('../state/CommandQueue.js', () => {
-  return {
-    CommandQueue: vi.fn().mockImplementation(() => new MockCommandQueue()),
-  };
-});
 
 describe('CacheManager - Additional Tests', () => {
   let cacheManager: CacheManager;
   let config: TfiacDeviceConfig;
   let mockApi: any;
   let mockDeviceState: any;
+  let mockCommandQueue: MockEventEmitter;
   
   const originalNodeEnv = process.env.NODE_ENV;
   
@@ -39,6 +30,7 @@ describe('CacheManager - Additional Tests', () => {
       ip: '192.168.1.100',
       port: 8080,
       updateInterval: 15,
+      debug: true,
     } as TfiacDeviceConfig;
     
     cacheManager = CacheManager.getInstance(config);
@@ -55,6 +47,31 @@ describe('CacheManager - Additional Tests', () => {
       setDeviceOptions: vi.fn().mockResolvedValue(undefined),
     };
 
+    // Create a new MockEventEmitter instance for each test
+    mockCommandQueue = new MockEventEmitter();
+
+    // Instead of completely mocking initCommandQueue, we need to preserve the event listener setup logic.
+    // First, store the original method
+    const originalInitCommandQueue = (cacheManager as any).initCommandQueue;
+    
+    // Then mock it to:
+    // 1. Return our mockCommandQueue
+    // 2. But still set up event listeners on it similar to the original method
+    (cacheManager as any).initCommandQueue = vi.fn(() => {
+      // Set up the command queue reference
+      (cacheManager as any).commandQueue = mockCommandQueue;
+      
+      // Set up the executed event listener to schedule a quick refresh
+      mockCommandQueue.on('executed', (event: any) => {
+        (cacheManager as any).logger.debug(`[CacheManager] Command executed: ${JSON.stringify(event.command)}. Scheduling quick refresh.`);
+        (cacheManager as any).scheduleQuickRefresh();
+      });
+      
+      // We'll skip other event listeners for now as they're not relevant to this test
+      
+      return mockCommandQueue;
+    });
+
     (cacheManager as any).api = mockApi;
     (cacheManager as any)._deviceState = mockDeviceState;
     (cacheManager as any).isUpdating = false;
@@ -69,6 +86,7 @@ describe('CacheManager - Additional Tests', () => {
   afterEach(() => {
     process.env.NODE_ENV = originalNodeEnv;
     vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   describe('updateDeviceState', () => {
@@ -147,26 +165,38 @@ describe('CacheManager - Additional Tests', () => {
 
   describe('applyStateToDevice', () => {
     it('should apply changes to device', async () => {
+      vi.useFakeTimers();
+
       const desiredState = new DeviceState();
       desiredState.setPower(PowerState.On);
       desiredState.setOperationMode(OperationMode.Cool);
       desiredState.setTargetTemperature(24);
       
-      const updateDeviceStateSpy = vi.spyOn(cacheManager, 'updateDeviceState').mockResolvedValueOnce(mockDeviceState);
+      const updateDeviceStateSpy = vi.spyOn(cacheManager, 'updateDeviceState').mockResolvedValue(mockDeviceState as any);
       
-      const mockQueue = {
-        enqueueCommand: vi.fn().mockResolvedValue(undefined),
-        on: vi.fn(),
-        removeAllListeners: vi.fn(),
-      };
-      (cacheManager as any).commandQueue = mockQueue;
-      (cacheManager as any).getCommandQueue = vi.fn().mockReturnValue(mockQueue);
+      // Mock scheduleQuickRefresh to directly call updateDeviceState(true) instead of using timers
+      const scheduleQuickRefreshSpy = vi.spyOn(cacheManager as any, 'scheduleQuickRefresh').mockImplementation(() => {
+        return cacheManager.updateDeviceState(true);
+      });
       
+      // Now applyStateToDevice will use our mocked initCommandQueue which returns mockCommandQueue
       await (cacheManager as any).applyStateToDevice(desiredState);
       
+      // Check if command was enqueued to the mock queue
+      expect(mockCommandQueue.enqueueCommand).toHaveBeenCalled();
+      
+      // Simulate successful execution by emitting the 'executed' event from the mockCommandQueue
+      mockCommandQueue.emit('executed', { command: {}, success: true });
+      
+      // Since we mocked scheduleQuickRefresh to directly call updateDeviceState(true), we don't need to advance timers
+      // Let's verify scheduleQuickRefresh was called (which would call updateDeviceState(true) immediately)
+      expect(scheduleQuickRefreshSpy).toHaveBeenCalled();
+      
+      // Then verify updateDeviceState was called with true
       expect(updateDeviceStateSpy).toHaveBeenCalledWith(true);
-      expect(mockQueue.enqueueCommand).toHaveBeenCalled();
       expect((cacheManager as any).logger.info).toHaveBeenCalled();
+
+      vi.useRealTimers();
     });
 
     it('should not apply changes if no differences', async () => {
