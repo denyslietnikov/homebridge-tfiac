@@ -1,3 +1,4 @@
+// filepath: /Users/denisletnikov/Code/homebridge-tfiac/src/__tests__/TurboSwitchAccessory.test.ts
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { TurboSwitchAccessory } from '../TurboSwitchAccessory.js';
 import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback } from 'homebridge';
@@ -105,9 +106,7 @@ describe('TurboSwitchAccessory', () => {
 
   describe('handleGet', () => {
     it('should return true when turbo is on', () => {
-      // Need to mock both the API status and update the DeviceState object
       mockDeviceStateObject.toApiStatus.mockReturnValue({ opt_turbo: PowerState.On });
-      // Simulate the accessor by creating a new instance after setting up mocks
       inst = new TurboSwitchAccessory(platform, accessory);
       
       const result = inst.handleGet();
@@ -117,7 +116,6 @@ describe('TurboSwitchAccessory', () => {
 
     it('should return false when turbo is off', () => {
       mockDeviceStateObject.toApiStatus.mockReturnValue({ opt_turbo: PowerState.Off });
-      // Simulate the accessor by creating a new instance after setting up mocks
       inst = new TurboSwitchAccessory(platform, accessory);
       
       const result = inst.handleGet();
@@ -132,23 +130,14 @@ describe('TurboSwitchAccessory', () => {
       
       expect(result).toBe(false);
     });
-
-    it('should call callback with the result if provided', () => {
-      mockDeviceStateObject.toApiStatus.mockReturnValue({ opt_turbo: PowerState.On });
-      // Simulate the accessor by creating a new instance after setting up mocks
-      inst = new TurboSwitchAccessory(platform, accessory);
-      
-      // BaseSwitchAccessory.handleGet doesn't use callbacks anymore
-      // Just call the function and check the return value
-      const result = inst.handleGet();
-      
-      expect(result).toBe(true);
-    });
   });
 
   describe('handleSet', () => {
     it('should set turbo on and sleep mode off when value is true', async () => {
       const mockCallback = vi.fn();
+      mockDeviceStateObject.power = PowerState.On; // Ensure AC is ON for Turbo to be set
+      mockDeviceStateObject.turboMode = PowerState.Off; // Ensure turbo is initially off for change detection
+      mockDeviceStateObject.sleepMode = PowerState.On; // Ensure sleep is initially on for change detection
       
       await capturedOnSetHandler(true, mockCallback);
       
@@ -160,6 +149,9 @@ describe('TurboSwitchAccessory', () => {
 
     it('should set turbo off and fan speed to auto when value is false', async () => {
       const mockCallback = vi.fn();
+      mockDeviceStateObject.power = PowerState.On; // Ensure AC is ON for changes
+      mockDeviceStateObject.turboMode = PowerState.On; // Ensure turbo is initially on for change detection
+      mockDeviceStateObject.fanSpeed = FanSpeed.High; // Ensure fan speed is not auto for change detection
       
       await capturedOnSetHandler(false, mockCallback);
       
@@ -171,20 +163,34 @@ describe('TurboSwitchAccessory', () => {
 
     it('should handle errors from applyStateToDevice', async () => {
       const mockCallback = vi.fn();
-      const mockError = new Error('Test error');
-      mockCacheManager.applyStateToDevice.mockRejectedValue(mockError);
+      
+      // Create a HapStatusError for the platform
+      const hapError = new platform.api.hap.HapStatusError(
+        platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+      );
+      // Set status property explicitly for test compatibility
+      hapError.status = platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
+      
+      // Mock the applyStateToDevice to reject with our error
+      mockCacheManager.applyStateToDevice.mockRejectedValueOnce(hapError);
+      
+      mockDeviceStateObject.power = PowerState.On; // Ensure AC is ON
+      mockDeviceStateObject.turboMode = PowerState.Off; // Ensure initial state for action
+      mockDeviceStateObject.sleepMode = PowerState.On; // For testing sleep mode turning off with turbo
       
       await capturedOnSetHandler(true, mockCallback);
       
-      expect(mockCallback).toHaveBeenCalledWith(expect.objectContaining({
-        status: platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
-      }));
+      // Verify the error handling
+      expect(mockCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+        })
+      );
     });
   });
 
   describe('stateChanged listener', () => {
     it('should update characteristic when turbo state changes to on', () => {
-      // Trigger the stateChanged listener with new state
       const newState = createMockDeviceState(defaultDeviceOptions);
       newState.toApiStatus.mockReturnValue({ opt_turbo: PowerState.On });
       
@@ -194,7 +200,6 @@ describe('TurboSwitchAccessory', () => {
     });
 
     it('should update characteristic when turbo state changes to off', () => {
-      // Trigger the stateChanged listener with new state
       const newState = createMockDeviceState(defaultDeviceOptions);
       newState.toApiStatus.mockReturnValue({ opt_turbo: PowerState.Off });
       

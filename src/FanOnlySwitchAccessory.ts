@@ -1,10 +1,11 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
-import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
+import { BooleanSwitchAccessory } from './BooleanSwitchAccessory.js';
 import { OperationMode } from './enums.js';
 import { DeviceState } from './state/DeviceState.js';
+import { AirConditionerStatus } from './AirConditionerAPI.js';
 
-export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
+export class FanOnlySwitchAccessory extends BooleanSwitchAccessory {
   constructor(
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
@@ -13,28 +14,18 @@ export class FanOnlySwitchAccessory extends BaseSwitchAccessory {
       platform,
       accessory,
       'FanOnly',
-      'fanonly',
-      (status) => {
-        // Check if we received a DeviceState object
-        if (status instanceof DeviceState) {
-          // Convert DeviceState to API status format
-          status = status.toApiStatus();
-        }
-        
-        // Add null/undefined check for the status object
+      // getStatusValue
+      (status: Partial<AirConditionerStatus>) => {
         if (!status || status.operation_mode === undefined) {
           return false;
         }
         return status.operation_mode === OperationMode.FanOnly;
       },
-      async (value) => {
-        const mode = value ? OperationMode.FanOnly : OperationMode.Auto;
-        const deviceState = this.cacheManager.getDeviceState();
-        const desiredState = deviceState.clone();
-        desiredState.setOperationMode(mode);
-        await this.cacheManager.applyStateToDevice(desiredState);
+      // deviceStateModifier
+      (state: DeviceState, value: boolean): boolean => {
+        state.setOperationMode(value ? OperationMode.FanOnly : OperationMode.Auto);
+        return true; // Always proceed with API call for FanOnly
       },
-      'FanOnly',
     );
   }
 }

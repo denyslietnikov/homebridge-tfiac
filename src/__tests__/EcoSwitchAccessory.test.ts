@@ -156,17 +156,21 @@ describe('EcoSwitchAccessory', () => {
 
   describe('setEcoState method', () => {
     it('should call setEcoMode with ON when value is true', async () => {
-      await inst.setEcoState(true);
+      const mockCallback = vi.fn();
+      await capturedOnSetHandler(true, mockCallback);
       
       expect(mockDeviceStateObject.setEcoMode).toHaveBeenCalledWith(PowerState.On);
       expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
+      expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
     it('should call setEcoMode with OFF when value is false', async () => {
-      await inst.setEcoState(false);
+      const mockCallback = vi.fn();
+      await capturedOnSetHandler(false, mockCallback);
       
       expect(mockDeviceStateObject.setEcoMode).toHaveBeenCalledWith(PowerState.Off);
       expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
+      expect(mockCallback).toHaveBeenCalledWith(null);
     });
   });
 });
