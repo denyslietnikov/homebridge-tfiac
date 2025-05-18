@@ -92,15 +92,22 @@ describe('DeviceState Additional Tests', () => {
     deviceState = new DeviceState(mockLogger);
   });
 
-  it('turning Turbo mode ON should turn Sleep mode OFF', () => {
+  it('turning Turbo mode ON should turn Sleep mode OFF, set fan to Turbo, and emit stateChanged', () => {
     // Need to ensure device is on and in a mode that allows Turbo
     deviceState.setPower(PowerState.On);
     deviceState.setOperationMode(OperationMode.Cool);
     
-    deviceState.setSleepMode(SleepModeState.On);
-    deviceState.setTurboMode(PowerState.On);
-    expect(deviceState.sleepMode).toBe(SleepModeState.Off);
-    expect(deviceState.turboMode).toBe(PowerState.On);
+    deviceState.setSleepMode(SleepModeState.On); // Sleep is ON
+
+    const stateChangedSpy = vi.fn();
+    deviceState.on('stateChanged', stateChangedSpy);
+
+    deviceState.setTurboMode(PowerState.On); // Now, turn Turbo ON
+
+    expect(deviceState.sleepMode).toBe(SleepModeState.Off); // Sleep should be OFF
+    expect(deviceState.turboMode).toBe(PowerState.On);   // Turbo should be ON
+    expect(deviceState.fanSpeed).toBe(FanSpeed.Turbo); // Fan should be Turbo
+    expect(stateChangedSpy).toHaveBeenCalled();
   });
 
   it('turning Sleep mode ON should turn Turbo mode OFF', () => {
@@ -114,7 +121,7 @@ describe('DeviceState Additional Tests', () => {
     expect(deviceState.sleepMode).toBe(SleepModeState.On);
   });
 
-  it('setting Power OFF should turn off all modes and set fan to Auto', () => {
+  it('setting Power OFF should turn off all modes, set fan to Auto, and emit stateChanged', () => {
     deviceState.setPower(PowerState.On);
     deviceState.setOperationMode(OperationMode.Cool);
     deviceState.setFanSpeed(FanSpeed.High);
@@ -122,16 +129,21 @@ describe('DeviceState Additional Tests', () => {
     deviceState.setTurboMode(PowerState.On);
     deviceState.setSwingMode(SwingMode.Vertical);
     deviceState.setEcoMode(PowerState.On);
+    // Ensure some state is actually "on" so that turning power off causes changes.
 
-    deviceState.setPower(PowerState.Off);
+    const stateChangedSpy = vi.fn();
+    deviceState.on('stateChanged', stateChangedSpy);
+
+    deviceState.setPower(PowerState.Off); // Turn power OFF
 
     expect(deviceState.power).toBe(PowerState.Off);
-    expect(deviceState.operationMode).toBe(OperationMode.Auto); // Default mode when off
+    expect(deviceState.operationMode).toBe(OperationMode.Auto);
     expect(deviceState.fanSpeed).toBe(FanSpeed.Auto);
     expect(deviceState.sleepMode).toBe(SleepModeState.Off);
     expect(deviceState.turboMode).toBe(PowerState.Off);
-    expect(deviceState.swingMode).toBe(SwingMode.Off); // Assuming swing also turns off
+    expect(deviceState.swingMode).toBe(SwingMode.Off);
     expect(deviceState.ecoMode).toBe(PowerState.Off);
+    expect(stateChangedSpy).toHaveBeenCalled();
   });
 
   it('setting fan speed to non-Turbo should turn Turbo mode OFF', () => {

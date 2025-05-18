@@ -37,7 +37,6 @@ export interface CommandMaxRetriesReachedEvent {
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
-const COMMAND_MERGE_WINDOW_MS = 500;
 
 export class CommandQueue extends EventEmitter {
   private queue: QueuedCommand[] = [];
@@ -62,10 +61,8 @@ export class CommandQueue extends EventEmitter {
 
       // Check if there's a command in the queue that can be merged with
       const lastQueuedCommand = this.queue[this.queue.length - 1];
-      if (
-        lastQueuedCommand &&
-        (now - lastQueuedCommand.timestamp) < COMMAND_MERGE_WINDOW_MS
-      ) {
+      // Changed condition: Merge if there's a last command in queue (it's not yet processed)
+      if (lastQueuedCommand) {
         const originalCmdJson = JSON.stringify(lastQueuedCommand.command);
         const newCmdJson = JSON.stringify(command);
         lastQueuedCommand.command = { ...lastQueuedCommand.command, ...command };

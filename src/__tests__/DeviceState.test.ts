@@ -194,4 +194,63 @@ describe('DeviceState', () => {
     expect(state.operationMode).toBe(OperationMode.Auto);
     expect(state.fanSpeed).toBe(FanSpeed.Auto);
   });
+
+  describe('Harmonization Tests from Audit', () => {
+    it('"Sleep → Turbo" ⇒ sleep=false & fan=Turbo (optimistically)', () => {
+      state.setPower(PowerState.On); // Ensure power is on
+      state.setSleepMode(SleepModeState.On);
+      expect(state.sleepMode).toBe(SleepModeState.On);
+      expect(state.fanSpeed).toBe(FanSpeed.Low); // Sleep mode sets fan to Low
+      expect(state.turboMode).toBe(PowerState.Off);
+
+      const stateChangedListener = vi.fn();
+      state.on('stateChanged', stateChangedListener);
+
+      state.setTurboMode(PowerState.On);
+
+      expect(state.turboMode).toBe(PowerState.On);
+      expect(state.sleepMode).toBe(SleepModeState.Off); // Turbo overrides Sleep
+      expect(state.fanSpeed).toBe(FanSpeed.Turbo); // Turbo sets fan to Turbo
+      expect(stateChangedListener).toHaveBeenCalled();
+    });
+
+    it('"PowerOff" ⇒ all flags off in DeviceState and event stateChanged', () => {
+      state.setPower(PowerState.On);
+      state.setOperationMode(OperationMode.Cool);
+      state.setTargetTemperature(22);
+      state.setFanSpeed(FanSpeed.High);
+      state.setSwingMode(SwingMode.Both);
+      state.setTurboMode(PowerState.On);
+      state.setEcoMode(PowerState.On);
+      state.setDisplayMode(PowerState.Off);
+      state.setBeepMode(PowerState.Off);
+      state.setSleepMode(SleepModeState.On); // This will also adjust fan/turbo
+
+      // Capture initial harmonized state after setting sleep mode last
+      const initialFanSpeed = state.fanSpeed;
+      const initialTurboMode = state.turboMode;
+
+      const stateChangedListener = vi.fn();
+      state.on('stateChanged', stateChangedListener);
+
+      state.setPower(PowerState.Off);
+
+      expect(state.power).toBe(PowerState.Off);
+      expect(state.turboMode).toBe(PowerState.Off);
+      expect(state.sleepMode).toBe(SleepModeState.Off);
+      expect(state.ecoMode).toBe(PowerState.Off);
+      // As per existing harmonization rules for PowerState.Off:
+      expect(state.fanSpeed).toBe(FanSpeed.Auto);
+      expect(state.operationMode).toBe(OperationMode.Auto);
+      expect(state.swingMode).toBe(SwingMode.Off);
+      
+      // Display and Beep modes are not reset by power off in the current implementation
+      expect(state.displayMode).toBe(PowerState.Off); 
+      expect(state.beepMode).toBe(PowerState.Off);
+      // Target temperature is not reset by power off
+      expect(state.targetTemperature).toBe(22);
+
+      expect(stateChangedListener).toHaveBeenCalled();
+    });
+  });
 });

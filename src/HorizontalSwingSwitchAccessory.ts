@@ -28,7 +28,8 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
         return status.swing_mode === SwingMode.Horizontal || status.swing_mode === SwingMode.Both;
       }, // status here is Partial<AirConditionerStatus>
       async (value) => {
-        const currentMode = this.deviceState.swingMode;
+        const modifiedState = this.deviceState.clone();
+        const currentMode = modifiedState.swingMode;
         let newMode: SwingMode;
         if (value) {
           // Turn horizontal swing on
@@ -37,8 +38,8 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
           // Turn horizontal swing off
           newMode = currentMode === SwingMode.Both ? SwingMode.Vertical : SwingMode.Off;
         }
-        // Updated to use setDeviceOptions
-        await this.cacheManager.api.setDeviceOptions({ swingMode: newMode });
+        modifiedState.setSwingMode(newMode);
+        await this.cacheManager.applyStateToDevice(modifiedState);
       },
       'Horizontal Swing',
     );
@@ -94,8 +95,10 @@ export class HorizontalSwingSwitchAccessory extends BaseSwitchAccessory {
       }
 
       this.platform.log.info(`Setting combined swing mode to ${newMode} for ${this.accessory.displayName}`);
-      // Updated to use setDeviceOptions
-      await this.cacheManager.api.setDeviceOptions({ swingMode: newMode });
+      
+      const modifiedState = this.deviceState.clone();
+      modifiedState.setSwingMode(newMode);
+      await this.cacheManager.applyStateToDevice(modifiedState);
 
       // Removed manual characteristic update and local cache update
       // These will be handled by BaseSwitchAccessory's stateChanged listener

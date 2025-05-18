@@ -61,6 +61,7 @@ describe('HorizontalSwingSwitchAccessory', () => {
     };
 
     mockDeviceStateObject = createMockDeviceState(defaultDeviceOptions);
+    mockDeviceStateObject.setSwingMode = vi.fn(); // Added mock for setSwingMode
     mockDeviceStateObject.on = vi.fn((event, listener) => {
       if (event === 'stateChanged') {
         capturedStateChangeListener = listener;
@@ -73,9 +74,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
     mockCacheManager = createMockCacheManager();
     mockCacheManager.getDeviceState.mockReturnValue(mockDeviceStateObject);
     mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
-    mockCacheManager.api = {
-      setDeviceOptions: vi.fn().mockResolvedValue(undefined),
-    };
     mockCacheManager.getStatus = vi.fn().mockResolvedValue({ swingMode: SwingMode.Off });
 
     (CacheManager.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockCacheManager);
@@ -145,64 +143,72 @@ describe('HorizontalSwingSwitchAccessory', () => {
   describe('handleSet', () => {
     it('should set swing_mode to Horizontal when value is true and vertical is off', async () => {
       const mockCallback = vi.fn();
-      mockDeviceStateObject.swingMode = SwingMode.Off;
+      mockDeviceStateObject.swingMode = SwingMode.Off; // Vertical is off
       
-      await capturedOnSetHandler(true, mockCallback);
+      await capturedOnSetHandler(true, mockCallback); // Request to turn horizontal ON
       
-      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Horizontal });
+      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Horizontal);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
     it('should set swing_mode to Both when value is true and vertical is on', async () => {
       const mockCallback = vi.fn();
-      mockDeviceStateObject.swingMode = SwingMode.Vertical;
+      mockDeviceStateObject.swingMode = SwingMode.Vertical; // Vertical is on
       
-      await capturedOnSetHandler(true, mockCallback);
+      await capturedOnSetHandler(true, mockCallback); // Request to turn horizontal ON
       
-      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Both });
+      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Both);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
     it('should set swing_mode to Off when value is false and vertical is off', async () => {
       const mockCallback = vi.fn();
-      mockDeviceStateObject.swingMode = SwingMode.Horizontal;
+      mockDeviceStateObject.swingMode = SwingMode.Horizontal; 
       
-      await capturedOnSetHandler(false, mockCallback);
+      await capturedOnSetHandler(false, mockCallback); // Request to turn horizontal OFF
       
-      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Off });
+      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Off);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
     it('should set swing_mode to Vertical when value is false and vertical is on', async () => {
       const mockCallback = vi.fn();
-      mockDeviceStateObject.swingMode = SwingMode.Both;
+      mockDeviceStateObject.swingMode = SwingMode.Both; 
       
-      await capturedOnSetHandler(false, mockCallback);
+      await capturedOnSetHandler(false, mockCallback); // Request to turn horizontal OFF
       
-      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Vertical });
+      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Vertical);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
     it('should handle errors and call callback with error', async () => {
       const mockCallback = vi.fn();
       const mockError = new Error('Test error');
-      mockCacheManager.api.setDeviceOptions.mockRejectedValue(mockError);
+      mockCacheManager.applyStateToDevice.mockRejectedValue(mockError); 
+      mockDeviceStateObject.swingMode = SwingMode.Off; 
       
       await capturedOnSetHandler(true, mockCallback);
       
-      expect(mockCallback).toHaveBeenCalledWith(expect.any(Error));
+      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Horizontal); 
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
+      expect(mockCallback).toHaveBeenCalledWith(mockError);
     });
 
     it('should fetch status from API if deviceState swingMode is not available', async () => {
       const mockCallback = vi.fn();
-      mockDeviceStateObject.swingMode = undefined;
-      const mockStatus = { swingMode: SwingMode.Vertical };
-      mockCacheManager.getStatus.mockResolvedValue(mockStatus);
+      mockDeviceStateObject.swingMode = undefined; 
+      const mockStatusFromAPI = { swingMode: SwingMode.Vertical }; 
+      mockCacheManager.getStatus.mockResolvedValue(mockStatusFromAPI);
       
-      await capturedOnSetHandler(true, mockCallback);
+      await capturedOnSetHandler(true, mockCallback); 
       
       expect(mockCacheManager.getStatus).toHaveBeenCalled();
-      expect(mockCacheManager.api.setDeviceOptions).toHaveBeenCalledWith({ swingMode: SwingMode.Both });
+      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Both);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
@@ -220,7 +226,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
 
   describe('stateChanged listener', () => {
     it('should update characteristic when state changes to horizontal on', () => {
-      // Trigger the stateChanged listener with new state
       const newState = createMockDeviceState(defaultDeviceOptions);
       newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Horizontal });
       
@@ -230,7 +235,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
     });
 
     it('should update characteristic when state changes to both on', () => {
-      // Trigger the stateChanged listener with new state
       const newState = createMockDeviceState(defaultDeviceOptions);
       newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Both });
       
@@ -240,7 +244,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
     });
 
     it('should update characteristic when state changes to off', () => {
-      // Trigger the stateChanged listener with new state
       const newState = createMockDeviceState(defaultDeviceOptions);
       newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Off });
       
@@ -250,7 +253,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
     });
 
     it('should update characteristic when state changes to vertical only', () => {
-      // Trigger the stateChanged listener with new state
       const newState = createMockDeviceState(defaultDeviceOptions);
       newState.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Vertical });
       

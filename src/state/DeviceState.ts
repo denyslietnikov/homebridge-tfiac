@@ -146,6 +146,10 @@ class DeviceState extends EventEmitter {
   }
 
   // --- Public Setters that trigger harmonization and events ---
+  /**
+   * Sets the power state of the device.
+   * Business Rule: Turning power off resets most operational modes to default/off.
+   */
   public setPower(power: PowerState): void {
     this._captureStateBeforeUpdate();
     if (this._power !== power) {
@@ -165,6 +169,11 @@ class DeviceState extends EventEmitter {
     }
   }
 
+  /**
+   * Sets the operation mode of the device.
+   * Business Rule: Dry mode forces FanSpeed to Low and disables Turbo/Sleep.
+   * Business Rule: Auto mode defaults FanSpeed to Auto if Turbo/Sleep are off.
+   */
   public setOperationMode(mode: OperationMode): void {
     this._captureStateBeforeUpdate();
     if (this._operationMode !== mode) {
@@ -211,6 +220,12 @@ class DeviceState extends EventEmitter {
     }
   }
 
+  /**
+   * Sets the fan speed of the device.
+   * Business Rule: Fan speed cannot be changed from Low in Dry mode.
+   * Business Rule: Setting FanSpeed to Turbo enables Turbo mode and disables Sleep mode (if not in Dry mode).
+   * Business Rule: Changing FanSpeed from Turbo (while Turbo mode is on) disables Turbo mode.
+   */
   public setFanSpeed(fanSpeed: FanSpeed): void {
     this._captureStateBeforeUpdate();
     if (this._fanSpeed !== fanSpeed) {
@@ -248,12 +263,17 @@ class DeviceState extends EventEmitter {
     }
   }
 
+  /**
+   * Sets the turbo mode of the device.
+   * Business Rule: Turbo mode is not available in Dry mode.
+   * Business Rule: Enabling Turbo mode sets FanSpeed to Turbo and disables Sleep mode.
+   * Business Rule: Disabling Turbo mode (if FanSpeed was Turbo) resets FanSpeed to Auto.
+   */
   public setTurboMode(turboMode: PowerState): void {
     this._captureStateBeforeUpdate();
     if (this._turboMode !== turboMode) {
       this._turboMode = turboMode; // Set turbo mode first
       
-      // Cannot use turbo mode in Dry mode
       if (this._operationMode === OperationMode.Dry && turboMode === PowerState.On) {
         this._turboMode = PowerState.Off;
         if (this._debugEnabled) {
@@ -277,10 +297,13 @@ class DeviceState extends EventEmitter {
     }
   }
 
+  /**
+   * Sets the eco mode of the device.
+   * Business Rule: Eco mode cannot be enabled if the device is powered off.
+   */
   public setEcoMode(ecoMode: PowerState): void {
     this._captureStateBeforeUpdate();
     
-    // Ensuring that power state is considered before setting eco mode
     if (this._power === PowerState.Off && ecoMode === PowerState.On) {
       if (this._debugEnabled) {
         this.log.debug('[DeviceState] Cannot set eco mode when device is off');
@@ -310,6 +333,10 @@ class DeviceState extends EventEmitter {
     }
   }
 
+  /**
+   * Sets the sleep mode of the device.
+   * Business Rule: Enabling Sleep mode disables Turbo mode and sets FanSpeed to Low.
+   */
   public setSleepMode(sleepMode: SleepModeState): void {
     this._captureStateBeforeUpdate();
     if (this._sleepMode !== sleepMode) {
