@@ -168,8 +168,11 @@ class DeviceState extends EventEmitter {
   public setOperationMode(mode: OperationMode): void {
     this._captureStateBeforeUpdate();
     if (this._operationMode !== mode) {
+      // Only log if operation mode is actually changing
+      if (this._debugEnabled) {
+        this.log.debug(`[DeviceState] setOperationMode: ${this._operationMode} → ${mode}`);
+      }
       this._operationMode = mode;
-      
       // Immediate harmonization based on operation mode
       if (mode === OperationMode.Dry) {
         this._fanSpeed = FanSpeed.Low;
@@ -181,8 +184,12 @@ class DeviceState extends EventEmitter {
           this._fanSpeed = FanSpeed.Auto;
         }
       }
-      
       this._applyHarmonizationAndNotify();
+    } else {
+      // If operation mode is the same, do not update. (Prevents unnecessary state churn.)
+      if (this._debugEnabled) {
+        this.log.debug(`[DeviceState] setOperationMode: No change (${mode}).`);
+      }
     }
   }
 
