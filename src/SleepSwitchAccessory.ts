@@ -11,13 +11,14 @@ export class SleepSwitchAccessory extends BooleanSwitchAccessory {
     accessory: PlatformAccessory,
   ) {
     const getStatusValue: GetStatusValueFromApiFn = (status: Partial<AirConditionerStatus>) => {
-      if (!status) {
+      if (!status || typeof status.opt_sleepMode === 'undefined') {
         return false;
       }
-      // Sleep is active if AC is ON, Turbo is OFF, and the Sleep option (opt_sleep) is ON.
+      // Sleep is active if AC is ON, Turbo is OFF, and opt_sleepMode indicates sleep is active.
+      // SleepModeState.Off is typically 'off' or 'off:...'
       return status.is_on === PowerState.On &&
-             status.opt_turbo !== PowerState.On && // If opt_turbo is undefined, it's not considered On
-             status.opt_sleep === PowerState.On;
+             status.opt_turbo !== PowerState.On && 
+             !status.opt_sleepMode.startsWith(SleepModeState.Off);
     };
 
     const deviceStateModifier: DeviceStateModifierFn = (state: DeviceState, value: boolean): boolean => {
