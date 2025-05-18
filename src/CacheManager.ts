@@ -35,8 +35,8 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
   private quickRefreshTimer: NodeJS.Timeout | null = null;
   private pollingTimer: NodeJS.Timeout | null = null; // Added
   private readonly quickRefreshDelayMs = 2000; // 2 seconds for quick refresh after command
+  private readonly turboRefreshDelayMs = 35000; // 35 seconds for Turbo command quick refresh
   private isUpdating = false;
-
   private constructor(private config: TfiacDeviceConfig) {
     super(); // Added super() call
     // Create the API instance
@@ -342,7 +342,13 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       // Listener for successful command execution
       this.commandQueue.on('executed', (event: CommandExecutedEvent) => {
         this.logger.debug(`[CacheManager] Command executed: ${JSON.stringify(event.command)}. Scheduling quick refresh.`);
-        this.scheduleQuickRefresh(); // This will lead to updateDeviceState(true), which then calls scheduleRefresh()
+        // Check if the command was to turn Turbo mode on
+        if (event.command.turbo === PowerState.On) {
+          this.logger.debug('[CacheManager] Turbo ON command detected. Using turbo refresh delay.');
+          this.scheduleQuickRefresh(this.turboRefreshDelayMs);
+        } else {
+          this.scheduleQuickRefresh(); // This will lead to updateDeviceState(true), which then calls scheduleRefresh()
+        }
       });
 
       // Listener for command errors
@@ -364,19 +370,20 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
     return this.commandQueue;
   }
 
-  private scheduleQuickRefresh(): void {
+  private scheduleQuickRefresh(delayMs?: number): void {
     if (this.quickRefreshTimer) {
       clearTimeout(this.quickRefreshTimer);
     }
+    const refreshDelay = delayMs !== undefined ? delayMs : this.quickRefreshDelayMs;
     this.quickRefreshTimer = setTimeout(async () => {
-      this.logger.debug('[CacheManager] Executing quick refresh after command.');
+      this.logger.debug(`[CacheManager] Executing quick refresh after command with delay: ${refreshDelay}ms.`);
       try {
         await this.updateDeviceState(true); // isQuickRefresh = true
       } catch (error) {
         this.logger.error(`[CacheManager] Error during quick refresh: ${error instanceof Error ? error.message : String(error)}`);
       }
       // updateDeviceState calls scheduleRefresh in its finally block
-    }, this.quickRefreshDelayMs);
+    }, refreshDelay);
     if (this.quickRefreshTimer && this.quickRefreshTimer.unref) { // Added .unref()
       this.quickRefreshTimer.unref();
     }
