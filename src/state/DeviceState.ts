@@ -56,6 +56,9 @@ class DeviceState extends EventEmitter {
 
   // Track last update time
   private _lastUpdated: Date = new Date();
+  
+  // Track when sleep mode was last set to ON
+  private _lastSleepCmdTime: number = 0;
 
   // For tracking changes before notification
   private _stateBeforeUpdate: PlainDeviceState | null = null;
@@ -610,7 +613,24 @@ class DeviceState extends EventEmitter {
     let newSleepValue: SleepModeState | undefined = undefined;
     if (status.opt_sleepMode !== undefined) {
       // Prefer opt_sleepMode if available as it's more specific
-      newSleepValue = status.opt_sleepMode as SleepModeState;
+      // If status reports sleepMode1, always accept it immediately as confirmation
+      if (status.opt_sleepMode.startsWith('sleepMode1')) {
+        newSleepValue = SleepModeState.On;
+        if (this._debugEnabled) {
+          this.log.debug(`[DeviceState][updateFromDevice] Accepting sleep mode ON state: ${status.opt_sleepMode}`);
+        }
+      } else if (this._sleepMode === SleepModeState.On && 
+          status.opt_sleepMode.startsWith('off') && 
+          Date.now() - this._lastSleepCmdTime < 4000) {
+        // If we recently set Sleep mode to ON and device is still reporting "off:0:0..." within 4 seconds,
+        // ignore this intermediate state to avoid UI flickering
+        if (this._debugEnabled) {
+          this.log.debug(`[DeviceState][updateFromDevice] Ignoring intermediate off state for sleep mode during transition: ${status.opt_sleepMode}`);
+        }
+        // Keep the existing value, don't update
+      } else {
+        newSleepValue = status.opt_sleepMode as SleepModeState;
+      }
     } else if (status.opt_sleep !== undefined) {
       // Fallback to opt_sleep if opt_sleepMode is not provided
       newSleepValue = status.opt_sleep === PowerState.On ? SleepModeState.On : SleepModeState.Off;
@@ -704,6 +724,10 @@ class DeviceState extends EventEmitter {
           : SleepModeState.Off;
       if (this._sleepMode !== newSleepValue) {
         this._sleepMode = newSleepValue;
+        if (newSleepValue === SleepModeState.On) {
+          // Track when sleep mode was set to ON
+          this._lastSleepCmdTime = Date.now();
+        }
         changed = true;
       }
     }
@@ -836,6 +860,7 @@ class DeviceState extends EventEmitter {
     clonedState._beepMode = this._beepMode;
     clonedState._sleepMode = this._sleepMode;
     clonedState._lastUpdated = new Date(this._lastUpdated);
+    clonedState._lastSleepCmdTime = this._lastSleepCmdTime;
 
     return clonedState;
   }

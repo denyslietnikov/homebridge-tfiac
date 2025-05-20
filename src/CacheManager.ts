@@ -36,6 +36,7 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
   private pollingTimer: NodeJS.Timeout | null = null; // Added
   private readonly quickRefreshDelayMs = 2000; // 2 seconds for quick refresh after command
   private readonly turboRefreshDelayMs = 35000; // 35 seconds for Turbo command quick refresh
+  private readonly sleepRefreshDelayMs = 4000; // 4 seconds for Sleep command quick refresh
   private isUpdating = false;
   private constructor(private config: TfiacDeviceConfig) {
     super(); // Added super() call
@@ -346,6 +347,9 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         if (event.command.turbo === PowerState.On) {
           this.logger.debug('[CacheManager] Turbo ON command detected. Using turbo refresh delay.');
           this.scheduleQuickRefresh(this.turboRefreshDelayMs);
+        } else if (event.command.sleep !== undefined) {
+          this.logger.debug('[CacheManager] Sleep command detected. Using sleep refresh delay.');
+          this.scheduleQuickRefresh(this.sleepRefreshDelayMs);
         } else {
           this.scheduleQuickRefresh(); // This will lead to updateDeviceState(true), which then calls scheduleRefresh()
         }
