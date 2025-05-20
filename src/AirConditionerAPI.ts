@@ -349,6 +349,11 @@ export class AirConditionerAPI extends EventEmitter {
           effSleep = SleepModeState.Off; // Ensure sleep is off if turbo is forced by fan speed
         }
       }
+
+      // Force fan to Auto in Dry mode if power is ON
+      if (effMode === OperationMode.Dry) {
+        effFan = FanSpeed.Auto;
+      }
     }
 
     const payload: Record<string, string | number | undefined> = {};
@@ -364,7 +369,15 @@ export class AirConditionerAPI extends EventEmitter {
       optimisticUpdate.operation_mode = effMode;
       payload.SetTemp = effTemp;
       optimisticUpdate.target_temp = effTemp;
-      payload.WindSpeed = effFan as string; 
+      // Only include WindSpeed if it's not undefined.
+      // Specifically, for Dry mode, if effFan is Auto (which it should be), send it.
+      // For other modes, send if options.fanSpeed was provided or if effFan is not Auto.
+      if (effFan !== undefined) {
+        if ((effMode === OperationMode.Dry && effFan === FanSpeed.Auto) || 
+            (options.fanSpeed !== undefined || effFan !== FanSpeed.Auto)) {
+          payload.WindSpeed = effFan as string;
+        }
+      }
       optimisticUpdate.fan_mode = effFan;
 
       // Handle SwingMode
@@ -414,7 +427,7 @@ export class AirConditionerAPI extends EventEmitter {
     } else { // Power OFF payload specifics
       payload.Opt_sleepMode = SleepModeState.Off; 
       payload.Opt_super = PowerState.Off;
-      payload.WindSpeed = FanSpeed.Auto; 
+      // Do not include WindSpeed when turning off, device might default or retain last
 
       optimisticUpdate.opt_sleepMode = SleepModeState.Off;
       optimisticUpdate.opt_sleep = PowerState.Off;
@@ -478,8 +491,8 @@ export class AirConditionerAPI extends EventEmitter {
 
   private mapWindDirectionToSwingMode(status: StatusUpdateMsg): string {
     const value =
-      (status.WindDirection_H[0] === 'on' ? 1 : 0) |
-      (status.WindDirection_V[0] === 'on' ? 2 : 0);
+      ((status.WindDirection_H && status.WindDirection_H[0] === 'on') ? 1 : 0) |
+      ((status.WindDirection_V && status.WindDirection_V[0] === 'on') ? 2 : 0);
     return { 0: 'Off', 1: 'Horizontal', 2: 'Vertical', 3: 'Both' }[value] || 'Off';
   }
 
@@ -509,9 +522,32 @@ export class AirConditionerAPI extends EventEmitter {
       let fanMode: FanSpeed | string;
       if (/^\d+$/.test(rawFan)) {
         const pct = parseInt(rawFan, 10);
-        fanMode = (
-          (Object.entries(FanSpeedPercentMap) as [FanSpeed, number][]).find(([, v]) => v === pct) || [FanSpeed.Auto]
-        )[0];
+        // Find the closest FanSpeed enum value
+        let closestFanSpeed = FanSpeed.Auto;
+        let minDiff = Infinity;
+        for (const [speed, speedPct] of Object.entries(FanSpeedPercentMap) as [FanSpeed, number][]) {
+          if (speed === FanSpeed.Auto && pct === 0) { // Exact match for Auto if pct is 0
+            closestFanSpeed = FanSpeed.Auto;
+            break;
+          }
+          if (speed === FanSpeed.Turbo && pct === 100) { // Exact match for Turbo if pct is 100
+            closestFanSpeed = FanSpeed.Turbo;
+            break;
+          }
+          if (speed !== FanSpeed.Auto && speed !== FanSpeed.Turbo) { // Exclude Auto and Turbo from general numeric matching unless exact
+            const diff = Math.abs(pct - speedPct);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestFanSpeed = speed;
+            } else if (diff === minDiff) {
+              // Prefer higher fan speed in case of a tie, unless current closest is already higher
+              if (FanSpeedPercentMap[speed] > FanSpeedPercentMap[closestFanSpeed]) {
+                closestFanSpeed = speed;
+              }
+            }
+          }
+        }
+        fanMode = closestFanSpeed;
       } else {
         fanMode = rawFan as FanSpeed;
       }
