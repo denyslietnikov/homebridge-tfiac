@@ -338,9 +338,6 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     servicesToRemove.forEach(({ name, displayName }) => {
       const configKey = `enable${name}` as keyof TfiacDeviceConfig;
       if (deviceConfig[configKey] === false) {
-        if (deviceConfig.debug) {
-          this.log.info(`[${deviceConfig.name}] Skipping ${displayName} as it is disabled in config.`);
-        }
         const service = accessory.getService(displayName);
         if (service) {
           accessory.removeService(service);

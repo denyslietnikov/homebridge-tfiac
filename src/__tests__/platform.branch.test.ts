@@ -147,11 +147,10 @@ describe('TfiacPlatform branch coverage tests', () => {
     it('does nothing when no features disabled', () => {
       const deviceConfig = {} as any;
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
+
       expect(mockAccessory.removeService).not.toHaveBeenCalled();
+      expect(mockLog.debug).toHaveBeenCalledWith('No services needed removal for Test Accessory.');
       expect(updateAccessoriesSpy).not.toHaveBeenCalled();
-      expect(mockLog.debug).toHaveBeenCalledWith(
-        `No services needed removal for ${mockAccessory.displayName}.`
-      );
     });
 
     it('removes Display Switch when enableDisplaySwitch is false', () => {
@@ -159,15 +158,13 @@ describe('TfiacPlatform branch coverage tests', () => {
       const expectedServiceToRemove = mockDisplayServiceViaDisplayName;
 
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
-      
+
       expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Display Light');
+      expect(mockLog.info).toHaveBeenCalledWith(
+        'Updating accessory Test Accessory after removing disabled services.'
+      );
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
-      expect(mockLog.info).toHaveBeenCalledWith(
-        `[${deviceConfig.name}] Skipping Display Light as it is disabled in config.`
-      );
-      expect(mockLog.info).toHaveBeenCalledWith(
-        `Updating accessory ${mockAccessory.displayName} after removing disabled services.`
-      );
     });
 
     it('removes Fan Speed when enableFanSpeedSwitch is false', () => {
@@ -183,15 +180,13 @@ describe('TfiacPlatform branch coverage tests', () => {
       }) as any;
 
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
-      
+
       expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Fan Speed Control');
+      expect(mockLog.info).toHaveBeenCalledWith(
+        'Updating accessory Test Accessory after removing disabled services.'
+      );
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
-      expect(mockLog.info).toHaveBeenCalledWith(
-        `[${deviceConfig.name}] Skipping Fan Speed Control as it is disabled in config.`
-      );
-      expect(mockLog.info).toHaveBeenCalledWith(
-        `Updating accessory ${mockAccessory.displayName} after removing disabled services.`
-      );
     });
 
     it('removes temperature sensor when enableTemperature is false', () => {
@@ -207,13 +202,12 @@ describe('TfiacPlatform branch coverage tests', () => {
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
 
       expect(mockAccessory.removeService).toHaveBeenCalledWith(mockTempSensorServiceInstance as any);
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed existing indoor temperature sensor service.');
+      expect(mockLog.info).toHaveBeenCalledWith('Temperature sensors are disabled for Test Accessory - removing any that were cached.');
+      expect(mockLog.info).toHaveBeenCalledWith(
+        'Updating accessory Test Accessory after removing disabled services.'
+      );
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
-      expect(mockLog.info).toHaveBeenCalledWith(
-        `Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`
-      );
-      expect(mockLog.info).toHaveBeenCalledWith(
-        `Updating accessory ${mockAccessory.displayName} after removing disabled services.`
-      );
     });
   });
 });
