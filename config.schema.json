@@ -114,6 +114,14 @@
               "type": "boolean",
               "required": false,
               "default": false
+            },
+            "uiHoldSeconds": {
+              "type": "number",
+              "title": "UI Hold Timeout",
+              "description": "Time in seconds to ignore state updates from the device after manually changing a switch",
+              "default": 30,
+              "minimum": 1,
+              "maximum": 60
             }
           }
         }
@@ -124,6 +132,15 @@
         "type": "boolean",
         "required": false,
         "default": false
+      },
+      "uiHoldSeconds": {
+        "title": "UI Hold Timeout",
+        "description": "Time in seconds to ignore state updates from the device after manually changing a switch (global setting)",
+        "type": "number",
+        "required": false,
+        "default": 30,
+        "minimum": 1,
+        "maximum": 60
       }
     }
   },

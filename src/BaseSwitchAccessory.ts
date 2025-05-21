@@ -50,6 +50,7 @@ export abstract class BaseSwitchAccessory {
   protected isPolling = false;
   protected cacheManager: CacheManager;
   protected deviceState: DeviceState;
+  private uiHoldUntil = 0; // Time in ms until which external state updates are ignored
 
   private stateChangeListener: (state: DeviceState) => void;
 
@@ -218,6 +219,12 @@ export abstract class BaseSwitchAccessory {
       this.platform.log.warn(`[${this.logPrefix}] _updateCharacteristicFromState called but service is not available.`);
       return;
     }
+    
+    // Check if UI hold mode is active
+    if (Date.now() < this.uiHoldUntil) {
+      this.platform.log.debug(`[${this.logPrefix}] UI hold active, skip characteristic update.`);
+      return;
+    }
 
     // Convert input to a proper API status format
     let apiStatus: Partial<AirConditionerStatus> | null = null;
@@ -286,8 +293,20 @@ export abstract class BaseSwitchAccessory {
    */
   protected async handleSet(value: CharacteristicValue, callback?: CharacteristicSetCallback): Promise<void> {
     this.platform.log.info(`[${this.logPrefix}] Triggered SET to: ${value}`);
+    
+    // Set UI hold time to prevent external updates
+    this.uiHoldUntil = Date.now() + this.holdMs;
+    this.platform.log.debug(`[${this.logPrefix}] UI hold set for ${this.holdMs}ms`);
+    
     try {
       await this.setApiState(value as boolean);
+      
+      // Start timer for automatic state update after UI hold period expires
+      setTimeout(() => {
+        this.platform.log.debug(`[${this.logPrefix}] UI hold period expired, forcing status update`);
+        this.cacheManager.updateDeviceState(true); // Request current state
+      }, this.holdMs + 200); // Добавляем небольшой запас
+      
       if (typeof callback === 'function') {
         callback(null); // Success, HomeKit characteristic will update reactively
       }
@@ -314,5 +333,30 @@ export abstract class BaseSwitchAccessory {
         callback(hapError);
       }
     }
+  }
+
+  /**
+   * Returns the UI hold time in milliseconds for the current service.
+   * Takes into account settings from device config or platform.
+   * @returns time in milliseconds
+   */
+  private get holdMs(): number {
+    // Check service-specific settings
+    const deviceCfg = this.deviceConfig.uiHoldSeconds;
+    
+    if (typeof deviceCfg === 'object' && deviceCfg !== null) {
+      // If there's a specific setting for this service type, use it
+      const serviceKey = this.serviceName.toLowerCase();
+      if (serviceKey in deviceCfg) {
+        return deviceCfg[serviceKey] * 1000;
+      }
+    } else if (typeof deviceCfg === 'number') {
+      // Use device-wide setting
+      return deviceCfg * 1000;
+    }
+    
+    // Use global platform setting or default
+    const platformCfg = this.platform.config.uiHoldSeconds;
+    return (typeof platformCfg === 'number' ? platformCfg : 30) * 1000;
   }
 }

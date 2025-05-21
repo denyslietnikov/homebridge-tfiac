@@ -50,8 +50,9 @@ export interface TfiacDeviceConfig {
     // Other settings
     temperatureCorrection?: number;  // temperature correction offset
     debug?: boolean;                 // enable debug logging for this device
+    uiHoldSeconds?: number | Record<string, number>; // UI hold timeout in seconds, globally or per switch type
     
-    [key: string]: string | number | boolean | undefined;  // Support for additional properties
+    [key: string]: string | number | boolean | object | undefined;  // Support for additional properties
 }
 
 /**
@@ -62,4 +63,5 @@ export interface TfiacPlatformConfig extends PlatformConfig {
     enableDiscovery?: boolean; 
     debug?: boolean; // enable plugin-specific debug logging
     minRequestDelay?: number; // Minimum delay in milliseconds between sending commands to the AC
+    uiHoldSeconds?: number; // Global UI hold timeout in seconds
 }
