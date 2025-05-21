@@ -243,6 +243,10 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         options.fanSpeed = desiredState.fanSpeed;
         changesMade = true;
       }
+      if (desiredState.swingMode !== undefined && desiredState.swingMode !== currentState.swingMode) {
+        options.swingMode = desiredState.swingMode;
+        changesMade = true;
+      }
       if (desiredState.sleepMode !== undefined && desiredState.sleepMode !== currentState.sleepMode) {
         options.sleep = desiredState.sleepMode;
         changesMade = true;
