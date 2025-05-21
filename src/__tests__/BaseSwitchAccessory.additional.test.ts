@@ -82,6 +82,9 @@ function createMockPlatform(): TfiacPlatform {
         }
       }
     },
+    config: {
+      uiHoldSeconds: 10, // Add default UI hold seconds for platform
+    },
     Service: hapConstants.Service,
     Characteristic: hapConstants.Characteristic,
   } as unknown as TfiacPlatform;
@@ -130,7 +133,7 @@ describe('BaseSwitchAccessory - Additional Coverage', () => {
     // Setup accessory mock
     accessory = {
       context: { 
-        deviceConfig: defaultDeviceOptions
+        deviceConfig: {...defaultDeviceOptions, uiHoldSeconds: 5 }
       },
       getServiceById: vi.fn().mockReturnValue(mockService),
       getService: vi.fn().mockReturnValue(null),

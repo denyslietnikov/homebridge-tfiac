@@ -342,7 +342,7 @@ export abstract class BaseSwitchAccessory {
    */
   private get holdMs(): number {
     // Check service-specific settings
-    const deviceCfg = this.deviceConfig.uiHoldSeconds;
+    const deviceCfg = this.deviceConfig?.uiHoldSeconds;
     
     if (typeof deviceCfg === 'object' && deviceCfg !== null) {
       // If there's a specific setting for this service type, use it
@@ -356,7 +356,7 @@ export abstract class BaseSwitchAccessory {
     }
     
     // Use global platform setting or default
-    const platformCfg = this.platform.config.uiHoldSeconds;
+    const platformCfg = this.platform?.config?.uiHoldSeconds;
     return (typeof platformCfg === 'number' ? platformCfg : 30) * 1000;
   }
 }

@@ -349,6 +349,7 @@ export const defaultDeviceOptions: DeviceOptions = {
   display: PowerState.On,
   eco: PowerState.Off,
   beep: PowerState.On,
+  uiHoldSeconds: 5, // Add a default value for tests
 };
 
 export const initialStatusCelsius: Partial<AirConditionerStatus> = {
