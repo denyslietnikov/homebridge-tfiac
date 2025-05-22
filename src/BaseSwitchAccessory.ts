@@ -43,6 +43,7 @@ type SetApiStateFn = (value: boolean) => Promise<void>;
  * Handles common initialization, polling, and basic get/set handlers.
  */
 export abstract class BaseSwitchAccessory {
+  private static hasLoggedContext = false;
   protected readonly service: Service | undefined;
   private readonly nameChar: WithUUID<new () => Characteristic>;
   protected readonly onChar: WithUUID<new () => Characteristic>;
@@ -63,14 +64,14 @@ export abstract class BaseSwitchAccessory {
     private readonly setApiState: SetApiStateFn,
     protected readonly logPrefix: string,
   ) {
-    if (accessory?.context?.deviceConfig?.debug) {
-      console.log('BaseSwitchAccessory constructor starts', accessory?.UUID || 'no-uuid');
-      console.log('accessory context?', accessory?.context || 'no-context');
-    }
-    
-    this.deviceConfig = accessory?.context?.deviceConfig;
-    if (this.deviceConfig?.debug) {
-      console.log('deviceConfig?', this.deviceConfig || 'no-deviceConfig');
+    this.deviceConfig = accessory.context.deviceConfig;
+
+    // Log context and config only once when debug is enabled
+    if (this.deviceConfig?.debug && !BaseSwitchAccessory.hasLoggedContext) {
+      console.log('BaseSwitchAccessory constructor starts', accessory.UUID || 'no-uuid');
+      console.log('accessory context?', accessory.context || 'no-context');
+      console.log('deviceConfig?', this.deviceConfig);
+      BaseSwitchAccessory.hasLoggedContext = true;
     }
     
     // Allow test override via accessory.context.cacheManager
