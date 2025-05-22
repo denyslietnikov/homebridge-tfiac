@@ -549,6 +549,16 @@ class DeviceState extends EventEmitter {
       this.log.warn('[DeviceState][updateFromDevice] Received null status, skipping update.');
       return false;
     }
+    // Ignore spurious updates when the AC is off
+    const newPower = status.is_on === PowerState.On ? PowerState.On : PowerState.Off;
+    if (status.is_on !== undefined && newPower === this._power && newPower === PowerState.Off) {
+      if (this._debugEnabled) {
+        this.log.debug('[DeviceState][updateFromDevice] Skipping protocol update because AC is off');
+      }
+      // Refresh timestamp only
+      this._lastUpdated = new Date();
+      return false;
+    }
     this._captureStateBeforeUpdate();
     const stateBeforeDirectUpdate = this.toPlainObject();
     let changed = false;

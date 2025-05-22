@@ -71,6 +71,7 @@ export abstract class BaseSwitchAccessory {
       console.log('BaseSwitchAccessory constructor starts', accessory.UUID || 'no-uuid');
       console.log('accessory context?', accessory.context || 'no-context');
       console.log('deviceConfig?', this.deviceConfig);
+      console.log('Using CacheManagerClass.getInstance');
       BaseSwitchAccessory.hasLoggedContext = true;
     }
     
@@ -86,9 +87,7 @@ export abstract class BaseSwitchAccessory {
       } else {
         // Ensure this.deviceConfig is used here
         this.cacheManager = CacheManagerClass.getInstance(this.deviceConfig, this.platform.log);
-        if (this.deviceConfig?.debug) {
-          console.log('Using CacheManagerClass.getInstance');
-        }
+        // Removed redundant debug log here (now only logs in the debug guard above)
       }
     }
     this.deviceState = this.cacheManager.getDeviceState();
