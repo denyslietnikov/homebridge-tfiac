@@ -336,7 +336,7 @@ export const sharedMockAPI = createMockAPI();
 export const hapConstants = sharedMockAPI.hap;
 
 // Default device options and initial status
-export const defaultDeviceOptions: DeviceOptions = {
+export const defaultDeviceOptions: DeviceOptions & { uiHoldSeconds: number } = {
   id: 'test-device-id',
   name: 'Test AC',
   power: PowerState.Off,

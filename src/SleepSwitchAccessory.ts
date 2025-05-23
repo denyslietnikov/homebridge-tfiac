@@ -22,14 +22,16 @@ export class SleepSwitchAccessory extends BooleanSwitchAccessory {
     };
 
     const deviceStateModifier: DeviceStateModifierFn = (state: DeviceState, value: boolean): boolean => {
-      if (value && state.power !== PowerState.On) {
-        this.platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode when AC is off. Request ignored.');
-        // Prevent changing state if trying to turn ON Sleep while AC is OFF.
-        // The switch in HomeKit might momentarily flip then revert if the actual state isn't changed.
-        // To ensure UI consistency, we might need to throw an error here to signal HomeKit,
-        // or rely on the next state update to correct the UI.
-        // For now, just log and don't modify the state for this specific condition.
-        return false; // Do not proceed with API call
+      if (value) {
+        // Prevent enabling Sleep while Turbo is active
+        if (state.turboMode === PowerState.On) {
+          this.platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep while Turbo is active. Request ignored.');
+          return false;
+        }
+        if (state.power !== PowerState.On) {
+          this.platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode when AC is off. Request ignored.');
+          return false;
+        }
       }
       state.setSleepMode(value ? SleepModeState.On : SleepModeState.Off);
       return true; // Proceed with API call

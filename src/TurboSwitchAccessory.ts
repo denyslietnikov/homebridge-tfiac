@@ -19,6 +19,11 @@ export class TurboSwitchAccessory extends BooleanSwitchAccessory {
 
     const deviceStateModifier: DeviceStateModifierFn = (state: DeviceState, value: boolean) => {
       if (value) { // Turbo ON
+        // Prevent enabling Turbo while Sleep is active
+        if (state.sleepMode === SleepModeState.On) {
+          platform.log.info('[TurboSwitchAccessory] Cannot enable Turbo while Sleep is active. Request ignored.');
+          return false;
+        }
         platform.log.info('[TurboSwitchAccessory] Requesting Turbo ON via BooleanSwitchAccessory');
         state.setTurboMode(PowerState.On);
         // Turn off sleep mode when turbo is enabled
