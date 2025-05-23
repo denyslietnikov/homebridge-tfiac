@@ -63,6 +63,9 @@ class DeviceState extends EventEmitter {
   // Track when power was last set to OFF for optimistic update protection
   private _lastPowerOffCmdTime: number = 0;
   
+  // Track when power was last set to ON for optimistic update protection
+  private _lastPowerOnCmdTime: number = 0;
+  
   // Flag to skip operation mode reset during transient state protection
   private _skipOperationModeReset: boolean = false;
 
@@ -153,6 +156,14 @@ class DeviceState extends EventEmitter {
   get lastUpdated(): Date {
     return this._lastUpdated;
   }
+  
+  /**
+   * Gets the timestamp when power was last turned on (used for preventing spurious sleep mode at power-on).
+   * Returns milliseconds since epoch, or 0 if power has not been turned on.
+   */
+  get lastPowerOnTime(): number {
+    return this._lastPowerOnCmdTime;
+  }
 
   // --- Public Setters that trigger harmonization and events ---
   /**
@@ -172,6 +183,11 @@ class DeviceState extends EventEmitter {
         this._operationMode = OperationMode.Auto;
         this._swingMode = SwingMode.Off;
         this._ecoMode = PowerState.Off;
+        // Track when power was set to OFF for optimistic update protection
+        this._lastPowerOffCmdTime = Date.now();
+      } else if (power === PowerState.On) {
+        // Track when power was set to ON for optimistic update protection
+        this._lastPowerOnCmdTime = Date.now();
       }
       
       this._applyHarmonizationAndNotify();
@@ -355,6 +371,9 @@ class DeviceState extends EventEmitter {
         // When sleep is ON, turbo must be OFF and fan LOW
         this._turboMode = PowerState.Off;
         this._fanSpeed = FanSpeed.Low;
+        
+        // Track when sleep mode was set to ON
+        this._lastSleepCmdTime = Date.now();
       }
       
       this._applyHarmonizationAndNotify();
@@ -656,13 +675,15 @@ class DeviceState extends EventEmitter {
     if (status.opt_sleepMode !== undefined) {
       // Prefer opt_sleepMode if available as it's more specific
 
-      // FIXED: Only accept sleepMode1 as confirmation if we previously set sleepMode to ON
-      // or if this is not a result of just powering on the device
-      const justPoweredOn = status.is_on === PowerState.On && originalPowerState === PowerState.Off;
+      // IMPROVED: More robust detection of power-on transitions
+      // Check both originalPowerState and the timestamp of the last power-on command
+      const justPoweredOn = (status.is_on === PowerState.On && originalPowerState === PowerState.Off) || 
+                           (Date.now() - this._lastPowerOnCmdTime < 5000);
       
       if (status.opt_sleepMode.startsWith('sleepMode1')) {
         if (justPoweredOn && this._sleepMode === SleepModeState.Off) {
-          // This is a spurious sleepMode1 during power-on - ignore it and keep sleep OFF
+          // This is a spurious sleepMode1 during power-on - ignore it ONLY if sleep was previously OFF
+          // This preserves the previous sleep mode state during power transitions
           newSleepValue = SleepModeState.Off;
           if (this._debugEnabled) {
             this.log.debug(`[DeviceState][updateFromDevice] Ignoring spurious sleep mode during power-on: ${status.opt_sleepMode}`);
@@ -689,7 +710,22 @@ class DeviceState extends EventEmitter {
       }
     } else if (status.opt_sleep !== undefined) {
       // Fallback to opt_sleep if opt_sleepMode is not provided
-      newSleepValue = status.opt_sleep === PowerState.On ? SleepModeState.On : SleepModeState.Off;
+      
+      // Apply the same power-on protection for the opt_sleep field
+      const justPoweredOn = (status.is_on === PowerState.On && originalPowerState === PowerState.Off) || 
+                           (Date.now() - this._lastPowerOnCmdTime < 5000);
+      
+      if (justPoweredOn && this._sleepMode === SleepModeState.Off) {
+        // Ignore sleep mode updates during power-on transitions ONLY if sleep was previously OFF
+        // This preserves the previous sleep mode state during power transitions
+        newSleepValue = SleepModeState.Off;
+        if (this._debugEnabled) {
+          this.log.debug(`[DeviceState][updateFromDevice] Ignoring sleep state during power-on via opt_sleep field: ${status.opt_sleep}`);
+        }
+      } else {
+        // Normal processing or preserving existing sleep mode ON state
+        newSleepValue = status.opt_sleep === PowerState.On ? SleepModeState.On : SleepModeState.Off;
+      }
     }
     
     // If we have a newSleepValue to apply, do so now
@@ -741,6 +777,9 @@ class DeviceState extends EventEmitter {
       if (options.power === PowerState.Off) {
         // Track when power was set to OFF for optimistic update protection
         this._lastPowerOffCmdTime = Date.now();
+      } else if (options.power === PowerState.On) {
+        // Track when power was set to ON for optimistic update protection
+        this._lastPowerOnCmdTime = Date.now();
       }
       changed = true;
     }

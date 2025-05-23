@@ -33,6 +33,14 @@ export class SleepSwitchAccessory extends BooleanSwitchAccessory {
           platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode when AC is off. Request ignored.');
           return false;
         }
+        
+        // Check if we're in a power-on transition (within 5 seconds of power on)
+        // This is an extra safeguard against spurious sleep activation during power-on
+        if (Date.now() - state.lastPowerOnTime < 5000) {
+          platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode during power-on transition. Request ignored.');
+          return false;
+        }
+        
         // Sleep ON - prepare for API call
         state.setSleepMode(SleepModeState.On); 
       } else {
