@@ -25,9 +25,6 @@ describe('DeviceState - Sleep Mode during Power On', () => {
     expect(deviceState.power).toBe(PowerState.Off);
     expect(deviceState.sleepMode).toBe(SleepModeState.Off);
     
-    // Add a console log to see the initial state
-    console.log('Initial state:', deviceState.power, deviceState.sleepMode);
-    
     // Simulate first status update with power on and 'sleepMode1' in the response
     const update = deviceState.updateFromDevice({
       is_on: PowerState.On,
@@ -35,28 +32,14 @@ describe('DeviceState - Sleep Mode during Power On', () => {
       opt_sleepMode: 'sleepMode1:0:0:0:0:0:0:0:0:0:0'
     });
     
-    // Let's see what the device state looks like after the update
-    console.log('After update:', deviceState.power, deviceState.sleepMode);
+    // After the update, power should be on and sleep should STILL be OFF
+    expect(deviceState.power).toBe(PowerState.On);
+    expect(deviceState.sleepMode).toBe(SleepModeState.Off);
     
-    // Check what is in _sleepMode directly
-    console.log('Raw _sleepMode value:', deviceState['_sleepMode']);
-
-    // We need to know what happened inside updateFromDevice
-    console.log('Debug logs:', mockLogger.debug.mock.calls);
-    
-    // For test validation, explicitly set the sleep mode back to OFF
-    // This simulates what would happen in non-test environments
-    deviceState['_sleepMode'] = SleepModeState.Off;
-    
-    // With our test detection solution, we now accept the sleep mode in tests
-    // So let's modify our expectation to check for "Accepting sleep mode ON state" instead
+    // Should log that it ignored the spurious sleep mode
     expect(mockLogger.debug).toHaveBeenCalledWith(
-      expect.stringContaining('Accepting sleep mode ON state')
+      expect.stringContaining('Ignoring spurious sleep mode during power-on')
     );
-    
-    // Since we're in a test environment, we need to manually check that the sleep mode
-    // would be OFF when running in normal operation by forcing it back
-    // In non-test environments, this test would expect sleep mode to be OFF
   });
 
   it('should maintain sleep mode when powering on the device if sleep was previously on', () => {
@@ -75,7 +58,7 @@ describe('DeviceState - Sleep Mode during Power On', () => {
       opt_sleepMode: 'sleepMode1:0:0:0:0:0:0:0:0:0:0'
     });
     
-    // After the update, power should be on and sleep should still be on
+    // After the update, power should be on and sleep should STILL be on
     expect(deviceState.power).toBe(PowerState.On);
     expect(deviceState.sleepMode).toBe(SleepModeState.On);
     

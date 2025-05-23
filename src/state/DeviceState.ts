@@ -59,6 +59,12 @@ class DeviceState extends EventEmitter {
   
   // Track when sleep mode was last set to ON
   private _lastSleepCmdTime: number = 0;
+  
+  // Track when power was last set to OFF for optimistic update protection
+  private _lastPowerOffCmdTime: number = 0;
+  
+  // Flag to skip operation mode reset during transient state protection
+  private _skipOperationModeReset: boolean = false;
 
   // For tracking changes before notification
   private _stateBeforeUpdate: PlainDeviceState | null = null;
@@ -441,7 +447,8 @@ class DeviceState extends EventEmitter {
           this._fanSpeed = FanSpeed.Auto;
           changedInLoop = true;
         }
-        if (this._operationMode !== OperationMode.Auto) {
+        // Only reset operation mode if not in transient state protection
+        if (this._operationMode !== OperationMode.Auto && !this._skipOperationModeReset) {
           this._operationMode = OperationMode.Auto;
           changedInLoop = true;
         }
@@ -560,21 +567,13 @@ class DeviceState extends EventEmitter {
       return false;
     }
     
-    // FIXED: Check for power-on transition and remove sleep mode from the status if it was off before
-    // But only do this if we're not in a test environment (which would have opt_sleepMode but no is_on property)
-    const isPoweringOn = status.is_on === PowerState.On && this._power === PowerState.Off;
-    const isTestMode = process.env.NODE_ENV === 'test' || process.env.VITEST;
-    
-    if (!isTestMode && isPoweringOn && this._sleepMode === SleepModeState.Off && status.opt_sleepMode) {
-      if (this._debugEnabled) {
-        this.log.debug(`[DeviceState][updateFromDevice] Ignoring spurious sleep mode during power-on: ${status.opt_sleepMode}`);
-      }
-      
-      // Modify the input status to prevent sleep mode from being set
-      status = { ...status, opt_sleepMode: SleepModeState.Off };
-    }
+    // FIXED: Check for power-on transition - we'll handle this in the sleep mode processing section
     this._captureStateBeforeUpdate();
     const stateBeforeDirectUpdate = this.toPlainObject();
+    
+    // Capture original power state before any updates to detect power-on transitions
+    const originalPowerState = this._power;
+    
     let changed = false;
 
     // Helper to update a property and set 'changed' flag
@@ -594,7 +593,26 @@ class DeviceState extends EventEmitter {
     };
 
     if (status.is_on !== undefined) {
-      this._power = updateProp(this._power, status.is_on === 'on' ? PowerState.On : PowerState.Off, 'Power updated');
+      const newPowerState = status.is_on === 'on' ? PowerState.On : PowerState.Off;
+      
+      // FIXED: Protection against transient ON states during power-off operations
+      if (newPowerState === PowerState.On && 
+          this._power === PowerState.Off && 
+          Date.now() - this._lastPowerOffCmdTime < 5000) {
+        // If we recently set power to OFF and device is reporting ON within 5 seconds,
+        // ignore this transient state to prevent UI flickering
+        if (this._debugEnabled) {
+          this.log.debug(`[DeviceState][updateFromDevice] Ignoring transient ON state during power-off transition: ${status.is_on}`);
+        }
+        // Set a flag to skip operation mode harmonization for this update
+        // This ensures that other updates like operation_mode are preserved during transient protection
+        this._skipOperationModeReset = true;
+        // Keep the existing OFF value, don't update
+      } else {
+        this._power = updateProp(this._power, newPowerState, 'Power updated');
+        // No transient protection active, clear the flag
+        this._skipOperationModeReset = false;
+      }
     }
     if (status.operation_mode !== undefined) {
       this._operationMode = updateProp(this._operationMode, status.operation_mode as OperationMode, 'Operation mode updated');
@@ -640,19 +658,17 @@ class DeviceState extends EventEmitter {
 
       // FIXED: Only accept sleepMode1 as confirmation if we previously set sleepMode to ON
       // or if this is not a result of just powering on the device
-      const justPoweredOn = status.is_on === PowerState.On && this._power === PowerState.Off;
+      const justPoweredOn = status.is_on === PowerState.On && originalPowerState === PowerState.Off;
       
       if (status.opt_sleepMode.startsWith('sleepMode1')) {
-        if (justPoweredOn && this._sleepMode !== SleepModeState.On) {
+        if (justPoweredOn && this._sleepMode === SleepModeState.Off) {
           // This is a spurious sleepMode1 during power-on - ignore it and keep sleep OFF
-          // We explicitly set the value here rather than just skipping the update
           newSleepValue = SleepModeState.Off;
           if (this._debugEnabled) {
             this.log.debug(`[DeviceState][updateFromDevice] Ignoring spurious sleep mode during power-on: ${status.opt_sleepMode}`);
           }
         } else {
-          // Accept sleepMode1 only if sleep was ON previously or if this isn't a power-on event
-          // Always use the full SleepModeState.On enum value to ensure consistency
+          // Accept sleepMode1 if sleep was ON previously or if this isn't a power-on event
           newSleepValue = SleepModeState.On;
           if (this._debugEnabled) {
             this.log.debug(`[DeviceState][updateFromDevice] Accepting sleep mode ON state: ${status.opt_sleepMode}`);
@@ -678,21 +694,8 @@ class DeviceState extends EventEmitter {
     
     // If we have a newSleepValue to apply, do so now
     if (newSleepValue !== undefined) {
-      // Special handling for power-on event with spurious sleep mode
-      const justPoweredOn = status.is_on === PowerState.On && this._power === PowerState.Off;
-      const isTestMode = process.env.NODE_ENV === 'test' || process.env.VITEST;
-      
-      if (!isTestMode && justPoweredOn && this._sleepMode === SleepModeState.Off && 
-          typeof newSleepValue === 'string' && newSleepValue.startsWith('sleepMode1')) {
-        // Force sleep mode to Off during power-on if it was previously off
-        if (this._debugEnabled) {
-          this.log.debug(`[DeviceState][updateFromDevice] Forcing sleep mode OFF during power-on despite status: ${newSleepValue}`);
-        }
-        // Do not update _sleepMode, keep it Off
-      } else {
-        // Normal case, use updateProp
-        this._sleepMode = updateProp(this._sleepMode, newSleepValue, 'Sleep mode updated');
-      }
+      // Normal case, use updateProp
+      this._sleepMode = updateProp(this._sleepMode, newSleepValue, 'Sleep mode updated');
     }
 
     if (changed) {
@@ -735,6 +738,10 @@ class DeviceState extends EventEmitter {
 
     if (options.power !== undefined && this._power !== options.power) {
       this._power = options.power;
+      if (options.power === PowerState.Off) {
+        // Track when power was set to OFF for optimistic update protection
+        this._lastPowerOffCmdTime = Date.now();
+      }
       changed = true;
     }
     if (options.mode !== undefined && this._operationMode !== options.mode) {

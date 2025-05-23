@@ -191,7 +191,13 @@ describe('DeviceState - Coverage Gap Tests', () => {
   
   describe('Sleep Mode String Format Handling', () => {
     it('should correctly parse various sleep mode string formats from device', () => {
-      // Test with truncated format (11 zeros) as seen in the logs
+      // First, power on the device to avoid triggering power-on sleep mode protection
+      state.updateFromDevice({
+        is_on: 'on',
+        operation_mode: OperationMode.Cool,
+      });
+      
+      // Now test with truncated format (11 zeros) as seen in the logs
       const changedWithTruncated = state.updateFromDevice({
         is_on: 'on',
         operation_mode: OperationMode.Cool,
@@ -207,6 +213,11 @@ describe('DeviceState - Coverage Gap Tests', () => {
       
       // Reset state
       state = new DeviceState(mockLogger);
+      // Power on the device again
+      state.updateFromDevice({
+        is_on: 'on',
+        operation_mode: OperationMode.Cool,
+      });
       
       // Test with full format (24 zeros) as defined in enums.ts
       const changedWithFull = state.updateFromDevice({
@@ -221,6 +232,11 @@ describe('DeviceState - Coverage Gap Tests', () => {
       
       // Reset state
       state = new DeviceState(mockLogger);
+      // Power on the device again
+      state.updateFromDevice({
+        is_on: 'on',
+        operation_mode: OperationMode.Cool,
+      });
       
       // Test with single zero
       const changedWithMinimal = state.updateFromDevice({
