@@ -285,6 +285,11 @@ export class AirConditionerAPI extends EventEmitter {
     }
   }
 
+  /**
+   * Sets device options, resolving conflicts between states.
+   * When turning the device ON, we always explicitly send sleep=off to prevent
+   * the device firmware from reporting the saved sleep state in the response.
+   */
   public async setDeviceOptions(options: PartialDeviceOptions): Promise<void> {
     if (!this.lastStatus) {
       await this.updateState(); // Ensure lastStatus is initialized
@@ -362,6 +367,16 @@ export class AirConditionerAPI extends EventEmitter {
     // Always include TurnOn, even if it's to turn off.
     payload.TurnOn = effPower;
     optimisticUpdate.is_on = effPower;
+
+    // Always explicitly send sleep=off when turning on the device
+    // This prevents the device firmware from reporting the saved sleep state
+    if (effPower === PowerState.On && options.power === PowerState.On && options.sleep === undefined) {
+      // Only if we're explicitly turning power ON and sleep is not being set by the user
+      payload.Opt_sleepMode = SleepModeState.Off;
+      optimisticUpdate.opt_sleepMode = SleepModeState.Off;
+      optimisticUpdate.opt_sleep = PowerState.Off;
+      effSleep = SleepModeState.Off; // Update effective sleep to match our explicit command
+    }
 
     // These are only sent if power is ON as per original logic
     if (effPower === PowerState.On) {
