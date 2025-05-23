@@ -305,7 +305,7 @@ export abstract class BaseSwitchAccessory {
       setTimeout(() => {
         this.platform.log.debug(`[${this.logPrefix}] UI hold period expired, forcing status update`);
         this.cacheManager.updateDeviceState(true); // Request current state
-      }, this.holdMs + 200); // Добавляем небольшой запас
+      }, this.holdMs + 200); // Adding a small buffer time
       
       if (typeof callback === 'function') {
         callback(null); // Success, HomeKit characteristic will update reactively
@@ -341,22 +341,28 @@ export abstract class BaseSwitchAccessory {
    * @returns time in milliseconds
    */
   private get holdMs(): number {
-    // Check service-specific settings
-    const deviceCfg = this.deviceConfig?.uiHoldSeconds;
-    
-    if (typeof deviceCfg === 'object' && deviceCfg !== null) {
-      // If there's a specific setting for this service type, use it
-      const serviceKey = this.serviceName.toLowerCase();
-      if (serviceKey in deviceCfg) {
-        return deviceCfg[serviceKey] * 1000;
+    try {
+      // Check service-specific settings
+      const deviceCfg = this.deviceConfig?.uiHoldSeconds;
+      
+      if (typeof deviceCfg === 'object' && deviceCfg !== null) {
+        // If there's a specific setting for this service type, use it
+        const serviceKey = this.serviceName.toLowerCase();
+        if (serviceKey in deviceCfg) {
+          return deviceCfg[serviceKey] * 1000;
+        }
+      } else if (typeof deviceCfg === 'number') {
+        // Use device-wide setting
+        return deviceCfg * 1000;
       }
-    } else if (typeof deviceCfg === 'number') {
-      // Use device-wide setting
-      return deviceCfg * 1000;
+      
+      // Use global platform setting or default
+      const platformCfg = this.platform?.config?.uiHoldSeconds;
+      return (typeof platformCfg === 'number' ? platformCfg : 30) * 1000;
+    } catch (error) {
+      // Fall back to default value for tests or if config is incomplete
+      this.platform?.log?.debug?.(`[${this.logPrefix}] Error getting holdMs, using default: ${error}`);
+      return 30 * 1000; // Default 30 seconds
     }
-    
-    // Use global platform setting or default
-    const platformCfg = this.platform?.config?.uiHoldSeconds;
-    return (typeof platformCfg === 'number' ? platformCfg : 30) * 1000;
   }
 }

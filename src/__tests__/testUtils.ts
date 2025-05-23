@@ -611,11 +611,31 @@ export function setupTestPlatform(
 
 export const mockPlatform = setupTestPlatform();
 
+// Helper function to ensure platform and deviceConfig have uiHoldSeconds for tests
+export function ensureUiHoldConfig(platform: any, deviceConfig: any = {}): void {
+  // Add uiHoldSeconds to platform config if missing
+  if (!platform.config) {
+    platform.config = {};
+  }
+  if (platform.config.uiHoldSeconds === undefined) {
+    platform.config.uiHoldSeconds = 5; // Use smaller value for tests
+  }
+
+  // Add uiHoldSeconds to device config if missing
+  if (deviceConfig && !deviceConfig.uiHoldSeconds) {
+    deviceConfig.uiHoldSeconds = 5; // Use smaller value for tests
+  }
+}
+
 /**
  * Alias setupTestPlatform as createMockPlatform for accessory tests.
+ * Ensures the platform has UI hold seconds configuration.
  */
 export function createMockPlatform(): TfiacPlatform {
-  return setupTestPlatform();
+  const platform = setupTestPlatform();
+  // Use the helper function to ensure UI hold configuration
+  ensureUiHoldConfig(platform);
+  return platform;
 }
 
 export function createMockPlatformConfig(

@@ -201,7 +201,9 @@ describe('DeviceState - Coverage Gap Tests', () => {
       expect(changedWithTruncated).toBe(true);
       // The device returns the truncated format, but the enum defines the full format
       // We expect our implementation to correctly recognize any "sleepMode1:..." as on
-      expect(state.sleepMode.startsWith('sleepMode1:')).toBe(true);
+      expect(state.sleepMode).toBe(SleepModeState.On);
+      // We need to update this test since now we're using proper enum values
+      // When sleepMode is "on" we should use SleepModeState.On, not check for the string pattern
       
       // Reset state
       state = new DeviceState(mockLogger);
@@ -214,7 +216,8 @@ describe('DeviceState - Coverage Gap Tests', () => {
       });
       
       expect(changedWithFull).toBe(true);
-      expect(state.sleepMode.startsWith('sleepMode1:')).toBe(true);
+      expect(state.sleepMode).toBe(SleepModeState.On);
+      // We need to update this test since now we're using proper enum values
       
       // Reset state
       state = new DeviceState(mockLogger);

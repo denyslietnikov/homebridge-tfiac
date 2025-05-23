@@ -3,7 +3,7 @@ import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
 import { SleepSwitchAccessory } from '../SleepSwitchAccessory.js';
 import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback } from 'homebridge';
 import { TfiacPlatform } from '../platform.js';
-import { createMockCacheManager, createMockDeviceState, createMockPlatform, defaultDeviceOptions } from './testUtils';
+import { createMockCacheManager, createMockDeviceState, createMockPlatform, defaultDeviceOptions, ensureUiHoldConfig } from './testUtils';
 import { PowerState, SleepModeState } from '../enums.js';
 import { AirConditionerStatus } from '../AirConditionerAPI.js';
 import { CacheManager } from '../CacheManager.js';
@@ -30,7 +30,8 @@ describe('SleepSwitchAccessory', () => {
     vi.clearAllMocks();
 
     platform = createMockPlatform();
-
+    // Platform should already have uiHoldSeconds configured from createMockPlatform
+    
     mockCharacteristicOn = {
       onGet: vi.fn().mockReturnThis(),
       onSet: vi.fn((handler) => {
@@ -56,7 +57,12 @@ describe('SleepSwitchAccessory', () => {
       getServiceById: vi.fn().mockReturnValue(mockService),
       addService: vi.fn().mockReturnValue(mockService),
       context: {
-        deviceConfig: { ip: '192.168.1.100', port: 8080, name: 'Test AC Sleep' },
+        deviceConfig: { 
+          ip: '192.168.1.100', 
+          port: 8080, 
+          name: 'Test AC Sleep',
+          uiHoldSeconds: 5 // Add UI hold seconds for tests
+        },
       },
       displayName: 'Test AC Sleep Display',
     };
@@ -159,6 +165,20 @@ describe('SleepSwitchAccessory', () => {
       expect(mockDeviceStateObject.setSleepMode).not.toHaveBeenCalled();
       expect(mockCacheManager.applyStateToDevice).not.toHaveBeenCalled();
       expect(platform.log.info).toHaveBeenCalledWith(expect.stringContaining('Cannot enable Sleep mode when AC is off'));
+      expect(mockCallback).toHaveBeenCalledWith(null);
+    });
+
+    it('should not enable Sleep mode when Turbo is active and log a message', async () => {
+      const mockCallback = vi.fn();
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ is_on: PowerState.On, opt_turbo: PowerState.On });
+      mockDeviceStateObject.power = PowerState.On;
+      mockDeviceStateObject.turboMode = PowerState.On; // Set turbo to be active
+      
+      await capturedOnSetHandler(true, mockCallback);
+      
+      expect(mockDeviceStateObject.setSleepMode).not.toHaveBeenCalled();
+      expect(mockCacheManager.applyStateToDevice).not.toHaveBeenCalled();
+      expect(platform.log.info).toHaveBeenCalledWith(expect.stringContaining('Cannot enable Sleep while Turbo is active'));
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 

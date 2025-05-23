@@ -22,18 +22,23 @@ export class SleepSwitchAccessory extends BooleanSwitchAccessory {
     };
 
     const deviceStateModifier: DeviceStateModifierFn = (state: DeviceState, value: boolean): boolean => {
+      // Turning ON Sleep
       if (value) {
         // Prevent enabling Sleep while Turbo is active
         if (state.turboMode === PowerState.On) {
-          this.platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep while Turbo is active. Request ignored.');
+          platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep while Turbo is active. Request ignored.');
           return false;
         }
         if (state.power !== PowerState.On) {
-          this.platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode when AC is off. Request ignored.');
+          platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode when AC is off. Request ignored.');
           return false;
         }
+        // Sleep ON - prepare for API call
+        state.setSleepMode(SleepModeState.On); 
+      } else {
+        // Sleep OFF - just set it
+        state.setSleepMode(SleepModeState.Off);
       }
-      state.setSleepMode(value ? SleepModeState.On : SleepModeState.Off);
       return true; // Proceed with API call
     };
 
