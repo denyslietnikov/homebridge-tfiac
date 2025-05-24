@@ -82,13 +82,14 @@ describe('DeviceState', () => {
   });
 
   it('should not trigger change event if values are the same', () => {
-    // First update
+    // First update - use Medium fan speed since Auto gets harmonized to Medium in Cool mode
+    // when Turbo/Sleep are OFF (our Rule R2 fix for the sleep mode bug)
     state.updateFromDevice({
       is_on: 'on',
       operation_mode: OperationMode.Cool,
       target_temp: 71.6, // 22°C
       current_temp: 68, // 20°C
-      fan_mode: FanSpeed.Auto,
+      fan_mode: FanSpeed.Medium, // Use Medium instead of Auto to avoid harmonization
       swing_mode: SwingMode.Off
     });
     
@@ -104,7 +105,7 @@ describe('DeviceState', () => {
       operation_mode: OperationMode.Cool,
       target_temp: 71.6, // 22°C
       current_temp: 68, // 20°C
-      fan_mode: FanSpeed.Auto,
+      fan_mode: FanSpeed.Medium, // Use Medium instead of Auto to avoid harmonization
       swing_mode: SwingMode.Off
     });
     

@@ -495,15 +495,17 @@ class DeviceState extends EventEmitter {
             this._sleepMode = SleepModeState.Off;
             changedInLoop = true;
           }
-        } else if (this._operationMode === OperationMode.Auto) {
-          // Rule R2 (Auto Mode Fan): Fan speed is Auto, unless Turbo/Sleep override it.
-          // This means if Turbo or Sleep are active, they dictate fan speed.
-          // If neither Turbo nor Sleep are active, fan speed in Auto mode should be Auto.
-          if (this._turboMode === PowerState.Off && this._sleepMode === SleepModeState.Off) {
-            if (this._fanSpeed !== FanSpeed.Auto) {
-              this._fanSpeed = FanSpeed.Auto;
-              changedInLoop = true;
-            }
+        } else if (this._operationMode === OperationMode.Auto ||
+                   this._operationMode === OperationMode.Cool ||
+                   this._operationMode === OperationMode.Heat ||
+                   this._operationMode === OperationMode.FanOnly) {
+          // Rule R2 (Prevent Auto Fan Speed): When Turbo/Sleep are OFF and fan speed is Auto,
+          // change it to Medium to avoid device firmware auto-enabling Sleep mode.
+          // This only affects Auto fan speed, not explicit user fan speed selections.
+          // This applies to Auto, Cool, Heat, and FanOnly modes.
+          if (this._turboMode === PowerState.Off && this._sleepMode === SleepModeState.Off && this._fanSpeed === FanSpeed.Auto) {
+            this._fanSpeed = FanSpeed.Medium;
+            changedInLoop = true;
           }
         }
 
