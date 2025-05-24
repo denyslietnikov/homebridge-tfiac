@@ -169,8 +169,6 @@ describe('TurboSwitchAccessory', () => {
       const hapError = new platform.api.hap.HapStatusError(
         platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
       );
-      // Set status property explicitly for test compatibility
-      hapError.status = platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE;
       
       // Mock the applyStateToDevice to reject with our error
       mockCacheManager.applyStateToDevice.mockRejectedValueOnce(hapError);

@@ -312,10 +312,9 @@ class DeviceState extends EventEmitter {
         this._sleepMode = SleepModeState.Off;
         this._fanSpeed = FanSpeed.Turbo;
       } else {
-        // Turning turbo OFF - if fan was Turbo, reset it to Auto
-        if (this._fanSpeed === FanSpeed.Turbo) {
-          this._fanSpeed = FanSpeed.Auto;
-        }
+        // Turning turbo OFF - do not automatically reset fan speed
+        // Let the user or other logic determine the appropriate fan speed
+        // This prevents creating unwanted API commands that trigger sleep mode
       }
       
       this._applyHarmonizationAndNotify();
