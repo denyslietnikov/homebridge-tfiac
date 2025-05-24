@@ -1,7 +1,7 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BooleanSwitchAccessory, DeviceStateModifierFn, GetStatusValueFromApiFn } from './BooleanSwitchAccessory.js';
-import { PowerState, SleepModeState, FanSpeed } from './enums.js';
+import { PowerState, SleepModeState } from './enums.js';
 import { DeviceState } from './state/DeviceState.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 
@@ -31,8 +31,7 @@ export class TurboSwitchAccessory extends BooleanSwitchAccessory {
       } else { // Turbo OFF
         platform.log.info('[TurboSwitchAccessory] Requesting Turbo OFF via BooleanSwitchAccessory');
         state.setTurboMode(PowerState.Off);
-        // Reset fan speed to Auto when turbo is disabled
-        state.setFanSpeed(FanSpeed.Auto);
+        // Note: DeviceState harmonization automatically handles fan speed reset and sleep mode conflicts
       }
       return true; // Return true to indicate API call should proceed
     };

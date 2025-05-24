@@ -147,7 +147,7 @@ describe('TurboSwitchAccessory', () => {
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
-    it('should set turbo off and fan speed to auto when value is false', async () => {
+    it('should set turbo off and rely on DeviceState harmonization when value is false', async () => {
       const mockCallback = vi.fn();
       mockDeviceStateObject.power = PowerState.On; // Ensure AC is ON for changes
       mockDeviceStateObject.turboMode = PowerState.On; // Ensure turbo is initially on for change detection
@@ -155,8 +155,9 @@ describe('TurboSwitchAccessory', () => {
       
       await capturedOnSetHandler(false, mockCallback);
       
+      // Only setTurboMode should be called - DeviceState harmonization handles fan speed reset
       expect(mockDeviceStateObject.setTurboMode).toHaveBeenCalledWith(PowerState.Off);
-      expect(mockDeviceStateObject.setFanSpeed).toHaveBeenCalledWith(FanSpeed.Auto);
+      expect(mockDeviceStateObject.setFanSpeed).not.toHaveBeenCalled();
       expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
