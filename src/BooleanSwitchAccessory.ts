@@ -93,7 +93,8 @@ export class BooleanSwitchAccessory extends BaseSwitchAccessory {
           await this.cacheManager.applyStateToDevice(modifiedState);
         } else {
           platform.log.debug(`[${displayName}] deviceStateModifier indicated not to proceed with API call.`);
-          // If HomeKit UI was updated optimistically, it will be corrected by the next state poll/update.
+          // Throw an error to prevent HomeKit UI from showing the switch as activated
+          throw new Error('Operation rejected by device state modifier');
         }
       },
       displayName, // logPrefix for BaseSwitchAccessory

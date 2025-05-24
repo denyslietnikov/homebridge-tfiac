@@ -294,12 +294,12 @@ export abstract class BaseSwitchAccessory {
   protected async handleSet(value: CharacteristicValue, callback?: CharacteristicSetCallback): Promise<void> {
     this.platform.log.info(`[${this.logPrefix}] Triggered SET to: ${value}`);
     
-    // Set UI hold time to prevent external updates
-    this.uiHoldUntil = Date.now() + this.holdMs;
-    this.platform.log.debug(`[${this.logPrefix}] UI hold set for ${this.holdMs}ms`);
-    
     try {
       await this.setApiState(value as boolean);
+      
+      // Set UI hold time to prevent external updates only after successful operation
+      this.uiHoldUntil = Date.now() + this.holdMs;
+      this.platform.log.debug(`[${this.logPrefix}] UI hold set for ${this.holdMs}ms after successful operation`);
       
       // Start timer for automatic state update after UI hold period expires
       setTimeout(() => {
@@ -315,6 +315,9 @@ export abstract class BaseSwitchAccessory {
       // Log and callback on failure, use consistent message format for BeepSwitchAccessory tests
       const failedMsg = `[${this.logPrefix}] Error setting state to ${value}: ${errorMessage}`;
       this.platform.log.error(failedMsg);
+      
+      // Clear any UI hold that might have been set, and immediately reset to current state
+      this.uiHoldUntil = 0;
       
       // Only process callback if it is a function
       if (typeof callback === 'function') {
@@ -332,6 +335,12 @@ export abstract class BaseSwitchAccessory {
         );
         callback(hapError);
       }
+      
+      // Force immediate characteristic update to reflect actual device state
+      setTimeout(() => {
+        this.platform.log.debug(`[${this.logPrefix}] Forcing immediate state update after failed operation`);
+        this.handleStateChange(this.deviceState);
+      }, 100); // Small delay to ensure callback is processed first
     }
   }
 

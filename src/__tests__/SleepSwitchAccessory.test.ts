@@ -165,7 +165,8 @@ describe('SleepSwitchAccessory', () => {
       expect(mockDeviceStateObject.setSleepMode).not.toHaveBeenCalled();
       expect(mockCacheManager.applyStateToDevice).not.toHaveBeenCalled();
       expect(platform.log.info).toHaveBeenCalledWith(expect.stringContaining('Cannot enable Sleep mode when AC is off'));
-      expect(mockCallback).toHaveBeenCalledWith(null);
+      // Expect an error to be returned to HomeKit when operation is blocked
+      expect(mockCallback).toHaveBeenCalledWith(expect.objectContaining({ status: expect.any(Number) }));
     });
 
     it('should not enable Sleep mode when Turbo is active and log a message', async () => {
@@ -179,7 +180,8 @@ describe('SleepSwitchAccessory', () => {
       expect(mockDeviceStateObject.setSleepMode).not.toHaveBeenCalled();
       expect(mockCacheManager.applyStateToDevice).not.toHaveBeenCalled();
       expect(platform.log.info).toHaveBeenCalledWith(expect.stringContaining('Cannot enable Sleep while Turbo is active'));
-      expect(mockCallback).toHaveBeenCalledWith(null);
+      // Expect an error to be returned to HomeKit when operation is blocked
+      expect(mockCallback).toHaveBeenCalledWith(expect.objectContaining({ status: expect.any(Number) }));
     });
 
     it('should handle errors and call callback with error', async () => {
