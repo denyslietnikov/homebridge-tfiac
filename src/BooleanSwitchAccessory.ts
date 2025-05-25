@@ -85,9 +85,14 @@ export class BooleanSwitchAccessory extends BaseSwitchAccessory {
       getStatusFunc, // getStatusValue fn for BaseSwitchAccessory
       async (value: boolean) => { // setApiState fn for BaseSwitchAccessory
         const deviceState = this.cacheManager.getDeviceState();
+        platform.log.debug(`[${displayName}] Current device state before modification: ${JSON.stringify(deviceState.toPlainObject())}`);
+        
         const modifiedState = deviceState.clone();
+        platform.log.debug(`[${displayName}] Cloned state: ${JSON.stringify(modifiedState.toPlainObject())}`);
         
         const shouldProceed = modifierFunc(modifiedState, value);
+        platform.log.debug(`[${displayName}] Modified state after deviceStateModifier: ${JSON.stringify(modifiedState.toPlainObject())}`);
+        platform.log.debug(`[${displayName}] DeviceStateModifier returned shouldProceed: ${shouldProceed}`);
         
         if (shouldProceed) {
           await this.cacheManager.applyStateToDevice(modifiedState);

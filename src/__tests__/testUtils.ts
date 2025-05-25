@@ -35,8 +35,39 @@ export interface MockDeviceState extends EventEmitter {
   updateState(newState: Partial<AirConditionerStatus>): void;
   toApiCommand(): Partial<MockDeviceCommandPayload>;
   getPlainState(): AirConditionerStatus;
+  toPlainObject(): any;
   toApiStatus: any;
   removeListener(event: string, listener: (...args: any[]) => void): this;
+  
+  // DeviceState setter methods
+  setPower(power: PowerState): void;
+  setOperationMode(mode: OperationMode): void;
+  setTargetTemperature(temp: number): void;
+  setFanSpeed(fanSpeed: FanSpeed): void;
+  setSwingMode(swingMode: SwingMode): void;
+  setTurboMode(turboMode: PowerState): void;
+  setEcoMode(ecoMode: PowerState): void;
+  setDisplayMode(displayMode: PowerState): void;
+  setBeepMode(beepMode: PowerState): void;
+  setSleepMode(sleepMode: SleepModeState): void;
+  
+  // DeviceState getter properties
+  power: PowerState;
+  operationMode: OperationMode;
+  targetTemperature: number;
+  currentTemperature: number;
+  outdoorTemperature: number | null;
+  fanSpeed: FanSpeed;
+  swingMode: SwingMode;
+  turboMode: PowerState;
+  ecoMode: PowerState;
+  displayMode: PowerState;
+  beepMode: PowerState;
+  sleepMode: SleepModeState;
+  lastUpdated: Date;
+  
+  // DeviceState clone method
+  clone(): MockDeviceState;
 }
 
 // Mock characteristic creation
@@ -504,6 +535,152 @@ export function createMockDeviceState(
     emitter.status = { ...emitter.status, ...newState };
     emitter.emit('statusChanged', { ...emitter.status });
   };
+  
+  // Add DeviceState setter methods as mocks
+  (emitter as any).setPower = vi.fn((power: PowerState) => {
+    emitter.status.is_on = power;
+  });
+  (emitter as any).setOperationMode = vi.fn((mode: OperationMode) => {
+    emitter.status.operation_mode = mode;
+  });
+  (emitter as any).setTargetTemperature = vi.fn((temp: number) => {
+    emitter.status.target_temp = temp;
+  });
+  (emitter as any).setFanSpeed = vi.fn((fanSpeed: FanSpeed) => {
+    emitter.status.fan_mode = fanSpeed;
+  });
+  (emitter as any).setSwingMode = vi.fn((swingMode: SwingMode) => {
+    emitter.status.swing_mode = swingMode;
+  });
+  (emitter as any).setTurboMode = vi.fn((turboMode: PowerState) => {
+    emitter.status.opt_turbo = turboMode;
+  });
+  (emitter as any).setEcoMode = vi.fn((ecoMode: PowerState) => {
+    emitter.status.opt_eco = ecoMode;
+  });
+  (emitter as any).setDisplayMode = vi.fn((displayMode: PowerState) => {
+    emitter.status.opt_display = displayMode;
+  });
+  (emitter as any).setBeepMode = vi.fn((beepMode: PowerState) => {
+    emitter.status.opt_beep = beepMode;
+  });
+  (emitter as any).setSleepMode = vi.fn((sleepMode: SleepModeState) => {
+    emitter.status.opt_sleepMode = sleepMode;
+    emitter.status.opt_sleep = sleepMode === SleepModeState.On ? PowerState.On : PowerState.Off;
+  });
+  
+  // Add getter properties (these need to be both readable and writable for tests)
+  Object.defineProperty(emitter, 'power', {
+    get: () => emitter.status.is_on,
+    set: (value: PowerState) => {
+      emitter.status.is_on = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'operationMode', {
+    get: () => emitter.status.operation_mode,
+    set: (value: OperationMode) => {
+      emitter.status.operation_mode = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'targetTemperature', {
+    get: () => emitter.status.target_temp,
+    set: (value: number) => {
+      emitter.status.target_temp = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'currentTemperature', {
+    get: () => emitter.status.current_temp,
+    set: (value: number) => {
+      emitter.status.current_temp = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'outdoorTemperature', {
+    get: () => emitter.status.outdoor_temp,
+    set: (value: number | undefined) => {
+      emitter.status.outdoor_temp = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'fanSpeed', {
+    get: () => emitter.status.fan_mode,
+    set: (value: FanSpeed) => {
+      emitter.status.fan_mode = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'swingMode', {
+    get: () => emitter.status.swing_mode,
+    set: (value: SwingMode) => {
+      emitter.status.swing_mode = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'turboMode', {
+    get: () => emitter.status.opt_turbo,
+    set: (value: PowerState) => {
+      emitter.status.opt_turbo = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'ecoMode', {
+    get: () => emitter.status.opt_eco,
+    set: (value: PowerState) => {
+      emitter.status.opt_eco = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'displayMode', {
+    get: () => emitter.status.opt_display,
+    set: (value: PowerState) => {
+      emitter.status.opt_display = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'beepMode', {
+    get: () => emitter.status.opt_beep,
+    set: (value: PowerState) => {
+      emitter.status.opt_beep = value;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'sleepMode', {
+    get: () => emitter.status.opt_sleepMode,
+    set: (value: SleepModeState) => { 
+      emitter.status.opt_sleepMode = value; 
+      emitter.status.opt_sleep = value === SleepModeState.On ? PowerState.On : PowerState.Off;
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  Object.defineProperty(emitter, 'lastUpdated', {
+    get: () => new Date(),
+    set: (value: Date) => {
+      /* ignore setter for tests */
+    },
+    enumerable: true,
+    configurable: true,
+  });
+  
+  // Add clone method that returns a new mock device state with the same status
+  (emitter as any).clone = vi.fn(() => {
+    return createMockDeviceState(options, emitter.status);
+  });
+  
   emitter.toApiCommand = (): Partial<MockDeviceCommandPayload> => {
     const command: Partial<MockDeviceCommandPayload> = {};
     if (emitter.status.is_on !== undefined) {
@@ -544,6 +721,21 @@ export function createMockDeviceState(
     return command;
   };
   emitter.getPlainState = (): AirConditionerStatus => ({ ...emitter.status });
+  emitter.toPlainObject = (): any => ({
+    power: emitter.status.is_on,
+    operationMode: emitter.status.operation_mode,
+    targetTemperature: emitter.status.target_temp,
+    currentTemperature: emitter.status.current_temp,
+    outdoorTemperature: emitter.status.outdoor_temp,
+    fanSpeed: emitter.status.fan_mode,
+    swingMode: emitter.status.swing_mode,
+    turboMode: emitter.status.opt_turbo,
+    ecoMode: emitter.status.opt_eco,
+    displayMode: emitter.status.opt_display,
+    beepMode: emitter.status.opt_beep,
+    sleepMode: emitter.status.opt_sleepMode,
+    lastUpdated: new Date(),
+  });
   emitter.toApiStatus = vi.fn(() => ({ ...emitter.status }));
   emitter.removeListener = vi.fn((event: string, listener: (...args: any[]) => void) => {
     EventEmitter.prototype.removeListener.call(emitter, event, listener);

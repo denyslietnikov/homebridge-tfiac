@@ -2,7 +2,7 @@ import { vi, describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'events';
 import CacheManager from '../CacheManager.js';
 import { TfiacDeviceConfig } from '../settings.js';
-import { PowerState, OperationMode, FanSpeed } from '../enums.js';
+import { PowerState, OperationMode, FanSpeed, SleepModeState } from '../enums.js';
 import { DeviceState } from '../state/DeviceState.js';
 
 // We'll no longer mock CommandQueue module, but instead directly mock the initCommandQueue method
@@ -49,6 +49,13 @@ describe('CacheManager - Additional Tests', () => {
 
     // Create a new MockEventEmitter instance for each test
     mockCommandQueue = new MockEventEmitter();
+
+    // Configure the mock enqueueCommand to also call the API
+    mockCommandQueue.enqueueCommand = vi.fn().mockImplementation(async (command) => {
+      // Call the API with the command to simulate the real CommandQueue behavior
+      await mockApi.setDeviceOptions(command);
+      return undefined;
+    });
 
     // Instead of completely mocking initCommandQueue, we need to preserve the event listener setup logic.
     // First, store the original method
@@ -199,12 +206,53 @@ describe('CacheManager - Additional Tests', () => {
       vi.useRealTimers();
     });
 
-    it('should not apply changes if no differences', async () => {
+    it('should not apply changes if no differences and no harmonization needed', async () => {
       vi.spyOn(cacheManager, 'updateDeviceState').mockResolvedValueOnce(mockDeviceState);
+      
+      // Set up state where no harmonization is needed (not both turbo/sleep off with auto fan)
+      mockDeviceState.setTurboMode(PowerState.On); // Turbo is on, so no harmonization needed
+      mockDeviceState.setFanSpeed(FanSpeed.Medium);
       
       await (cacheManager as any).applyStateToDevice(mockDeviceState);
       
-      expect((cacheManager as any).logger.info).toHaveBeenCalledWith('[CacheManager] No changes to apply.');
+      expect((cacheManager as any).logger.info).toHaveBeenCalledWith('[CacheManager] No changes to apply and no harmonization needed.');
+    });
+
+    it('should apply harmonization when no direct changes but harmonization needed', async () => {
+      vi.spyOn(cacheManager, 'updateDeviceState').mockResolvedValueOnce(mockDeviceState);
+      
+      // Set up the cached state to have the harmonization condition without triggering harmonization
+      // We need to bypass the normal setters that trigger harmonization
+      (mockDeviceState as any)._power = PowerState.On;
+      (mockDeviceState as any)._turboMode = PowerState.Off;
+      (mockDeviceState as any)._sleepMode = SleepModeState.Off;
+      (mockDeviceState as any)._fanSpeed = FanSpeed.Auto;
+      
+      // Create a desired state that's identical to current (so no changes detected by diff)
+      const desiredState = mockDeviceState.clone();
+      
+      // Mock updateFromOptions to simulate the harmonization behavior
+      // This should change fanSpeed from Auto to Medium when harmonization options are applied
+      const originalUpdateFromOptions = mockDeviceState.updateFromOptions;
+      mockDeviceState.updateFromOptions = vi.fn().mockImplementation((options: any) => {
+        // If we're being called with fanSpeed: Auto specifically for harmonization
+        if (options.fanSpeed === FanSpeed.Auto &&
+            mockDeviceState.power === PowerState.On &&
+            mockDeviceState.turboMode === PowerState.Off &&
+            mockDeviceState.sleepMode === SleepModeState.Off) {
+          // Simulate the harmonization rule changing fan speed from Auto to Medium
+          (mockDeviceState as any)._fanSpeed = FanSpeed.Medium;
+          return true; // Indicate a change was made by harmonization
+        }
+        return originalUpdateFromOptions.call(mockDeviceState, options);
+      });
+      
+      await (cacheManager as any).applyStateToDevice(desiredState);
+      
+      expect((cacheManager as any).logger.info).toHaveBeenCalledWith('[CacheManager] Harmonization check: Fan speed changed from Auto to Medium to prevent device firmware bug.');
+      expect(mockApi.setDeviceOptions).toHaveBeenCalledWith(expect.objectContaining({
+        fanSpeed: FanSpeed.Medium
+      }));
     });
   });
 

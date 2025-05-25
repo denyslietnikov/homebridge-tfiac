@@ -2,7 +2,7 @@ import AirConditionerAPI, { AirConditionerStatus, PartialDeviceOptions } from '.
 import { TfiacDeviceConfig } from './settings.js';
 import { EventEmitter } from 'events';
 import { DeviceState } from './state/DeviceState.js';
-import { PowerState } from './enums.js';
+import { PowerState, FanSpeed, SleepModeState } from './enums.js';
 import {
   CommandQueue,
   CommandExecutedEvent,
@@ -252,8 +252,12 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         changesMade = true;
       }
       if (desiredState.turboMode !== undefined && desiredState.turboMode !== currentState.turboMode) {
+        this.logger.debug(`[CacheManager] Turbo mode comparison: desired=${desiredState.turboMode}, current=${currentState.turboMode}, different=${desiredState.turboMode !== currentState.turboMode}`);
         options.turbo = desiredState.turboMode;
         changesMade = true;
+      } else if (desiredState.turboMode !== undefined) {
+        this.logger.debug(`[CacheManager] Turbo mode comparison: desired=${desiredState.turboMode}, ` +
+                          `current=${currentState.turboMode}, same - no change needed`);
       }
       if (desiredState.ecoMode !== undefined && desiredState.ecoMode !== currentState.ecoMode) {
         options.eco = desiredState.ecoMode;
@@ -275,6 +279,19 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       this.logger.debug('[CacheManager] Powering off. Other options will be ignored by setOptionsCombined or device.');
     }
 
+    // Check if harmonization might be needed even when no direct changes are detected
+    // This addresses the firmware bug where turning OFF Turbo/Sleep might need fan speed adjustment
+    // Only check if device is ON AND BOTH Turbo and Sleep are OFF and fan speed is Auto in the CURRENT state
+    const needsHarmonizationCheck = !changesMade && 
+      currentState.power === PowerState.On &&
+      currentState.turboMode === PowerState.Off &&
+      currentState.sleepMode === SleepModeState.Off &&
+      currentState.fanSpeed === FanSpeed.Auto;
+    
+    this.logger.debug(`[CacheManager] Harmonization check: changesMade=${changesMade}, ` +
+      `power=${currentState.power}, turboMode=${currentState.turboMode}, sleepMode=${currentState.sleepMode}, ` +
+      `fanSpeed=${currentState.fanSpeed}, needsCheck=${needsHarmonizationCheck}`);
+
     if (changesMade && Object.keys(options).length > 0) {
       this.logger.info(`[CacheManager] Changes detected. Enqueuing command with options: ${JSON.stringify(options)}`);
       
@@ -292,8 +309,52 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       await queue.enqueueCommand(options);
       // The 'executed' event from CommandQueue will trigger scheduleQuickRefresh()
       // which in turn calls updateDeviceState(true) for rapid feedback.
+    } else if (needsHarmonizationCheck) {
+      this.logger.info('[CacheManager] No direct changes detected, but checking harmonization for Turbo/Sleep OFF state...');
+      
+      // Force harmonization by applying current state back to itself
+      // This will trigger Rule R2 if fan speed is Auto and both Turbo/Sleep are OFF
+      const preHarmonizationState = JSON.stringify(this._deviceState.toPlainObject());
+      
+      if (typeof this._deviceState.updateFromOptions === 'function') {
+        // Create a minimal options object to trigger harmonization without changing state
+        const harmonizationOptions: PartialDeviceOptions = {};
+        
+        // If device is ON, fan speed is Auto and both turbo and sleep are OFF, harmonization should change it to Medium
+        if (currentState.power === PowerState.On &&
+            currentState.fanSpeed === FanSpeed.Auto && 
+            currentState.turboMode === PowerState.Off && 
+            currentState.sleepMode === SleepModeState.Off) {
+          // Set a flag to force harmonization (the DeviceState will handle the logic)
+          harmonizationOptions.fanSpeed = FanSpeed.Auto; // This will trigger harmonization to Medium
+          this.logger.debug(`[CacheManager] Harmonization: Calling updateFromOptions with: ${JSON.stringify(harmonizationOptions)}`);
+          this._deviceState.updateFromOptions(harmonizationOptions);
+          
+          const postHarmonizationState = JSON.stringify(this._deviceState.toPlainObject());
+          this.logger.debug('[CacheManager] Harmonization: Comparing pre/post states for changes');
+          
+          if (preHarmonizationState !== postHarmonizationState) {
+            this.logger.info('[CacheManager] Harmonization check: Fan speed changed from Auto to Medium to prevent device firmware bug.');
+            
+            // Now we need to send the harmonized state to the device
+            const harmonizedOptions: PartialDeviceOptions = {
+              fanSpeed: FanSpeed.Medium,
+            };
+            
+            this.logger.info(`[CacheManager] Applying harmonization changes: ${JSON.stringify(harmonizedOptions)}`);
+            const queue = this.getCommandQueue();
+            await queue.enqueueCommand(harmonizedOptions);
+          } else {
+            this.logger.debug('[CacheManager] Harmonization check completed - no changes needed.');
+          }
+        } else {
+          this.logger.debug('[CacheManager] Harmonization check completed - conditions not met for fan speed adjustment.');
+        }
+      } else {
+        this.logger.warn('[CacheManager] DeviceState.updateFromOptions method not found. Cannot perform harmonization check.');
+      }
     } else {
-      this.logger.info('[CacheManager] No changes to apply.');
+      this.logger.info('[CacheManager] No changes to apply and no harmonization needed.');
     }
   }
 
