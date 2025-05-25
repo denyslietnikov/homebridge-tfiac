@@ -70,7 +70,10 @@ describe('DeviceState Turbo-Sleep Bug Fixes', () => {
       );
     });
 
-    it('should allow sleep mode activation after 5+ seconds from turbo-off', async () => {
+    it('should allow sleep mode activation after 5+ seconds from turbo-off', () => {
+      // Use fake timers for this test
+      vi.useFakeTimers();
+      
       // Ensure device is powered on first (required for turbo mode)
       deviceState.setPower(PowerState.On);
       
@@ -82,8 +85,8 @@ describe('DeviceState Turbo-Sleep Bug Fixes', () => {
       deviceState.setTurboMode(PowerState.Off);
       expect(deviceState.turboMode).toBe(PowerState.Off);
       
-      // Wait 6 seconds
-      await new Promise(resolve => setTimeout(resolve, 6000));
+      // Fast-forward 6 seconds
+      vi.advanceTimersByTime(6000);
       
       // Simulate device reporting sleep mode
       const deviceStatus: AirConditionerStatus = {
@@ -104,7 +107,10 @@ describe('DeviceState Turbo-Sleep Bug Fixes', () => {
       
       // Sleep mode should be activated (no longer in transient period)
       expect(deviceState.sleepMode).toBe(SleepModeState.On);
-    }, 7000); // 7 second timeout for the test
+      
+      // Restore real timers
+      vi.useRealTimers();
+    });
 
     it('should not affect normal sleep mode activation when turbo was not recently turned off', () => {
       // Reset mock and create fresh instance
