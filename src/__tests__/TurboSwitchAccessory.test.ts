@@ -71,6 +71,7 @@ describe('TurboSwitchAccessory', () => {
     mockDeviceStateObject.setTurboMode = vi.fn();
     mockDeviceStateObject.setSleepMode = vi.fn();
     mockDeviceStateObject.setFanSpeed = vi.fn();
+    mockDeviceStateObject.getFanSpeed = vi.fn().mockReturnValue(FanSpeed.High); // Mock getFanSpeed to return High
     mockDeviceStateObject.clone = vi.fn().mockReturnValue(mockDeviceStateObject);
 
     mockCacheManager = createMockCacheManager();
@@ -155,9 +156,10 @@ describe('TurboSwitchAccessory', () => {
       
       await capturedOnSetHandler(false, mockCallback);
       
-      // Only setTurboMode should be called - DeviceState harmonization handles fan speed reset
+      // Verify the correct sequence: Turbo OFF, maintain fan speed, set sleep off with forceSleepClear
       expect(mockDeviceStateObject.setTurboMode).toHaveBeenCalledWith(PowerState.Off);
-      expect(mockDeviceStateObject.setFanSpeed).not.toHaveBeenCalled();
+      expect(mockDeviceStateObject.setFanSpeed).toHaveBeenCalledWith(FanSpeed.High); // Maintains current fan speed
+      expect(mockDeviceStateObject.setSleepMode).toHaveBeenCalledWith(SleepModeState.Off);
       expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
