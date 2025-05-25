@@ -252,12 +252,17 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         changesMade = true;
       }
       if (desiredState.turboMode !== undefined && desiredState.turboMode !== currentState.turboMode) {
-        this.logger.debug(`[CacheManager] Turbo mode comparison: desired=${desiredState.turboMode}, current=${currentState.turboMode}, different=${desiredState.turboMode !== currentState.turboMode}`);
+        this.logger.debug(
+          `[CacheManager] Turbo mode comparison: desired=${desiredState.turboMode}, ` +
+          `current=${currentState.turboMode}, different=${desiredState.turboMode !== currentState.turboMode}`,
+        );
         options.turbo = desiredState.turboMode;
         changesMade = true;
       } else if (desiredState.turboMode !== undefined) {
-        this.logger.debug(`[CacheManager] Turbo mode comparison: desired=${desiredState.turboMode}, ` +
-                          `current=${currentState.turboMode}, same - no change needed`);
+        this.logger.debug(
+          `[CacheManager] Turbo mode comparison: desired=${desiredState.turboMode}, ` +
+          `current=${currentState.turboMode}, same - no change needed`,
+        );
       }
       if (desiredState.ecoMode !== undefined && desiredState.ecoMode !== currentState.ecoMode) {
         options.eco = desiredState.ecoMode;
