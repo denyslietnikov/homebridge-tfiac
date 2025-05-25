@@ -41,6 +41,13 @@ export class SleepSwitchAccessory extends BooleanSwitchAccessory {
           return false;
         }
         
+        // Check if we're in a turbo-off transition (within 5 seconds of turbo off)
+        // This prevents spurious sleep activation immediately after turbo is turned off
+        if (Date.now() - state.lastTurboOffTime < 5000) {
+          platform.log.info('[SleepSwitchAccessory] Cannot enable Sleep mode during turbo-off transition. Request ignored.');
+          return false;
+        }
+        
         // Sleep ON - prepare for API call
         state.setSleepMode(SleepModeState.On); 
       } else {

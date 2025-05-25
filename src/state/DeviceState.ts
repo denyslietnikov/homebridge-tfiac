@@ -177,6 +177,14 @@ class DeviceState extends EventEmitter {
     return this._lastPowerOnCmdTime;
   }
 
+  /**
+   * Gets the timestamp when turbo mode was last turned off (used for preventing spurious sleep mode activation).
+   * Returns milliseconds since epoch, or 0 if turbo has not been turned off.
+   */
+  get lastTurboOffTime(): number {
+    return this._lastTurboOffCmdTime;
+  }
+
   // --- Public Setters that trigger harmonization and events ---
   /**
    * Sets the power state of the device.
