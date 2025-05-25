@@ -63,6 +63,9 @@ class DeviceState extends EventEmitter {
   // Track when turbo mode was last set to ON
   private _lastTurboCmdTime: number = 0;
   
+  // Track when turbo mode was last set to OFF for transient state protection
+  private _lastTurboOffCmdTime: number = 0;
+  
   // Track when power was last set to OFF for optimistic update protection
   private _lastPowerOffCmdTime: number = 0;
   
@@ -71,6 +74,9 @@ class DeviceState extends EventEmitter {
   
   // Flag to skip operation mode reset during transient state protection
   private _skipOperationModeReset: boolean = false;
+
+  // Flag to indicate we're currently processing a device update
+  private _isProcessingDeviceUpdate: boolean = false;
 
   // For tracking changes before notification
   private _stateBeforeUpdate: PlainDeviceState | null = null;
@@ -299,6 +305,16 @@ class DeviceState extends EventEmitter {
    */
   public setTurboMode(turboMode: PowerState): void {
     this._captureStateBeforeUpdate();
+    
+    // Check if device is powered on first - turbo mode requires the device to be powered on
+    if (this._power === PowerState.Off && turboMode === PowerState.On) {
+      // Auto power on the device when trying to activate turbo mode
+      this._power = PowerState.On;
+      if (this._debugEnabled) {
+        this.log.debug('[DeviceState] Auto powering on device to set turbo mode');
+      }
+    }
+    
     if (this._turboMode !== turboMode) {
       this._turboMode = turboMode; // Set turbo mode first
       
@@ -323,6 +339,9 @@ class DeviceState extends EventEmitter {
         if (this._fanSpeed === FanSpeed.Turbo) {
           this._fanSpeed = FanSpeed.Auto;
         }
+        
+        // Track when turbo mode was set to OFF for transient state protection
+        this._lastTurboOffCmdTime = Date.now();
       }
       
       this._applyHarmonizationAndNotify();
@@ -371,7 +390,28 @@ class DeviceState extends EventEmitter {
    */
   public setSleepMode(sleepMode: SleepModeState): void {
     this._captureStateBeforeUpdate();
+    
+    // Check if device is powered on first - sleep mode requires the device to be powered on
+    if (this._power === PowerState.Off && sleepMode === SleepModeState.On) {
+      // Auto power on the device when trying to activate sleep mode
+      this._power = PowerState.On;
+      if (this._debugEnabled) {
+        this.log.debug('[DeviceState] Auto powering on device to set sleep mode');
+      }
+    }
+    
+    // Check if we're in a recent turbo-off transition
+    const recentTurboOff = Date.now() - this._lastTurboOffCmdTime < 5000;
+    
     if (this._sleepMode !== sleepMode) {
+      if (sleepMode === SleepModeState.On && recentTurboOff) {
+        if (this._debugEnabled) {
+          this.log.debug('[DeviceState] Delaying sleep mode activation due to recent turbo-off');
+        }
+        // Don't actually update the sleep mode state during turbo-off transition
+        return;
+      }
+      
       this._sleepMode = sleepMode;
       
       if (sleepMode === SleepModeState.On) {
@@ -509,11 +549,23 @@ class DeviceState extends EventEmitter {
                    this._operationMode === OperationMode.FanOnly) {
           // Rule R2 (Prevent Auto Fan Speed): When Turbo/Sleep are OFF and fan speed is Auto,
           // change it to Medium to avoid device firmware auto-enabling Sleep mode.
+          // However, if the device itself reports Auto fan speed, we should accept it.
+          // Only apply this rule when setting fan speed from user commands, not device updates.
           // This only affects Auto fan speed, not explicit user fan speed selections.
           // This applies to Auto, Cool, Heat, and FanOnly modes.
-          if (this._turboMode === PowerState.Off && this._sleepMode === SleepModeState.Off && this._fanSpeed === FanSpeed.Auto) {
-            this._fanSpeed = FanSpeed.Medium;
-            changedInLoop = true;
+          if (this._turboMode === PowerState.Off && 
+              this._sleepMode === SleepModeState.Off && 
+              this._fanSpeed === FanSpeed.Auto) {
+            
+            // Don't override device-reported Auto fan speed
+            // Only force Medium when this is NOT a device update
+            if (!this._isProcessingDeviceUpdate) {
+              if (this._debugEnabled) {
+                this.log.debug('[DeviceState] Rule R2: Turbo and Sleep are OFF, converting Auto fan speed to Medium');
+              }
+              this._fanSpeed = FanSpeed.Medium;
+              changedInLoop = true;
+            }
           }
         }
 
@@ -584,6 +636,9 @@ class DeviceState extends EventEmitter {
       this.log.warn('[DeviceState][updateFromDevice] Received null status, skipping update.');
       return false;
     }
+
+    // Set flag to indicate we're processing a device update
+    this._isProcessingDeviceUpdate = true;
     // Ignore spurious updates when the AC is off
     const newPower = status.is_on === PowerState.On ? PowerState.On : PowerState.Off;
     if (status.is_on !== undefined && newPower === this._power && newPower === PowerState.Off) {
@@ -662,7 +717,14 @@ class DeviceState extends EventEmitter {
       this._outdoorTemperature = updateProp(this._outdoorTemperature, newOutdoorTempC, outdoorTempMsg);
     }
     if (status.fan_mode !== undefined) {
-      this._fanSpeed = updateProp(this._fanSpeed, status.fan_mode as FanSpeed, 'Fan speed updated');
+      // Special handling for Auto fan speed during device updates
+      if (status.fan_mode === FanSpeed.Auto && this._isProcessingDeviceUpdate) {
+        // During device updates, we should preserve the Auto fan speed as reported by device
+        // Do NOT harmonize Auto → Medium during device updates
+        this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (device-reported Auto) updated');
+      } else {
+        this._fanSpeed = updateProp(this._fanSpeed, status.fan_mode as FanSpeed, 'Fan speed updated');
+      }
     }
     if (status.swing_mode !== undefined) {
       this._swingMode = updateProp(this._swingMode, status.swing_mode as SwingMode, 'Swing mode updated');
@@ -703,8 +765,17 @@ class DeviceState extends EventEmitter {
       const justPoweredOn = (status.is_on === PowerState.On && originalPowerState === PowerState.Off) || 
                            (Date.now() - this._lastPowerOnCmdTime < 5000);
       
-      if (status.opt_sleepMode.startsWith('sleepMode1')) {
-        if (justPoweredOn && this._sleepMode === SleepModeState.Off) {
+      if (status.opt_sleepMode === SleepModeState.On || status.opt_sleepMode.startsWith('sleepMode1')) {
+        // Check if we're in a turbo-off transition to prevent spurious sleep activation
+        const justTurnedOffTurbo = Date.now() - this._lastTurboOffCmdTime < 5000;
+        
+        if (justTurnedOffTurbo && this._sleepMode === SleepModeState.Off) {
+          // This is a spurious sleepMode1 during turbo-off transition - ignore it
+          newSleepValue = SleepModeState.Off;
+          if (this._debugEnabled) {
+            this.log.debug(`[DeviceState][updateFromDevice] Ignoring spurious sleep mode during turbo-off transition: ${status.opt_sleepMode}`);
+          }
+        } else if (justPoweredOn && this._sleepMode === SleepModeState.Off) {
           // This is a spurious sleepMode1 during power-on - ignore it ONLY if sleep was previously OFF
           // This preserves the previous sleep mode state during power transitions
           newSleepValue = SleepModeState.Off;
@@ -712,15 +783,15 @@ class DeviceState extends EventEmitter {
             this.log.debug(`[DeviceState][updateFromDevice] Ignoring spurious sleep mode during power-on: ${status.opt_sleepMode}`);
           }
         } else {
-          // Accept sleepMode1 if sleep was ON previously or if this isn't a power-on event
+          // Accept sleepMode1 if sleep was ON previously or if this isn't a transition event
           newSleepValue = SleepModeState.On;
           if (this._debugEnabled) {
             this.log.debug(`[DeviceState][updateFromDevice] Accepting sleep mode ON state: ${status.opt_sleepMode}`);
           }
         }
       } else if (this._sleepMode === SleepModeState.On && 
-          status.opt_sleepMode.startsWith('off') && 
-          Date.now() - this._lastSleepCmdTime < 4000) {
+                status.opt_sleepMode.startsWith('off') && 
+                Date.now() - this._lastSleepCmdTime < 4000) {
         // If we recently set Sleep mode to ON and device is still reporting "off:0:0..." within 4 seconds,
         // ignore this intermediate state to avoid UI flickering
         if (this._debugEnabled) {
@@ -729,7 +800,8 @@ class DeviceState extends EventEmitter {
         // Keep the existing value, don't update
       } else {
         // If it's a different format, interpret based on the value
-        newSleepValue = status.opt_sleepMode.startsWith('off') ? SleepModeState.Off : SleepModeState.On;
+        const isSleepOn = !status.opt_sleepMode.startsWith('off');
+        newSleepValue = isSleepOn ? SleepModeState.On : SleepModeState.Off;
       }
     } else if (status.opt_sleep !== undefined) {
       // Fallback to opt_sleep if opt_sleepMode is not provided
@@ -768,6 +840,12 @@ class DeviceState extends EventEmitter {
         this._stateBeforeUpdate = null;
       }
     }
+    
+    // Reset the device update processing flag
+    this._isProcessingDeviceUpdate = false;
+    
+    // Clear the device update flag
+    this._isProcessingDeviceUpdate = false;
     
     return changed;
   }
