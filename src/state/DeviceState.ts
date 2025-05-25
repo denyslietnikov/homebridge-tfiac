@@ -60,6 +60,9 @@ class DeviceState extends EventEmitter {
   // Track when sleep mode was last set to ON
   private _lastSleepCmdTime: number = 0;
   
+  // Track when turbo mode was last set to ON
+  private _lastTurboCmdTime: number = 0;
+  
   // Track when power was last set to OFF for optimistic update protection
   private _lastPowerOffCmdTime: number = 0;
   
@@ -311,6 +314,9 @@ class DeviceState extends EventEmitter {
         // Setting turbo ON sets fan to Turbo and sleep OFF
         this._sleepMode = SleepModeState.Off;
         this._fanSpeed = FanSpeed.Turbo;
+        
+        // Track when turbo mode was set to ON
+        this._lastTurboCmdTime = Date.now();
       } else {
         // Turning turbo OFF - reset fan speed if it was Turbo to prevent harmonization from forcing turbo back ON
         // This ensures that when user explicitly turns OFF turbo, it stays OFF
@@ -662,7 +668,21 @@ class DeviceState extends EventEmitter {
       this._swingMode = updateProp(this._swingMode, status.swing_mode as SwingMode, 'Swing mode updated');
     }
     if (status.opt_turbo !== undefined) {
-      this._turboMode = updateProp(this._turboMode, status.opt_turbo as PowerState, 'Turbo mode updated');
+      const newTurboMode = status.opt_turbo as PowerState;
+      
+      // Protection against intermediate OFF states during turbo transitions
+      if (newTurboMode === PowerState.Off && 
+          this._turboMode === PowerState.On && 
+          Date.now() - this._lastTurboCmdTime < 4000) {
+        // If we recently set Turbo mode to ON and device is reporting "off" within 4 seconds,
+        // ignore this intermediate state to avoid UI flickering and maintain turbo functionality
+        if (this._debugEnabled) {
+          this.log.debug(`[DeviceState][updateFromDevice] Ignoring intermediate off state for turbo mode during transition: ${status.opt_turbo}`);
+        }
+        // Keep the existing ON value, don't update
+      } else {
+        this._turboMode = updateProp(this._turboMode, newTurboMode, 'Turbo mode updated');
+      }
     }
     if (status.opt_eco !== undefined) {
       this._ecoMode = updateProp(this._ecoMode, status.opt_eco as PowerState, 'Eco mode updated');
