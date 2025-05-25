@@ -31,6 +31,9 @@ export class TurboSwitchAccessory extends BooleanSwitchAccessory {
       } else { // Turbo OFF
         platform.log.info('[TurboSwitchAccessory] Requesting Turbo OFF via BooleanSwitchAccessory');
         state.setTurboMode(PowerState.Off);
+        // Explicitly turn off sleep mode when turning off turbo to prevent automatic sleep activation
+        // This ensures the sleep flag is included in the API command
+        state.setSleepMode(SleepModeState.Off);
         // Note: DeviceState harmonization automatically handles fan speed reset and sleep mode conflicts
       }
       return true; // Return true to indicate API call should proceed

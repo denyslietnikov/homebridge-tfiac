@@ -1,13 +1,9 @@
 /**
- * Tests for the turbo-sleep bug fixes:
- * 1. Sleep mode shoul    it('should allow sleep mode activation after 5+ seconds from turbo-off', () => {
-      // Ensure device is powered on first (required for turbo mode)
-      deviceState.setPower(PowerState.On);
-      
-      // Initial state: Turbo ON
-      deviceState.setTurboMode(PowerState.On);
-      expect(deviceState.turboMode).toBe(PowerState.On);t be spuriously activated after turbo-off
+ * Combined tests for all bug fixes:
+ * 1. Sleep mode should not be spuriously activated after turbo-off
  * 2. Device-reported Auto fan speed should be preserved during device updates
+ * 3. Fix fan speed harmonization especially Medium -> Auto issue
+ * 4. Fix constant Medium → Auto fan speed log messages
  */
 
 import { vi, describe, beforeEach, it, expect } from 'vitest';
@@ -25,7 +21,7 @@ const mockPlatform = {
   },
 };
 
-describe('DeviceState Turbo-Sleep Bug Fixes', () => {
+describe('DeviceState Bug Fixes', () => {
   let deviceState: DeviceState;
   
   beforeEach(() => {
@@ -98,6 +94,51 @@ describe('DeviceState Turbo-Sleep Bug Fixes', () => {
         swing_mode: 'Off',
         opt_turbo: PowerState.Off,
         opt_sleepMode: SleepModeState.On, // This should be accepted after enough time has passed
+        opt_eco: PowerState.Off,
+        opt_display: PowerState.On,
+        outdoor_temp: 30,
+      };
+      
+      deviceState.updateFromDevice(deviceStatus);
+      
+      // Sleep mode should be activated (no longer in transient period)
+      expect(deviceState.sleepMode).toBe(SleepModeState.On);
+      
+      // Restore real timers
+      vi.useRealTimers();
+    });
+    
+    it('should allow sleep mode activation after turbo-off protection ends (string value)', () => {
+      // Reset the deviceState for a clean test
+      deviceState = new DeviceState(mockPlatform.log as any, true);
+      
+      // Use fake timers for this test
+      vi.useFakeTimers();
+      
+      // Ensure device is powered on first (required for turbo mode)
+      deviceState.setPower(PowerState.On);
+      
+      // Initial state: Turbo ON
+      deviceState.setTurboMode(PowerState.On);
+      expect(deviceState.turboMode).toBe(PowerState.On);
+      
+      // Turn turbo OFF
+      deviceState.setTurboMode(PowerState.Off);
+      expect(deviceState.turboMode).toBe(PowerState.Off);
+      
+      // Fast-forward time past the protection period (5+ seconds)
+      vi.advanceTimersByTime(6000);
+      
+      // Simulate device reporting sleep mode as string value
+      const deviceStatus: AirConditionerStatus = {
+        is_on: PowerState.On,
+        operation_mode: OperationMode.Cool,
+        target_temp: 22,
+        current_temp: 24,
+        fan_mode: FanSpeed.Auto,
+        swing_mode: 'Off',
+        opt_turbo: PowerState.Off,
+        opt_sleepMode: 'sleepMode1:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0:0', // String value
         opt_eco: PowerState.Off,
         opt_display: PowerState.On,
         outdoor_temp: 30,
@@ -229,6 +270,157 @@ describe('DeviceState Turbo-Sleep Bug Fixes', () => {
       expect(mockPlatform.log.debug).not.toHaveBeenCalledWith(
         expect.stringContaining('Rule R2: Turbo and Sleep are OFF, converting Auto fan speed to Medium')
       );
+    });
+  });
+
+  describe('Bug Fix 3: Handling Medium fan speed rejection', () => {
+    it('should handle Medium fan speed being rejected', () => {
+      // Use fake timers for this test
+      vi.useFakeTimers();
+      
+      // Create fresh instance for this test to ensure clean state
+      deviceState = new DeviceState(mockPlatform.log as any, true);
+      
+      // Ensure device is powered on first in Cool mode
+      deviceState.setPower(PowerState.On);
+      deviceState.setOperationMode(OperationMode.Cool);
+      vi.clearAllMocks();
+      
+      // Set fan speed to Medium, which should set the _lastFanSpeedCmdTime timestamp
+      deviceState.setFanSpeed(FanSpeed.Medium);
+      expect(deviceState.fanSpeed).toBe(FanSpeed.Medium);
+      
+      // Prepare a device update where device reports Auto fan speed (rejected Medium)
+      const deviceStatus: AirConditionerStatus = {
+        is_on: PowerState.On,
+        operation_mode: OperationMode.Cool,
+        target_temp: 22, // Added missing property
+        current_temp: 24, // Added missing property
+        fan_mode: FanSpeed.Auto, // Device reports Auto instead of Medium
+        swing_mode: 'Off', // Added missing property
+        // Add other optional properties if needed for the test, or ensure they are handled as undefined
+        opt_turbo: PowerState.Off,
+        opt_sleepMode: SleepModeState.Off,
+        opt_eco: PowerState.Off,
+        opt_display: PowerState.On,
+        outdoor_temp: 30,
+      };
+      
+      // Simulate a device update within the 5-second window after setting Medium
+      vi.advanceTimersByTime(3000);
+      deviceState.updateFromDevice(deviceStatus);
+      
+      // Fan speed should now be Auto
+      expect(deviceState.fanSpeed).toBe(FanSpeed.Auto);
+      
+      // Verify the _lastFanSpeedCmdTime was reset by making a second update and ensuring
+      // we don't see any Medium rejection messages again
+      vi.clearAllMocks();
+      deviceState.updateFromDevice(deviceStatus);
+      
+      // After the second update, we shouldn't see any "Medium was rejected" message again
+      // because the _lastFanSpeedCmdTime was reset to 0 after the first rejection
+      const anyRejectionMessage = mockPlatform.log.debug.mock.calls.some(
+        call => typeof call[0] === 'string' && call[0].includes('Medium was rejected')
+      );
+      expect(anyRejectionMessage).toBe(false);
+      
+      // Reset timers
+      vi.useRealTimers();
+    });
+    
+    it('should not output rejection message after timeout period', () => {
+      // Use fake timers for this test
+      vi.useFakeTimers();
+      
+      // Ensure device is powered on first
+      deviceState.setPower(PowerState.On);
+      
+      // Set fan speed to Medium
+      deviceState.setFanSpeed(FanSpeed.Medium);
+      expect(deviceState.fanSpeed).toBe(FanSpeed.Medium);
+      
+      // Move past the 5-second window
+      vi.advanceTimersByTime(6000);
+      
+      // Clear logs before update
+      vi.clearAllMocks();
+      
+      // Mock a device update where device reports Auto instead of Medium (but outside window)
+      const deviceStatus: AirConditionerStatus = {
+        is_on: PowerState.On,
+        operation_mode: OperationMode.Cool,
+        target_temp: 22,
+        current_temp: 24,
+        fan_mode: FanSpeed.Auto, // Device reports Auto instead of Medium
+        swing_mode: 'Off',
+        opt_turbo: PowerState.Off,
+        opt_sleepMode: SleepModeState.Off,
+        opt_eco: PowerState.Off,
+        opt_display: PowerState.On,
+        outdoor_temp: 30,
+      };
+      
+      deviceState.updateFromDevice(deviceStatus);
+      
+      // Fan speed should be Auto but we should NOT see the rejection message
+      expect(deviceState.fanSpeed).toBe(FanSpeed.Auto);
+      expect(mockPlatform.log.debug).not.toHaveBeenCalledWith(
+        expect.stringContaining('Medium was rejected by AC, adopting Auto')
+      );
+      
+      // Reset timers
+      vi.useRealTimers();
+    });
+
+    it('should properly handle fan speed rejection in subsequent device updates', () => {
+      // Use fake timers for this test
+      vi.useFakeTimers();
+      
+      // Ensure device is powered on first
+      deviceState.setPower(PowerState.On);
+      deviceState.setOperationMode(OperationMode.Cool);
+      
+      // Set fan speed to Medium
+      deviceState.setFanSpeed(FanSpeed.Medium);
+      expect(deviceState.fanSpeed).toBe(FanSpeed.Medium);
+      
+      // Mock a device update where device reports Auto instead of Medium
+      const deviceStatus: AirConditionerStatus = {
+        is_on: PowerState.On,
+        operation_mode: OperationMode.Cool,
+        target_temp: 22,
+        current_temp: 24,
+        fan_mode: FanSpeed.Auto, // Device reports Auto instead of Medium
+        swing_mode: 'Off',
+        opt_turbo: PowerState.Off,
+        opt_sleepMode: SleepModeState.Off,
+        opt_eco: PowerState.Off,
+        opt_display: PowerState.On,
+        outdoor_temp: 30,
+      };
+      
+      // First update (within window) - this should reset _lastFanSpeedCmdTime
+      vi.advanceTimersByTime(3000);
+      deviceState.updateFromDevice(deviceStatus);
+      
+      // Clear logs for the second test
+      vi.clearAllMocks();
+      
+      // Second update - should not show rejection message
+      deviceState.updateFromDevice(deviceStatus);
+      
+      // Check if any debug message includes our Medium rejection message
+      const debugCalls = mockPlatform.log.debug.mock.calls;
+      const hasRejectionMessage = debugCalls.some(call => 
+        typeof call[0] === 'string' && call[0].includes('Medium was rejected by AC')
+      );
+      
+      // We should NOT see the rejection message
+      expect(hasRejectionMessage).toBe(false);
+      
+      // Reset timers
+      vi.useRealTimers();
     });
   });
 

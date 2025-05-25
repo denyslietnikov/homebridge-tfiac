@@ -72,6 +72,9 @@ class DeviceState extends EventEmitter {
   // Track when power was last set to ON for optimistic update protection
   private _lastPowerOnCmdTime: number = 0;
   
+  // Track when fan speed was last set to Medium for Auto->Medium harmonization tracking
+  private _lastFanSpeedCmdTime: number = 0;
+  
   // Flag to skip operation mode reset during transient state protection
   private _skipOperationModeReset: boolean = false;
 
@@ -272,6 +275,17 @@ class DeviceState extends EventEmitter {
       }
       
       this._fanSpeed = fanSpeed; // Set the fan speed
+      
+      // Track the time when fan speed was set to Medium for Auto->Medium harmonization tracking
+      if (fanSpeed === FanSpeed.Medium) {
+        this._lastFanSpeedCmdTime = Date.now();
+        if (this._debugEnabled) {
+          this.log.debug('[DeviceState] Setting fan speed to Medium, tracking for auto-adoption');
+        }
+      } else {
+        // Reset the Medium tracking when setting to a different fan speed
+        this._lastFanSpeedCmdTime = 0;
+      }
 
       if (fanSpeed === FanSpeed.Turbo && this._operationMode !== OperationMode.Dry) {
         // If fan is set to Turbo, ensure Turbo mode is ON and Sleep mode is OFF
@@ -719,9 +733,20 @@ class DeviceState extends EventEmitter {
     if (status.fan_mode !== undefined) {
       // Special handling for Auto fan speed during device updates
       if (status.fan_mode === FanSpeed.Auto && this._isProcessingDeviceUpdate) {
-        // During device updates, we should preserve the Auto fan speed as reported by device
-        // Do NOT harmonize Auto → Medium during device updates
-        this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (device-reported Auto) updated');
+        // Check if we recently sent a request to set fan speed to Medium
+        if (this._fanSpeed === FanSpeed.Medium && Date.now() - this._lastFanSpeedCmdTime < 5000) {
+          // AC rejected Medium -> accept Auto, and stop reporting "Medium→Auto" every cycle
+          if (this._debugEnabled) {
+            this.log.debug('[DeviceState] Medium was rejected by AC, adopting Auto');
+          }
+          // Reset the timestamp before updating the fan speed
+          this._lastFanSpeedCmdTime = 0;
+          this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (Medium rejected by AC, adopting Auto) updated');
+        } else {
+          // During device updates, we should preserve the Auto fan speed as reported by device
+          // Do NOT harmonize Auto → Medium during device updates
+          this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (device-reported Auto) updated');
+        }
       } else {
         this._fanSpeed = updateProp(this._fanSpeed, status.fan_mode as FanSpeed, 'Fan speed updated');
       }
