@@ -210,7 +210,6 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
    * This does not update the device state object itself, only sends commands.
    */
   async applyStateToDevice(desiredState: DeviceState): Promise<void> {
-    // Use a safer logging approach that doesn't rely on toPlainObject working on the parameter
     this.logger.debug(`[CacheManager] Applying desired state: power=${desiredState.power}, ` +
       `mode=${desiredState.operationMode}, targetTemp=${desiredState.targetTemperature}, ` +
       `fanSpeed=${desiredState.fanSpeed}`);
@@ -239,6 +238,13 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       }
       if (desiredState.targetTemperature !== undefined && desiredState.targetTemperature !== currentState.targetTemperature) {
         this.logger.debug(
+          '[CacheManager] DETAILED Temperature comparison: ' +
+          `desired=${desiredState.targetTemperature} (type: ${typeof desiredState.targetTemperature}), ` +
+          `current=${currentState.targetTemperature} (type: ${typeof currentState.targetTemperature}), ` +
+          `strict_equal=${desiredState.targetTemperature === currentState.targetTemperature}, ` +
+          `not_strict_equal=${desiredState.targetTemperature !== currentState.targetTemperature}`,
+        );
+        this.logger.debug(
           `[CacheManager] Temperature comparison: desired=${desiredState.targetTemperature}, ` +
           `current=${currentState.targetTemperature}, different=${desiredState.targetTemperature !== currentState.targetTemperature}`,
         );
@@ -246,6 +252,13 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         options.temp = desiredState.targetTemperature; 
         changesMade = true;
       } else if (desiredState.targetTemperature !== undefined) {
+        this.logger.debug(
+          '[CacheManager] DETAILED Temperature comparison (same): ' +
+          `desired=${desiredState.targetTemperature} (type: ${typeof desiredState.targetTemperature}), ` +
+          `current=${currentState.targetTemperature} (type: ${typeof currentState.targetTemperature}), ` +
+          `strict_equal=${desiredState.targetTemperature === currentState.targetTemperature}, ` +
+          `not_strict_equal=${desiredState.targetTemperature !== currentState.targetTemperature}`,
+        );
         this.logger.debug(
           `[CacheManager] Temperature comparison: desired=${desiredState.targetTemperature}, ` +
           `current=${currentState.targetTemperature}, same - no change needed`,

@@ -367,18 +367,10 @@ export class TfiacPlatformAccessory {
       const currentTempC = currentDeviceState.currentTemperature + correction;
       const targetTempC = currentDeviceState.targetTemperature; // Already Celsius from DeviceState, can be const
 
-      const coolingMin = 10, coolingMax = 35;
-      const heatingMin = 0, heatingMax = 25;
-
-      let hkCoolingTarget = targetTempC;
-      let hkHeatingTarget = targetTempC;
-
-      if (currentDeviceState.operationMode === OperationMode.Cool || currentDeviceState.operationMode === OperationMode.Auto) {
-        hkCoolingTarget = Math.max(coolingMin, Math.min(coolingMax, targetTempC));
-      }
-      if (currentDeviceState.operationMode === OperationMode.Heat || currentDeviceState.operationMode === OperationMode.Auto) {
-        hkHeatingTarget = Math.max(heatingMin, Math.min(heatingMax, targetTempC));
-      }
+      // Note: Removed hkCoolingTarget and hkHeatingTarget variables since we no longer
+      // automatically update threshold temperature characteristics in this method.
+      // This prevents HomeKit from thinking temperature requests were successful when 
+      // the device actually returned different values.
 
       this.service.updateCharacteristic(CharacteristicType.Active, 
         status.is_on === PowerState.On ? CharacteristicType.Active.ACTIVE : CharacteristicType.Active.INACTIVE);
@@ -389,8 +381,12 @@ export class TfiacPlatformAccessory {
       
       if (this.deviceConfig.enableTemperature !== false) {
         this.service.updateCharacteristic(CharacteristicType.CurrentTemperature, currentTempC);
-        this.service.updateCharacteristic(CharacteristicType.CoolingThresholdTemperature, hkCoolingTarget);
-        this.service.updateCharacteristic(CharacteristicType.HeatingThresholdTemperature, hkHeatingTarget);
+        // NOTE: Do NOT automatically update threshold temperature characteristics here.
+        // This was causing HomeKit to think temperature requests were successful when the device
+        // actually returned different values (e.g., device rounds 20.5°C to 20°C).
+        // Threshold temperatures should only be updated by explicit HomeKit requests via SET handlers.
+        // this.service.updateCharacteristic(CharacteristicType.CoolingThresholdTemperature, hkCoolingTarget);
+        // this.service.updateCharacteristic(CharacteristicType.HeatingThresholdTemperature, hkHeatingTarget);
       }
 
       this.service.updateCharacteristic(CharacteristicType.RotationSpeed, 
@@ -406,8 +402,9 @@ export class TfiacPlatformAccessory {
       this.service.updateCharacteristic(CharacteristicType.CurrentHeaterCoolerState, CharacteristicType.CurrentHeaterCoolerState.INACTIVE);
       if (this.deviceConfig.enableTemperature !== false) {
         this.service.updateCharacteristic(CharacteristicType.CurrentTemperature, 10);
-        this.service.updateCharacteristic(CharacteristicType.CoolingThresholdTemperature, 10);
-        this.service.updateCharacteristic(CharacteristicType.HeatingThresholdTemperature, 10);
+        // NOTE: Do NOT update threshold temperatures here either - let HomeKit maintain its values
+        // this.service.updateCharacteristic(CharacteristicType.CoolingThresholdTemperature, 10);
+        // this.service.updateCharacteristic(CharacteristicType.HeatingThresholdTemperature, 10);
       }
       this.service.updateCharacteristic(CharacteristicType.RotationSpeed, 0);
       this.service.updateCharacteristic(CharacteristicType.SwingMode, CharacteristicType.SwingMode.SWING_DISABLED);

@@ -167,16 +167,16 @@ describe('TfiacPlatformAccessory extra tests', () => {
       platform.Characteristic!.CurrentTemperature,
       10, 
     );
-    // CoolingThresholdTemperature default is 10
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic!.CoolingThresholdTemperature,
-      10,
-    );
-    // HeatingThresholdTemperature default is 10
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic!.HeatingThresholdTemperature,
-      10,
-    );
+    // NOTE: No longer expect threshold temperature updates - this was the bug fix
+    // Threshold temperatures should only be updated by explicit HomeKit SET requests
+    // expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    //   platform.Characteristic!.CoolingThresholdTemperature,
+    //   10,
+    // );
+    // expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    //   platform.Characteristic!.HeatingThresholdTemperature,
+    //   10,
+    // );
     // RotationSpeed default is 0
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.RotationSpeed,
@@ -219,10 +219,12 @@ describe('TfiacPlatformAccessory extra tests', () => {
       platform.Characteristic!.CurrentTemperature,
       20,
     );
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic!.CoolingThresholdTemperature,
-      30, // Changed from 35 to 30 due to DeviceState internal clamping
-    );
+    // NOTE: No longer expect threshold temperature updates - this was the bug fix
+    // Threshold temperatures should only be updated by explicit HomeKit SET requests
+    // expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    //   platform.Characteristic!.CoolingThresholdTemperature,
+    //   30, // Changed from 35 to 30 due to DeviceState internal clamping
+    // );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.RotationSpeed,
       FanSpeedPercentMap[FanSpeed.Auto],
