@@ -32,7 +32,7 @@ export class TurboSwitchAccessory extends BooleanSwitchAccessory {
         platform.log.info('[TurboSwitchAccessory] Requesting Turbo OFF via BooleanSwitchAccessory');
         state.setTurboMode(PowerState.Off);
         state.setFanSpeed(state.fanSpeed); // Maintain current fan speed or set to Medium by harmonization
-        // Note: BooleanSwitchAccessory will automatically add forceSleepClear flag and set sleep mode to OFF
+        // Note: CacheManager will include current sleep state in command to prevent auto-activation
         // Note: DeviceState harmonization automatically handles fan speed reset and sleep mode conflicts
       }
       return true; // Return true to indicate API call should proceed

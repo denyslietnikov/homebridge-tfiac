@@ -148,7 +148,7 @@ describe('TurboSwitchAccessory', () => {
       expect(mockCallback).toHaveBeenCalledWith(null);
     });
 
-    it('should set turbo off and rely on DeviceState harmonization when value is false', async () => {
+    it('should set turbo off when value is false', async () => {
       const mockCallback = vi.fn();
       mockDeviceStateObject.power = PowerState.On; // Ensure AC is ON for changes
       mockDeviceStateObject.turboMode = PowerState.On; // Ensure turbo is initially on for change detection
@@ -156,10 +156,10 @@ describe('TurboSwitchAccessory', () => {
       
       await capturedOnSetHandler(false, mockCallback);
       
-      // Verify the correct sequence: Turbo OFF, maintain fan speed, set sleep off with forceSleepClear
+      // With universal sleep state approach, we only set turbo off and maintain fan speed
+      // Sleep state preservation is now handled automatically in CacheManager
       expect(mockDeviceStateObject.setTurboMode).toHaveBeenCalledWith(PowerState.Off);
       expect(mockDeviceStateObject.setFanSpeed).toHaveBeenCalledWith(FanSpeed.High); // Maintains current fan speed
-      expect(mockDeviceStateObject.setSleepMode).toHaveBeenCalledWith(SleepModeState.Off);
       expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
       expect(mockCallback).toHaveBeenCalledWith(null);
     });

@@ -4,7 +4,7 @@ import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
 import { DeviceState } from './state/DeviceState.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
-import { PowerState, SleepModeState } from './enums.js'; // Added PowerState and SleepModeState imports
+import { PowerState } from './enums.js'; // Added PowerState import
 
 // This function will receive Partial<AirConditionerStatus> because BaseSwitchAccessory ensures this.
 export type GetStatusValueFromApiFn = (status: Partial<AirConditionerStatus>) => boolean;
@@ -92,16 +92,6 @@ export class BooleanSwitchAccessory extends BaseSwitchAccessory {
         const modifiedState = deviceState.clone();
         
         const shouldProceed = modifierFunc(modifiedState, value);
-        
-        // Add forceSleepClear flag when turning OFF any accessory (except Sleep itself)
-        // This prevents Sleep from automatically turning ON due to cached sleep profiles in AC firmware
-        if (!value && shouldProceed && displayName !== 'Sleep') {
-          platform.log.info(`[${displayName}] Setting forceSleepClear flag to prevent automatic Sleep activation`);
-          (modifiedState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear = true;
-          // Ensure sleep mode is set to OFF to complement the forceSleepClear flag
-          modifiedState.setSleepMode(SleepModeState.Off);
-          platform.log.info(`[${displayName}] forceSleepClear flag set: ${(modifiedState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear}`);
-        }
         
         if (shouldProceed) {
           await this.cacheManager.applyStateToDevice(modifiedState);

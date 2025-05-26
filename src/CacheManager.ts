@@ -251,13 +251,12 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         options.sleep = desiredState.sleepMode;
         changesMade = true;
       }
-      // Handle forceSleepClear flag to force sleep='off' in API command even when no state change detected
-      if ((desiredState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear) {
-        this.logger.info('[CacheManager] forceSleepClear flag detected - forcing sleep=off in command');
-        options.sleep = SleepModeState.Off;
-        changesMade = true;
-        // Clean up the force flag to prevent it from persisting
-        delete (desiredState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear;
+      
+      // Universal sleep state preservation: Always send current sleep state in commands
+      // This prevents firmware from returning old sleep profiles when other parameters change
+      if (options.sleep === undefined) {
+        options.sleep = currentState.sleepMode;
+        this.logger.debug(`[CacheManager] Including current sleep state in command: ${currentState.sleepMode}`);
       }
       if (desiredState.turboMode !== undefined && desiredState.turboMode !== currentState.turboMode) {
         this.logger.debug(

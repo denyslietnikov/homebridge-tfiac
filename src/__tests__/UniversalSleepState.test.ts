@@ -1,4 +1,5 @@
-// Test for the forceSleepClear functionality - point 12 from specification.txt
+// filepath: /Users/denisletnikov/Code/homebridge-tfiac/src/__tests__/UniversalSleepState.test.ts
+// Test for the universal sleep state preservation - point 13 from specification.txt
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { CacheManager } from '../CacheManager.js';
 import { DeviceState } from '../state/DeviceState.js';
@@ -23,7 +24,7 @@ vi.mock('../AirConditionerAPI.js', () => {
   };
 });
 
-describe('ForceSleepClear Implementation - Point 12', () => {
+describe('Universal Sleep State Preservation - Point 13', () => {
   let cacheManager: CacheManager;
   let mockAPI: any;
   let mockConfig: TfiacDeviceConfig;
@@ -84,7 +85,7 @@ describe('ForceSleepClear Implementation - Point 12', () => {
     cacheManager.getCommandQueue = vi.fn().mockReturnValue(mockCommandQueue);
   });
 
-  it('should force include sleep=off when forceSleepClear flag is set, even when sleep is already off', async () => {
+  it('should always include current sleep state in commands - universal sleep state preservation', async () => {
     // Setup: Device is currently off with sleep mode off
     const currentStatus = {
       is_on: PowerState.Off,
@@ -93,104 +94,7 @@ describe('ForceSleepClear Implementation - Point 12', () => {
       current_temp: 22,
       fan_mode: FanSpeed.Medium,
       swing_mode: SwingMode.Off,
-      opt_sleepMode: SleepModeState.Off,  // Sleep is already OFF
-      opt_turbo: PowerState.Off,
-      opt_eco: PowerState.Off,
-      opt_display: PowerState.On,
-      opt_beep: PowerState.On,
-    };
-
-    // Mock API responses
-    mockAPI.updateState.mockResolvedValue(currentStatus);
-    mockAPI.setOptionsCombined.mockResolvedValue(currentStatus);
-
-    // Initialize the cache manager's internal state by calling updateDeviceState
-    // This is essential for applyStateToDevice to have a current state to compare against
-    await cacheManager.updateDeviceState();
-
-    // Create desired state with forceSleepClear flag - importantly, this must be different from current state
-    const desiredState = cacheManager.getDeviceState().clone();
-    desiredState.setPower(PowerState.On); // This is different from current PowerState.Off
-    desiredState.setTurboMode(PowerState.Off);
-    desiredState.setSleepMode(SleepModeState.Off); // This is the same as current state
-    
-    // Add the forceSleepClear flag (simulating TurboSwitchAccessory turning off Turbo)
-    (desiredState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear = true;
-
-    // Act: Apply the state change
-    await cacheManager.applyStateToDevice(desiredState);
-
-    // Assert: setOptionsCombined should have been called with sleep: 'off' included
-    expect(mockCommandQueue.enqueueCommand).toHaveBeenCalledTimes(1);
-    const calledOptions = mockCommandQueue.enqueueCommand.mock.calls[0][0];
-    
-    // Verify that sleep: 'off' was included in the API call even though it didn't change (due to forceSleepClear)
-    expect(calledOptions).toHaveProperty('sleep', SleepModeState.Off);
-    expect(calledOptions).toHaveProperty('power', PowerState.On);
-    // fanSpeed is included when power changes (this is expected behavior)
-    expect(calledOptions).toHaveProperty('fanSpeed', FanSpeed.Medium);
-    // turbo is not included because it didn't change and forceSleepClear only affects sleep
-
-    // Verify the forceSleepClear flag was cleaned up
-    expect((desiredState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear).toBeUndefined();
-  }, 10000); // Increase timeout to 10 seconds
-
-  it('should work normally without forceSleepClear flag - sleep should not be included when unchanged', async () => {
-    // Setup: Device is currently off with sleep mode off
-    const currentStatus = {
-      is_on: PowerState.Off,
-      operation_mode: OperationMode.Cool,
-      target_temp: 22,
-      current_temp: 22,
-      fan_mode: FanSpeed.Medium,
-      swing_mode: SwingMode.Off,
-      opt_sleepMode: SleepModeState.Off,  // Sleep is already OFF
-      opt_turbo: PowerState.Off,
-      opt_eco: PowerState.Off,
-      opt_display: PowerState.On,
-      opt_beep: PowerState.On,
-    };
-
-    // Mock API responses
-    mockAPI.updateState.mockResolvedValue(currentStatus);
-    mockAPI.setOptionsCombined.mockResolvedValue(currentStatus);
-
-    // Initialize the cache manager's internal state
-    await cacheManager.updateDeviceState();
-
-    // Create desired state WITHOUT forceSleepClear flag - importantly, this must be different from current state
-    const desiredState = cacheManager.getDeviceState().clone();
-    desiredState.setPower(PowerState.On); // This is different from current PowerState.Off
-    desiredState.setTurboMode(PowerState.Off);
-    desiredState.setSleepMode(SleepModeState.Off); // This is the same as current state
-
-    // NO forceSleepClear flag set
-
-    // Act: Apply the state change
-    await cacheManager.applyStateToDevice(desiredState);
-
-    // Assert: enqueueCommand should have been called without sleep parameter
-    expect(mockCommandQueue.enqueueCommand).toHaveBeenCalledTimes(1);
-    const calledOptions = mockCommandQueue.enqueueCommand.mock.calls[0][0];
-    
-    // Verify that sleep was NOT included in the API call since it didn't change
-    expect(calledOptions).not.toHaveProperty('sleep');
-    expect(calledOptions).toHaveProperty('power', PowerState.On);
-    // fanSpeed is included when power changes (this is expected behavior)
-    expect(calledOptions).toHaveProperty('fanSpeed', FanSpeed.Medium);
-    // turbo is not included because it didn't change
-  }, 10000); // Increase timeout to 10 seconds
-
-  it('should handle forceSleepClear even when other sleep changes are present', async () => {
-    // Setup: Device is currently on with sleep mode on
-    const currentStatus = {
-      is_on: PowerState.On,
-      operation_mode: OperationMode.Cool,
-      target_temp: 22,
-      current_temp: 22,
-      fan_mode: FanSpeed.Medium,
-      swing_mode: SwingMode.Off,
-      opt_sleepMode: SleepModeState.On,  // Sleep is currently ON
+      opt_sleepMode: SleepModeState.Off,  // Sleep is OFF
       opt_turbo: PowerState.Off,
       opt_eco: PowerState.Off,
       opt_display: PowerState.On,
@@ -201,33 +105,146 @@ describe('ForceSleepClear Implementation - Point 12', () => {
     mockAPI.updateState.mockResolvedValue(currentStatus);
     mockAPI.setOptionsCombined.mockResolvedValue({
       ...currentStatus,
-      opt_sleepMode: SleepModeState.Off,
+      is_on: PowerState.On,
+    });
+
+    // Initialize the cache manager's internal state by calling updateDeviceState
+    await cacheManager.updateDeviceState();
+
+    // Create desired state - change power from Off to On, keep sleep the same
+    const desiredState = cacheManager.getDeviceState().clone();
+    desiredState.setPower(PowerState.On); // This is different from current PowerState.Off
+    desiredState.setSleepMode(SleepModeState.Off); // This is the same as current state
+
+    // Act: Apply the state change
+    await cacheManager.applyStateToDevice(desiredState);
+
+    // Assert: setOptionsCombined should always include current sleep state
+    expect(mockCommandQueue.enqueueCommand).toHaveBeenCalledTimes(1);
+    const calledOptions = mockCommandQueue.enqueueCommand.mock.calls[0][0];
+    
+    // Verify that sleep is ALWAYS included in the API call (universal sleep state preservation)
+    expect(calledOptions).toHaveProperty('sleep', SleepModeState.Off);
+    expect(calledOptions).toHaveProperty('power', PowerState.On);
+    // fanSpeed is included when power changes (this is expected behavior)
+    expect(calledOptions).toHaveProperty('fanSpeed', FanSpeed.Medium);
+  }, 10000); // Increase timeout to 10 seconds
+
+  it('should always include sleep state even when only other properties change', async () => {
+    // Setup: Device is currently on with sleep mode off (to make test simpler)
+    const currentStatus = {
+      is_on: PowerState.On,
+      operation_mode: OperationMode.Cool,
+      target_temp: 22,
+      current_temp: 22,
+      fan_mode: FanSpeed.Medium,
+      swing_mode: SwingMode.Off,
+      opt_sleepMode: SleepModeState.Off,  // Sleep is currently OFF
+      opt_turbo: PowerState.Off,
+      opt_eco: PowerState.Off,
+      opt_display: PowerState.On,
+      opt_beep: PowerState.On,
+    };
+
+    // Mock API responses
+    mockAPI.updateState.mockResolvedValue(currentStatus);
+    mockAPI.setOptionsCombined.mockResolvedValue({
+      ...currentStatus,
+      target_temp: 24,
     });
 
     // Initialize the cache manager's internal state
     await cacheManager.updateDeviceState();
 
-    // Create desired state that would normally change sleep from On to Off
+    // Create desired state that only changes temperature, keeps everything else the same
     const desiredState = cacheManager.getDeviceState().clone();
-    desiredState.setPower(PowerState.On);
-    desiredState.setTurboMode(PowerState.Off);
-    desiredState.setSleepMode(SleepModeState.Off); // This is different from current state
-    
-    // Add the forceSleepClear flag (shouldn't interfere with normal sleep changes)
-    (desiredState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear = true;
+    desiredState.setTargetTemperature(24); // Change only temperature
+    // Sleep mode stays the same (Off)
 
     // Act: Apply the state change
     await cacheManager.applyStateToDevice(desiredState);
 
-    // Assert: enqueueCommand should have been called with sleep: 'off'
+    // Assert: enqueueCommand should always include current sleep state
     expect(mockCommandQueue.enqueueCommand).toHaveBeenCalledTimes(1);
     const calledOptions = mockCommandQueue.enqueueCommand.mock.calls[0][0];
     
-    // Sleep should be included (because it changed from On to Off)
+    // Sleep should always be included (universal sleep state preservation)
     expect(calledOptions).toHaveProperty('sleep', SleepModeState.Off);
-    // Power and turbo are not included because they didn't change from the current state
+    expect(calledOptions).toHaveProperty('temp', 24);
+  }, 10000); // Increase timeout to 10 seconds
 
-    // Verify the forceSleepClear flag was cleaned up
-    expect((desiredState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear).toBeUndefined();
+  it('should include current sleep state when sleep mode actually changes', async () => {
+    // Setup: First establish the device as powered on to avoid power-on transition logic
+    const initialStatus = {
+      is_on: PowerState.On,
+      operation_mode: OperationMode.Cool,
+      target_temp: 22,
+      current_temp: 22,
+      fan_mode: FanSpeed.Medium,
+      swing_mode: SwingMode.Off,
+      opt_sleepMode: SleepModeState.Off,  // Sleep starts OFF
+      opt_turbo: PowerState.Off,
+      opt_eco: PowerState.Off,
+      opt_display: PowerState.On,
+      opt_beep: PowerState.On,
+    };
+
+    // Mock the initial status call
+    mockAPI.updateState.mockResolvedValueOnce(initialStatus);
+    
+    // Initialize with device powered on and sleep off
+    await cacheManager.updateDeviceState();
+    
+    // Verify initial state
+    let currentState = cacheManager.getDeviceState();
+    expect(currentState.power).toBe(PowerState.On);
+    expect(currentState.sleepMode).toBe(SleepModeState.Off);
+
+    // Now setup: Device has sleep mode turned on
+    const statusWithSleepOn = {
+      is_on: PowerState.On,
+      operation_mode: OperationMode.Cool,
+      target_temp: 22,
+      current_temp: 22,
+      fan_mode: FanSpeed.Medium,
+      swing_mode: SwingMode.Off,
+      opt_sleepMode: SleepModeState.On,  // Sleep is now ON
+      opt_turbo: PowerState.Off,
+      opt_eco: PowerState.Off,
+      opt_display: PowerState.On,
+      opt_beep: PowerState.On,
+    };
+
+    // Mock API responses for subsequent calls
+    mockAPI.updateState.mockResolvedValue(statusWithSleepOn);
+    mockAPI.setOptionsCombined.mockResolvedValue({
+      ...statusWithSleepOn,
+      opt_sleepMode: SleepModeState.Off,
+    });
+
+    // Update state again to get sleep mode ON
+    await cacheManager.updateDeviceState();
+
+    // Verify the current state has sleep mode On
+    currentState = cacheManager.getDeviceState();
+    expect(currentState.sleepMode).toBe(SleepModeState.On);
+
+    // Create desired state that changes sleep from On to Off
+    const desiredState = currentState.clone();
+    desiredState.setSleepMode(SleepModeState.Off); // This is different from current state
+    
+    // Verify desired state is different
+    expect(desiredState.sleepMode).toBe(SleepModeState.Off);
+    expect(desiredState.sleepMode).not.toBe(currentState.sleepMode);
+
+    // Act: Apply the state change
+    await cacheManager.applyStateToDevice(desiredState);
+
+    // Assert: enqueueCommand should include the new sleep state
+    expect(mockCommandQueue.enqueueCommand).toHaveBeenCalledTimes(1);
+    const calledOptions = mockCommandQueue.enqueueCommand.mock.calls[0][0];
+    
+    // Sleep should be included with the new value
+    expect(calledOptions).toHaveProperty('sleep', SleepModeState.Off);
   }, 10000); // Increase timeout to 10 seconds
 });
