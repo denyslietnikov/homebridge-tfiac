@@ -56,10 +56,13 @@ export class BooleanSwitchAccessory extends BaseSwitchAccessory {
       modifierFunc = (state: DeviceState, value: boolean): boolean => {
         const setter = state[setterName];
         if (typeof setter === 'function') {
-          (setter as (mode: PowerState) => void).call(state, value ? PowerState.On : PowerState.Off);
+          const powerState = value ? PowerState.On : PowerState.Off;
+          (setter as (mode: PowerState) => void).call(state, powerState);
           return true; // Proceed with API call
         } else {
-          platform.log.error(`[${displayName}] Invalid DeviceState setter method name: ${String(setterName)} on DeviceState object.`);
+          platform.log.error(
+            `[${displayName}] Invalid DeviceState setter method name: ${String(setterName)} on DeviceState object.`,
+          );
           return false; // Do not proceed if setter is invalid
         }
       };
@@ -85,14 +88,10 @@ export class BooleanSwitchAccessory extends BaseSwitchAccessory {
       getStatusFunc, // getStatusValue fn for BaseSwitchAccessory
       async (value: boolean) => { // setApiState fn for BaseSwitchAccessory
         const deviceState = this.cacheManager.getDeviceState();
-        platform.log.debug(`[${displayName}] Current device state before modification: ${JSON.stringify(deviceState.toPlainObject())}`);
         
         const modifiedState = deviceState.clone();
-        platform.log.debug(`[${displayName}] Cloned state: ${JSON.stringify(modifiedState.toPlainObject())}`);
         
         const shouldProceed = modifierFunc(modifiedState, value);
-        platform.log.debug(`[${displayName}] Modified state after deviceStateModifier: ${JSON.stringify(modifiedState.toPlainObject())}`);
-        platform.log.debug(`[${displayName}] DeviceStateModifier returned shouldProceed: ${shouldProceed}`);
         
         // Add forceSleepClear flag when turning OFF any accessory (except Sleep itself)
         // This prevents Sleep from automatically turning ON due to cached sleep profiles in AC firmware
@@ -107,7 +106,6 @@ export class BooleanSwitchAccessory extends BaseSwitchAccessory {
         if (shouldProceed) {
           await this.cacheManager.applyStateToDevice(modifiedState);
         } else {
-          platform.log.debug(`[${displayName}] deviceStateModifier indicated not to proceed with API call.`);
           // Throw an error to prevent HomeKit UI from showing the switch as activated
           throw new Error('Operation rejected by device state modifier');
         }

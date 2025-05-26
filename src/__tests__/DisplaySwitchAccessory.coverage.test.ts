@@ -23,6 +23,9 @@ class MockDeviceState extends EventEmitter {
       this.emit('stateChanged', this);
     }
   }
+  setSleepMode(mode: any) {
+    // Mock implementation for setSleepMode - does nothing
+  }
   toApiStatus(): any { return { opt_display: this.displayMode }; }
   toPlainObject() { return { displayMode: this.displayMode }; }
   // on, emit, removeListener are inherited from EventEmitter
@@ -261,22 +264,35 @@ describe('DisplaySwitchAccessory Coverage Tests', () => {
     
     // Create a uniquely identifiable deviceState and verify it's used
     const uniqueDeviceState = new MockDeviceState();
+    // Set initial state to Off to ensure we're testing actual state changes
+    uniqueDeviceState.displayMode = PowerState.Off;
     vi.spyOn(cacheManager, 'getDeviceState').mockReturnValue(uniqueDeviceState);
     
-    // Spy on the applyStateToDevice call
-    vi.spyOn(cacheManager, 'applyStateToDevice');
+        // Use the existing mock that's already set up, but enhance it to simulate optimistic updates
+    const applyStateToDeviceMock = vi.fn().mockImplementation(async (stateToApply: any) => {
+      // Simulate the optimistic update that CacheManager does
+      uniqueDeviceState.displayMode = stateToApply.displayMode;
+    });
+    vi.spyOn(cacheManager, 'applyStateToDevice').mockImplementation(applyStateToDeviceMock);
+
+    // Reset call count
+    applyStateToDeviceMock.mockClear();
     
-    // Turn display on
+    // Turn display on (from Off to On)
     await onSetHandler(true, callback);
     
     // Verify that the correct state was passed to applyStateToDevice
     expect(cacheManager.applyStateToDevice).toHaveBeenCalled();
-    const stateToApply = (cacheManager.applyStateToDevice as any).mock.calls[0][0];
+    expect(applyStateToDeviceMock.mock.calls.length).toBe(1);
+    const stateToApply = applyStateToDeviceMock.mock.calls[0][0];
     expect(stateToApply.displayMode).toBe(PowerState.On);
     
-    // Turn display off
+    // Turn display off (from On to Off) - uniqueDeviceState should now be On due to optimistic update
     await onSetHandler(false, callback);
-    const stateToApply2 = (cacheManager.applyStateToDevice as any).mock.calls[1][0];
+    
+    // Check that we have exactly 2 calls now
+    expect(applyStateToDeviceMock.mock.calls.length).toBe(2);
+    const stateToApply2 = applyStateToDeviceMock.mock.calls[1][0];
     expect(stateToApply2.displayMode).toBe(PowerState.Off);
   });
 
