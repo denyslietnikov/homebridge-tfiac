@@ -253,6 +253,7 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       }
       // Handle forceSleepClear flag to force sleep='off' in API command even when no state change detected
       if ((desiredState as DeviceState & { forceSleepClear?: boolean }).forceSleepClear) {
+        this.logger.info('[CacheManager] forceSleepClear flag detected - forcing sleep=off in command');
         options.sleep = SleepModeState.Off;
         changesMade = true;
         // Clean up the force flag to prevent it from persisting
