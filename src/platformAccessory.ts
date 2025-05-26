@@ -537,8 +537,21 @@ export class TfiacPlatformAccessory {
     // HomeKit clamping is handled by clampTempForHomekit before updating characteristics.
     // We pass the direct value from HomeKit to DeviceState.
     try {
-      this.cacheManager.getDeviceState().setTargetTemperature(targetTempC);
-      // The actual command to the device is handled by CommandQueue via DeviceState's event
+      const deviceState = this.cacheManager.getDeviceState();
+      const currentTemp = deviceState.targetTemperature;
+      this.platform.log.debug(`[${this.deviceConfig.name}] Temperature change: current=${currentTemp}°C, desired=${targetTempC}°C`);
+      
+      const desiredState = deviceState.clone();
+      desiredState.setTargetTemperature(targetTempC);
+      
+      // Use a safer logging approach that doesn't rely on toPlainObject
+      this.platform.log.debug(`[${this.deviceConfig.name}] Desired state after temperature change: ` +
+        `power=${desiredState.power}, mode=${desiredState.operationMode}, ` +
+        `targetTemp=${desiredState.targetTemperature}, fanSpeed=${desiredState.fanSpeed}`);
+      
+      // Apply the state change to the physical device
+      await this.cacheManager.applyStateToDevice(desiredState);
+      
       if (callback) {
         callback(null);
       }

@@ -210,7 +210,10 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
    * This does not update the device state object itself, only sends commands.
    */
   async applyStateToDevice(desiredState: DeviceState): Promise<void> {
-    this.logger.debug(`[CacheManager] Applying desired state: ${JSON.stringify(desiredState.toPlainObject())}`);
+    // Use a safer logging approach that doesn't rely on toPlainObject working on the parameter
+    this.logger.debug(`[CacheManager] Applying desired state: power=${desiredState.power}, ` +
+      `mode=${desiredState.operationMode}, targetTemp=${desiredState.targetTemperature}, ` +
+      `fanSpeed=${desiredState.fanSpeed}`);
     const currentState = this._deviceState;
     this.logger.debug(`[CacheManager] Current actual state before diff: ${JSON.stringify(currentState.toPlainObject())}`);
 
@@ -235,9 +238,18 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         changesMade = true;
       }
       if (desiredState.targetTemperature !== undefined && desiredState.targetTemperature !== currentState.targetTemperature) {
+        this.logger.debug(
+          `[CacheManager] Temperature comparison: desired=${desiredState.targetTemperature}, ` +
+          `current=${currentState.targetTemperature}, different=${desiredState.targetTemperature !== currentState.targetTemperature}`,
+        );
         // Changed targetTemp to temp to match AirConditionerAPI.setOptionsCombined
         options.temp = desiredState.targetTemperature; 
         changesMade = true;
+      } else if (desiredState.targetTemperature !== undefined) {
+        this.logger.debug(
+          `[CacheManager] Temperature comparison: desired=${desiredState.targetTemperature}, ` +
+          `current=${currentState.targetTemperature}, same - no change needed`,
+        );
       }
       if (desiredState.fanSpeed !== undefined && desiredState.fanSpeed !== currentState.fanSpeed) {
         options.fanSpeed = desiredState.fanSpeed;
@@ -303,6 +315,9 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
     this.logger.debug(`[CacheManager] Harmonization check: changesMade=${changesMade}, ` +
       `power=${currentState.power}, turboMode=${currentState.turboMode}, sleepMode=${currentState.sleepMode}, ` +
       `fanSpeed=${currentState.fanSpeed}, needsCheck=${needsHarmonizationCheck}`);
+
+    this.logger.debug(`[CacheManager] Final state before enqueueing: changesMade=${changesMade}, ` +
+      `optionsKeys=${Object.keys(options)}, optionsCount=${Object.keys(options).length}, options=${JSON.stringify(options)}`);
 
     if (changesMade && Object.keys(options).length > 0) {
       this.logger.info(`[CacheManager] Changes detected. Enqueuing command with options: ${JSON.stringify(options)}`);

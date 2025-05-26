@@ -446,16 +446,18 @@ describe('TfiacPlatformAccessory - Characteristic Handlers', () => {
       expect(heatingResult).toBe(tempCelsius);
     });
     
-    it('should set target temperature through CacheManager.getDeviceState().setTargetTemperature', async () => {
+    it('should set target temperature and apply state to device', async () => {
       const setTempSpy = vi.spyOn(mockDeviceState, 'setTargetTemperature');
+      const cloneSpy = vi.spyOn(mockDeviceState, 'clone').mockReturnValue(mockDeviceState);
       const tempCelsius = 24;
       const callback = vi.fn();
       
       await (platformAccessory as any).handleThresholdTemperatureSet(tempCelsius, callback);
       
       expect(setTempSpy).toHaveBeenCalledWith(tempCelsius);
+      expect(cloneSpy).toHaveBeenCalled();
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceState);
       expect(callback).toHaveBeenCalledWith(null);
-      expect(mockCacheManager.applyStateToDevice).not.toHaveBeenCalled();
     });
   });
 
@@ -576,11 +578,15 @@ describe('TfiacPlatformAccessory - Characteristic Handlers', () => {
       // Create a different error for the temperature characteristic
       const mockTempError = new Error('Temperature error');
       
-      // Create a mock implementation that throws synchronously
-      const setTempSpy = vi.spyOn(mockDeviceState, 'setTargetTemperature')
-        .mockImplementation(() => {
-          throw mockTempError;
-        });
+      // Create a controlled clone object that has the mocked setTargetTemperature
+      const clonedState = { ...mockDeviceState } as any;
+      clonedState.setTargetTemperature = vi.fn().mockImplementation(() => {
+        throw mockTempError;
+      });
+      
+      // Mock clone to return our controlled object
+      const cloneSpy = vi.spyOn(mockDeviceState, 'clone')
+        .mockReturnValue(clonedState);
       
       const callbackTemp = vi.fn();
       
@@ -591,7 +597,7 @@ describe('TfiacPlatformAccessory - Characteristic Handlers', () => {
       expect(callbackTemp).toHaveBeenCalledWith(mockTempError);
       
       // Cleanup all spies and mocks
-      setTempSpy.mockRestore();
+      cloneSpy.mockRestore();
       
       // Set default behavior for future tests
       mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
