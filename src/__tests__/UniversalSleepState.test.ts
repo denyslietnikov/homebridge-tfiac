@@ -126,8 +126,6 @@ describe('Universal Sleep State Preservation - Point 13', () => {
     // Verify that sleep is ALWAYS included in the API call (universal sleep state preservation)
     expect(calledOptions).toHaveProperty('sleep', SleepModeState.Off);
     expect(calledOptions).toHaveProperty('power', PowerState.On);
-    // fanSpeed is included when power changes (this is expected behavior)
-    expect(calledOptions).toHaveProperty('fanSpeed', FanSpeed.Medium);
   }, 10000); // Increase timeout to 10 seconds
 
   it('should always include sleep state even when only other properties change', async () => {

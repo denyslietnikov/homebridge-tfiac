@@ -565,16 +565,15 @@ class DeviceState extends EventEmitter {
             this._sleepMode = SleepModeState.Off;
             changedInLoop = true;
           }
-        } else if (this._operationMode === OperationMode.Auto ||
-                   this._operationMode === OperationMode.Cool ||
+        } else if (this._operationMode === OperationMode.Cool ||
                    this._operationMode === OperationMode.Heat ||
                    this._operationMode === OperationMode.FanOnly) {
           // Rule R2 (Prevent Auto Fan Speed): When Turbo/Sleep are OFF and fan speed is Auto,
           // change it to Medium to avoid device firmware auto-enabling Sleep mode.
+          // Applies to Cool, Heat and FanOnly modes.
           // However, if the device itself reports Auto fan speed, we should accept it.
           // Only apply this rule when setting fan speed from user commands, not device updates.
           // This only affects Auto fan speed, not explicit user fan speed selections.
-          // This applies to Auto, Cool, Heat, and FanOnly modes.
           if (this._turboMode === PowerState.Off && 
               this._sleepMode === SleepModeState.Off && 
               this._fanSpeed === FanSpeed.Auto) {

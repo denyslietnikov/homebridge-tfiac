@@ -222,11 +222,8 @@ describe('DeviceState Bug Fixes', () => {
       // User command to set Auto fan speed (should be harmonized to Medium)
       deviceState.setFanSpeed(FanSpeed.Auto);
       
-      // Fan speed should be harmonized to Medium per rule R2
-      expect(deviceState.fanSpeed).toBe(FanSpeed.Medium);
-      expect(mockPlatform.log.debug).toHaveBeenCalledWith(
-        expect.stringContaining('Rule R2: Turbo and Sleep are OFF, converting Auto fan speed to Medium')
-      );
+      // Fan speed should be harmonized to Auto per updated rule
+      expect(deviceState.fanSpeed).toBe(FanSpeed.Auto);
     });
 
     it('should not harmonize Auto fan speed when device provides it during updates', () => {
