@@ -40,8 +40,8 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
   private isUpdating = false;
   private constructor(private config: TfiacDeviceConfig) {
     super(); // Added super() call
-    // Create the API instance
-    const baseApi = new AirConditionerAPI(config.ip, config.port);
+    // Create the API instance with device configuration
+    const baseApi = new AirConditionerAPI(config.ip, config.port, undefined, undefined, config);
 
     // Add EventEmitter capabilities to the API instance if not already present
     if (!('emit' in baseApi)) {

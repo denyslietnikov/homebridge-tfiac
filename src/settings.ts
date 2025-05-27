@@ -21,6 +21,9 @@ export interface TfiacDeviceConfig {
     port?: number;           // optional
     updateInterval?: number; // optional
     
+    // Temperature unit configuration
+    useFahrenheit?: boolean;     // Whether the device protocol expects Fahrenheit (default: true, uses Fahrenheit)
+    
     // Services configuration settings
     enableDisplay?: boolean;         // show display switch
     enableSleep?: boolean;           // show sleep mode switch

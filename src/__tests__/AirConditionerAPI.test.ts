@@ -87,7 +87,11 @@ describe('AirConditionerAPI', () => {
       }
     });
 
-    api = new AirConditionerAPI('192.168.1.100', 7777);
+    api = new AirConditionerAPI('192.168.1.100', 7777, 3, 1000, { 
+      name: 'Test AC', 
+      ip: '192.168.1.100', 
+      useFahrenheit: false 
+    });
   });
 
   afterEach(() => {

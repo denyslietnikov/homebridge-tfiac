@@ -4,6 +4,8 @@ import { EventEmitter } from 'events';
 import * as dgram from 'dgram';
 import * as xml2js from 'xml2js';
 import { PowerState, OperationMode, FanSpeed, SwingMode, SleepModeState, FanSpeedPercentMap } from './enums.js';
+import { TfiacDeviceConfig } from './settings.js';
+import { celsiusToFahrenheit } from './utils.js';
 
 export interface AirConditionerStatus {
   is_on: PowerState | string; // Allow string for test compatibility
@@ -65,13 +67,14 @@ export class AirConditionerAPI extends EventEmitter {
   private activeTimeouts: NodeJS.Timeout[] = [];
   private maxRetries: number = 3; // Maximum number of retries for a command
   private retryDelay: number = 1000; // Delay between retries in milliseconds
+  private readonly deviceConfig: TfiacDeviceConfig | null = null;
 
   // Last time updateState actually sent a request
   private lastSyncTime: number = 0;
   // Cached last-status for throttling
   private lastStatus: AirConditionerStatus | null = null;
 
-  constructor(ip: string, port: number = 7777, maxRetries: number = 3, retryDelay: number = 1000) {
+  constructor(ip: string, port: number = 7777, maxRetries: number = 3, retryDelay: number = 1000, deviceConfig?: TfiacDeviceConfig) {
     super();
     this.ip = ip;
     this.port = port;
@@ -79,6 +82,7 @@ export class AirConditionerAPI extends EventEmitter {
     this.lastSeq = 0;
     this.maxRetries = maxRetries;
     this.retryDelay = retryDelay;
+    this.deviceConfig = deviceConfig || null;
   }
 
   /**
@@ -316,7 +320,14 @@ export class AirConditionerAPI extends EventEmitter {
     }
 
     const effMode = options.mode !== undefined ? options.mode : current.operation_mode || OperationMode.Auto;
-    const effTemp = options.temp !== undefined ? options.temp : current.target_temp || 24;
+    let effTemp = options.temp !== undefined ? options.temp : current.target_temp || 24;
+    
+    // Convert temperature from Celsius to Fahrenheit if the device protocol expects Fahrenheit
+    // Default to true (Fahrenheit) if useFahrenheit is not explicitly set to false
+    if ((this.deviceConfig?.useFahrenheit !== false) && effTemp !== undefined) {
+      effTemp = Math.round(celsiusToFahrenheit(effTemp));
+    }
+    
     let effFan = options.fanSpeed !== undefined ? options.fanSpeed : current.fan_mode || FanSpeed.Auto;
     let effSleep = options.sleep !== undefined ? options.sleep : current.opt_sleepMode || SleepModeState.Off;
     let effTurbo = options.turbo !== undefined ? options.turbo : current.opt_turbo || PowerState.Off;
