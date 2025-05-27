@@ -2,7 +2,7 @@ import AirConditionerAPI, { AirConditionerStatus, PartialDeviceOptions } from '.
 import { TfiacDeviceConfig } from './settings.js';
 import { EventEmitter } from 'events';
 import { DeviceState } from './state/DeviceState.js';
-import { PowerState, FanSpeed, SleepModeState } from './enums.js';
+import { PowerState, FanSpeed, SleepModeState, OperationMode } from './enums.js';
 import {
   CommandQueue,
   CommandExecutedEvent,
@@ -235,6 +235,11 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
     if (considerSubOptions) {
       if (desiredState.operationMode !== undefined && desiredState.operationMode !== currentState.operationMode) {
         options.mode = desiredState.operationMode;
+        // Map Auto → selfFeel for protocol compatibility
+        if (options.mode === OperationMode.Auto) {
+          options.mode = OperationMode.SelfFeel;
+          this.logger.debug('[CacheManager] Mapping Auto mode to selfFeel for protocol payload');
+        }
         changesMade = true;
       }
       if (desiredState.targetTemperature !== undefined && desiredState.targetTemperature !== currentState.targetTemperature) {

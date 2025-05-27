@@ -391,7 +391,9 @@ export class AirConditionerAPI extends EventEmitter {
 
     // These are only sent if power is ON as per original logic
     if (effPower === PowerState.On) {
-      payload.BaseMode = effMode as string; 
+      // Protocol expects 'selfFeel' instead of 'auto'
+      const protoMode = effMode === OperationMode.Auto ? OperationMode.SelfFeel : effMode;
+      payload.BaseMode = protoMode as string;
       optimisticUpdate.operation_mode = effMode;
       payload.SetTemp = effTemp;
       // Store optimistic value in °C, not the converted °F we send
