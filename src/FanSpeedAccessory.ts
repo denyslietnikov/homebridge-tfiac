@@ -38,23 +38,21 @@ export class FanSpeedAccessory {
     this.deviceState.on('stateChanged', this.stateChangeListener);
     
     const activeChar = this.service.getCharacteristic(this.platform.Characteristic.Active);
-    if (typeof activeChar.onGet === 'function' && typeof activeChar.onSet === 'function') {
-      activeChar.onGet(this.handleActiveGet.bind(this));
+    if (typeof activeChar.onSet === 'function') {
       activeChar.onSet(this.handleActiveSet.bind(this));
     } else {
       activeChar
         .on('get', (callback: CharacteristicGetCallback) => callback(null, this.handleActiveGet() as number))
-        .on('set', (value: CharacteristicValue, callback: CharacteristicSetCallback) => this.handleActiveSet(value, callback));
+        .on('set', this.handleActiveSetLegacy.bind(this));
     }
 
     const rotationSpeedChar = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
-    if (typeof rotationSpeedChar.onGet === 'function' && typeof rotationSpeedChar.onSet === 'function') {
-      rotationSpeedChar.onGet(this.handleRotationSpeedGet.bind(this));
+    if (typeof rotationSpeedChar.onSet === 'function') {
       rotationSpeedChar.onSet(this.handleRotationSpeedSet.bind(this));
     } else {
       rotationSpeedChar
         .on('get', (callback: CharacteristicGetCallback) => callback(null, this.handleRotationSpeedGet() as number))
-        .on('set', (value: CharacteristicValue, callback: CharacteristicSetCallback) => this.handleRotationSpeedSet(value, callback));
+        .on('set', this.handleRotationSpeedSetLegacy.bind(this));
     }
 
     this.handleStateChange(this.deviceState);
@@ -110,7 +108,7 @@ export class FanSpeedAccessory {
     return activeState;
   }
 
-  private async handleActiveSet(value: CharacteristicValue, callback: CharacteristicSetCallback): Promise<void> {
+  private async handleActiveSet(value: CharacteristicValue): Promise<void> {
     this.platform.log.info(`[FanSpeedAccessory] SET Active to: ${value}`);
     const desiredState = this.deviceState.clone();
 
@@ -125,10 +123,10 @@ export class FanSpeedAccessory {
 
     try {
       await this.cacheManager.applyStateToDevice(desiredState);
-      callback(null);
+      return;
     } catch (error) {
       this.platform.log.error(`[FanSpeedAccessory] Error setting Active state: ${error}`);
-      callback(error as Error);
+      throw error; // will be handled by Homebridge when using onSet()
     }
   }
 
@@ -150,7 +148,7 @@ export class FanSpeedAccessory {
     return rotationSpeedValue;
   }
 
-  private handleRotationSpeedSet(value: CharacteristicValue, callback: CharacteristicSetCallback): void {
+  private async handleRotationSpeedSet(value: CharacteristicValue): Promise<void> {
     const speedPercent = value as number;
     const fanMode = this.mapRotationSpeedToFanMode(speedPercent);
     
@@ -171,7 +169,20 @@ export class FanSpeedAccessory {
       }
     }, 500);
 
-    callback(null);
+    return;
+  }
+
+  // ----- Wrapper methods for Legacy API (expects callback) -----
+  private handleActiveSetLegacy(value: CharacteristicValue, callback: CharacteristicSetCallback): void {
+    this.handleActiveSet(value)
+      .then(() => callback(null))
+      .catch(err => callback(err as Error));
+  }
+
+  private handleRotationSpeedSetLegacy(value: CharacteristicValue, callback: CharacteristicSetCallback): void {
+    this.handleRotationSpeedSet(value)
+      .then(() => callback(null))
+      .catch(err => callback(err as Error));
   }
 
   private mapRotationSpeedToFanMode(speed: number): FanSpeed {

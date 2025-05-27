@@ -190,28 +190,22 @@ describe('FanSpeedAccessory', () => {
 
   it('should handle active set', async () => {
     const inst = createTestInstance();
-    const callback = vi.fn();
     
-    // Set active to ACTIVE
-    await (inst as any).handleActiveSet(platform.Characteristic.Active.ACTIVE, callback);
+    // Set active to ACTIVE without callback
+    await (inst as any).handleActiveSet(platform.Characteristic.Active.ACTIVE);
     
-    // Verify callback was called and state was updated
-    expect(callback).toHaveBeenCalledWith(null);
+    // Verify state was updated
     expect(mockCacheManager.applyStateToDevice).toHaveBeenCalled();
   });
 
   it('should handle rotation speed set', () => {
     const inst = createTestInstance();
-    const callback = vi.fn();
     
     // Mock timer
     vi.useFakeTimers();
     
-    // Set rotation speed
-    (inst as any).handleRotationSpeedSet(50, callback);
-    
-    // Callback should be called immediately
-    expect(callback).toHaveBeenCalledWith(null);
+    // Set rotation speed without callback
+    (inst as any).handleRotationSpeedSet(50);
     
     // Fast-forward timer to trigger the debounced function
     vi.runAllTimers();

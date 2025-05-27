@@ -208,7 +208,6 @@ describe('FanSpeedAccessory - Additional Tests', () => {
 
   it('should set mode to Cool when activating from Auto mode', async () => {
     const inst = createTestInstance();
-    const callback = vi.fn();
     
     // Set device to Auto mode (fan control not allowed)
     mockDeviceState.operationMode = OperationMode.Auto;
@@ -225,16 +224,14 @@ describe('FanSpeedAccessory - Additional Tests', () => {
     mockDeviceState.clone = vi.fn().mockReturnValue(clonedDeviceState);
     
     // Handle active set to turn on
-    await (inst as any).handleActiveSet(platform.Characteristic.Active.ACTIVE, callback);
+    await (inst as any).handleActiveSet(platform.Characteristic.Active.ACTIVE);
     
     // Should change mode to Cool
     expect(clonedDeviceState.setOperationMode).toHaveBeenCalledWith(OperationMode.Cool);
-    expect(callback).toHaveBeenCalledWith(null);
   });
 
   it('should handle rotation speed set with turbo speed', () => {
     const inst = createTestInstance();
-    const callback = vi.fn();
     
     vi.useFakeTimers();
     
@@ -250,14 +247,13 @@ describe('FanSpeedAccessory - Additional Tests', () => {
     mockDeviceState.clone = vi.fn().mockReturnValue(clonedDeviceState);
     
     // Set rotation speed to maximum (100%)
-    (inst as any).handleRotationSpeedSet(100, callback);
+    (inst as any).handleRotationSpeedSet(100);
     
     // Advance timers to trigger the debounced function
     vi.runAllTimers();
     
     // Should set fan speed to Turbo
     expect(clonedDeviceState.setFanSpeed).toHaveBeenCalledWith(FanSpeed.Turbo);
-    expect(callback).toHaveBeenCalledWith(null);
     
     vi.useRealTimers();
   });
@@ -296,7 +292,6 @@ describe('FanSpeedAccessory - Additional Tests', () => {
 
   it('should handle error in rotation speed set', async () => {
     const inst = createTestInstance();
-    const callback = vi.fn();
     const logErrorSpy = vi.spyOn(platform.log, 'error');
     
     vi.useFakeTimers();
@@ -305,10 +300,7 @@ describe('FanSpeedAccessory - Additional Tests', () => {
     mockCacheManager.applyStateToDevice.mockRejectedValueOnce(new Error('Test error'));
     
     // Set rotation speed
-    (inst as any).handleRotationSpeedSet(50, callback);
-    
-    // Callback should still be called with null (as per implementation)
-    expect(callback).toHaveBeenCalledWith(null);
+    (inst as any).handleRotationSpeedSet(50);
     
     // Advance timers to trigger the debounced function
     vi.runAllTimers();
@@ -324,16 +316,14 @@ describe('FanSpeedAccessory - Additional Tests', () => {
 
   it('should handle active set with error', async () => {
     const inst = createTestInstance();
-    const callback = vi.fn();
     
     // Make applyStateToDevice throw an error
     mockCacheManager.applyStateToDevice.mockRejectedValueOnce(new Error('Test error'));
     
-    // Set active
-    await (inst as any).handleActiveSet(platform.Characteristic.Active.ACTIVE, callback);
+    await expect(
+      (inst as any).handleActiveSet(platform.Characteristic.Active.ACTIVE)
+    ).rejects.toThrow();
     
-    // Should call callback with error
-    expect(callback).toHaveBeenCalledWith(expect.any(Error));
     expect(platform.log.error).toHaveBeenCalled();
   });
 
