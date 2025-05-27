@@ -762,8 +762,15 @@ class DeviceState extends EventEmitter {
       this._outdoorTemperature = updateProp(this._outdoorTemperature, newOutdoorTempC, outdoorTempMsg);
     }
     if (status.fan_mode !== undefined) {
-      // Special handling for Auto fan speed during device updates
-      if (status.fan_mode === FanSpeed.Auto && this._isProcessingDeviceUpdate) {
+      // TFIAC protocol issue - when Turbo mode is ON, the controller always reports
+      // WindSpeed=Auto in XML responses, but the actual turbo state is indicated by Opt_super=on.
+      // This causes continuous fanSpeed oscillation between Turbo and Auto during device polls.
+      // Solution: When opt_turbo is ON, treat the fan speed as Turbo regardless of reported WindSpeed.
+      if (status.opt_turbo === PowerState.On && status.fan_mode === FanSpeed.Auto) {
+        // Device reports Auto but turbo is actually ON - treat as Turbo to prevent logging spam
+        this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Turbo, 'Fan speed (turbo mode active, ignoring Auto from device) updated');
+      } else if (status.fan_mode === FanSpeed.Auto && this._isProcessingDeviceUpdate) {
+        // Special handling for Auto fan speed during device updates
         // Check if we recently sent a request to set fan speed to Medium
         if (this._fanSpeed === FanSpeed.Medium && Date.now() - this._lastFanSpeedCmdTime < 5000) {
           // AC rejected Medium -> accept Auto, and stop reporting "Medium→Auto" every cycle
