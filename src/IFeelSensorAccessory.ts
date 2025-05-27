@@ -1,17 +1,22 @@
 // IFeelSensorAccessory.ts
-import { Service, PlatformAccessory } from 'homebridge';
+import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
+import CacheManager from './CacheManager.js';
+import { PowerState, OperationMode } from './enums.js';
 
 export class IFeelSensorAccessory {
   private service?: Service;
+  private cacheManager: CacheManager;
   
   constructor(
     public readonly platform: TfiacPlatform,
     public readonly accessory: PlatformAccessory,
     private readonly deviceConfig: TfiacDeviceConfig,
   ) {
+    // Obtain CacheManager instance for this device
+    this.cacheManager = CacheManager.getInstance(deviceConfig, platform.log);
     // Don't call getServiceById in constructor if disabled
     if (this.deviceConfig.enableIFeelSensor !== false) {
       this.service = this.ensureService();
@@ -66,7 +71,8 @@ export class IFeelSensorAccessory {
     try {
       // Set up characteristic handlers
       service.getCharacteristic(this.platform.Characteristic.On)
-        .onGet(this.handleOnGet.bind(this));
+        .onGet(this.handleOnGet.bind(this))
+        .onSet(this.handleOnSet.bind(this));
       
       // Set name if service methods are available
       service.setCharacteristic(
@@ -100,6 +106,38 @@ export class IFeelSensorAccessory {
     
     const currentValue = this.service.getCharacteristic(this.platform.Characteristic.On).value;
     return currentValue === true;
+  }
+
+  /**
+   * Handle requests to set the value of the "On" characteristic
+   */
+  private async handleOnSet(value: CharacteristicValue): Promise<void> {
+    // Convert HomeKit value to boolean
+    const turnOn = value === true || value === 1;
+    this.platform.log.debug(`[IFeelSensor] Triggered SET -> ${turnOn ? 'ON' : 'OFF'}`);
+
+    try {
+      // Clone current state so we only mutate a local copy
+      const desiredState = this.cacheManager.getDeviceState().clone();
+
+      // Always keep power on when we toggle iFeel
+      desiredState.setPower(PowerState.On);
+
+      // Switch operation mode accordingly
+      if (turnOn) {
+        desiredState.setOperationMode(OperationMode.SelfFeel);
+      } else {
+        // Revert to previous non‑sleep mode; default to cool if unknown
+        const prevMode = desiredState.operationMode;
+        desiredState.setOperationMode(prevMode && prevMode !== OperationMode.SelfFeel ? prevMode : OperationMode.Cool);
+      }
+
+      // Send to device
+      await this.cacheManager.applyStateToDevice(desiredState);
+    } catch (err) {
+      this.platform.log.error('[IFeelSensor] Error while processing SET:', err);
+      throw err;
+    }
   }
 
   /**

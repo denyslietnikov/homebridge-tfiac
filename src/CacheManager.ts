@@ -310,6 +310,13 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
         options.beep = desiredState.beepMode;
         changesMade = true;
       }
+      
+      // Always include power state when device is ON and we're making sub-option changes
+      // This prevents TFIAC firmware from interpreting missing <TurnOn> tag as power off command
+      if (changesMade && options.power === undefined && currentState.power === PowerState.On) {
+        options.power = PowerState.On;
+        this.logger.debug('[CacheManager] Including power=ON in command to prevent device shutdown due to missing <TurnOn> tag');
+      }
     } else if (options.power === PowerState.Off) {
       // If the only change is to turn power off, options will only contain { power: PowerState.Off }
       // All other parameters are implicitly turned off by the device.

@@ -206,9 +206,10 @@ export class TfiacPlatformAccessory {
       if (this.outdoorTemperatureSensorAccessory) {
         this.outdoorTemperatureSensorAccessory.updateStatus(homekitStatus);
       }
-      if (this.iFeelSensorAccessory) {
-        this.iFeelSensorAccessory.updateStatus(homekitStatus);
-      }
+    }
+    // IFeelSensor should work independently of enableTemperature setting
+    if (this.iFeelSensorAccessory) {
+      this.iFeelSensorAccessory.updateStatus(homekitStatus);
     }
   }
 
