@@ -697,8 +697,22 @@ class DeviceState extends EventEmitter {
       return currentValue;
     };
 
+    // Check for OFF-frames after power-on commands (racing condition)
+    // If device reports TurnOn=off shortly after we sent power=on, ignore the entire frame
     if (status.is_on !== undefined) {
       const newPowerState = status.is_on === 'on' ? PowerState.On : PowerState.Off;
+      
+      // Point 15: Ignore OFF-frames within 5 seconds after power=on command
+      if (newPowerState === PowerState.Off && 
+          Date.now() - this._lastPowerOnCmdTime < 5000) {
+        if (this._debugEnabled) {
+          this.log.debug('[DeviceState][updateFromDevice] Ignoring OFF-frame within 5s after power-on command (racing condition)');
+        }
+        // Skip this entire update to prevent temperature corruption
+        this._lastUpdated = new Date();
+        this._isProcessingDeviceUpdate = false;
+        return false;
+      }
       
       // FIXED: Protection against transient ON states during power-off operations
       if (newPowerState === PowerState.On && 
@@ -723,9 +737,18 @@ class DeviceState extends EventEmitter {
       this._operationMode = updateProp(this._operationMode, status.operation_mode as OperationMode, 'Operation mode updated');
     }
     if (status.target_temp !== undefined) {
-      let newTargetTempC = fahrenheitToCelsius(status.target_temp);
+      // POINT 15 FIX: Improved temperature conversion logic
+      // When TurnOn=off, device may send temperatures in Celsius instead of Fahrenheit
+      let newTargetTempC: number;
+      if (status.target_temp > 45) {
+        // Definitely Fahrenheit (no AC operates above 45°C)
+        newTargetTempC = fahrenheitToCelsius(status.target_temp);
+      } else {
+        // Could be Celsius already, especially during OFF states
+        newTargetTempC = status.target_temp;
+      }
       newTargetTempC = Math.min(Math.max(newTargetTempC, 16), 30); // Clamp
-      const targetTempMsg = `Target temp updated to ${newTargetTempC}°C (from ${status.target_temp}°F, clamped)`;
+      const targetTempMsg = `Target temp updated to ${newTargetTempC}°C (from ${status.target_temp}${status.target_temp > 45 ? '°F' : '°C'}, clamped)`;
       this._targetTemperature = updateProp(this._targetTemperature, newTargetTempC, targetTempMsg);
     }
     if (status.current_temp !== undefined) {

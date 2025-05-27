@@ -49,7 +49,7 @@ describe('DeviceState', () => {
 
   it('should handle temperature conversion and clamping from device update (Fahrenheit)', () => {
     const statusF = {
-      target_temp: 32, // 32F = 0C, will be clamped to 16°C by DeviceState
+      target_temp: 50, // 50F = 10C, will be clamped to 16°C by DeviceState (Point 15: uses 45°C threshold)
       current_temp: 212, // 212F = 100°C
     };
     state.updateFromDevice(statusF);

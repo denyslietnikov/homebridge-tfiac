@@ -37,6 +37,7 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
   private readonly quickRefreshDelayMs = 2000; // 2 seconds for quick refresh after command
   private readonly turboRefreshDelayMs = 35000; // 35 seconds for Turbo command quick refresh
   private readonly sleepRefreshDelayMs = 4000; // 4 seconds for Sleep command quick refresh
+  private readonly powerOnRefreshDelayMs = 3000; // 3 seconds for Power ON command quick refresh (Point 15)
   private isUpdating = false;
   private constructor(private config: TfiacDeviceConfig) {
     super(); // Added super() call
@@ -448,8 +449,11 @@ export class CacheManager extends EventEmitter { // Added extends EventEmitter
       // Listener for successful command execution
       this.commandQueue.on('executed', (event: CommandExecutedEvent) => {
         this.logger.debug(`[CacheManager] Command executed: ${JSON.stringify(event.command)}. Scheduling quick refresh.`);
-        // Check if the command was to turn Turbo mode on
-        if (event.command.turbo === PowerState.On) {
+        // Check if the command was to turn power on (Point 15 fix)
+        if (event.command.power === PowerState.On) {
+          this.logger.debug('[CacheManager] Power ON command detected. Using power-on refresh delay to avoid catching OFF frames.');
+          this.scheduleQuickRefresh(this.powerOnRefreshDelayMs);
+        } else if (event.command.turbo === PowerState.On) {
           this.logger.debug('[CacheManager] Turbo ON command detected. Using turbo refresh delay.');
           this.scheduleQuickRefresh(this.turboRefreshDelayMs);
         } else if (event.command.sleep !== undefined) {
