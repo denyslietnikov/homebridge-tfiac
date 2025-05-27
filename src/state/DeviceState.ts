@@ -769,24 +769,33 @@ class DeviceState extends EventEmitter {
       if (status.opt_turbo === PowerState.On && status.fan_mode === FanSpeed.Auto) {
         // Device reports Auto but turbo is actually ON - treat as Turbo to prevent logging spam
         this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Turbo, 'Fan speed (turbo mode active, ignoring Auto from device) updated');
-      } else if (status.fan_mode === FanSpeed.Auto && this._isProcessingDeviceUpdate) {
-        // Special handling for Auto fan speed during device updates
-        // Check if we recently sent a request to set fan speed to Medium
-        if (this._fanSpeed === FanSpeed.Medium && Date.now() - this._lastFanSpeedCmdTime < 5000) {
-          // AC rejected Medium -> accept Auto, and stop reporting "Medium→Auto" every cycle
-          if (this._debugEnabled) {
-            this.log.debug('[DeviceState] Medium was rejected by AC, adopting Auto');
-          }
-          // Reset the timestamp before updating the fan speed
-          this._lastFanSpeedCmdTime = 0;
-          this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (Medium rejected by AC, adopting Auto) updated');
-        } else {
-          // During device updates, we should preserve the Auto fan speed as reported by device
-          // Do NOT harmonize Auto → Medium during device updates
-          this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (device-reported Auto) updated');
-        }
       } else {
-        this._fanSpeed = updateProp(this._fanSpeed, status.fan_mode as FanSpeed, 'Fan speed updated');
+        // TFIAC protocol issue - when Sleep mode is active, the firmware also reports WindSpeed="Auto" 
+        // even though the fan is locked to Low. Treat this as Low to avoid Auto↔Low oscillation.
+        const reportedSleep = typeof status.opt_sleepMode === 'string'
+          ? !status.opt_sleepMode.startsWith(SleepModeState.Off)
+          : status.opt_sleepMode === SleepModeState.On;        if (reportedSleep && status.fan_mode === FanSpeed.Auto) {
+          // Device reports Auto but sleep is actually ON - treat as Low to prevent logging spam
+          this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Low, 'Fan speed (sleep mode active, ignoring Auto from device) updated');
+        } else if (status.fan_mode === FanSpeed.Auto && this._isProcessingDeviceUpdate) {
+          // Special handling for Auto fan speed during device updates
+          // Check if we recently sent a request to set fan speed to Medium
+          if (this._fanSpeed === FanSpeed.Medium && Date.now() - this._lastFanSpeedCmdTime < 5000) {
+            // AC rejected Medium -> accept Auto, and stop reporting "Medium→Auto" every cycle
+            if (this._debugEnabled) {
+              this.log.debug('[DeviceState] Medium was rejected by AC, adopting Auto');
+            }
+            // Reset the timestamp before updating the fan speed
+            this._lastFanSpeedCmdTime = 0;
+            this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (Medium rejected by AC, adopting Auto) updated');
+          } else {
+            // During device updates, we should preserve the Auto fan speed as reported by device
+            // Do NOT harmonize Auto → Medium during device updates
+            this._fanSpeed = updateProp(this._fanSpeed, FanSpeed.Auto, 'Fan speed (device-reported Auto) updated');
+          }
+        } else {
+          this._fanSpeed = updateProp(this._fanSpeed, status.fan_mode as FanSpeed, 'Fan speed updated');
+        }
       }
     }
     if (status.swing_mode !== undefined) {
