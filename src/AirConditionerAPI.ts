@@ -394,7 +394,10 @@ export class AirConditionerAPI extends EventEmitter {
       payload.BaseMode = effMode as string; 
       optimisticUpdate.operation_mode = effMode;
       payload.SetTemp = effTemp;
-      optimisticUpdate.target_temp = effTemp;
+      // Store optimistic value in °C, not the converted °F we send
+      optimisticUpdate.target_temp = this.deviceConfig?.useFahrenheit !== false
+        ? Math.round((effTemp - 32) * 5 / 9)
+        : effTemp;
       // Only include WindSpeed if it's not undefined.
       // Specifically, for Dry mode, if effFan is Auto (which it should be), send it.
       // For other modes, send if options.fanSpeed was provided or if effFan is not Auto.
@@ -580,7 +583,9 @@ export class AirConditionerAPI extends EventEmitter {
 
       const status: AirConditionerStatus = {
         current_temp: parseFloat(statusUpdateMsg.IndoorTemp[0]),
-        target_temp: parseFloat(statusUpdateMsg.SetTemp[0]),
+        target_temp: (this.deviceConfig?.useFahrenheit !== false)
+          ? (parseFloat(statusUpdateMsg.SetTemp[0]) - 32) * 5 / 9
+          : parseFloat(statusUpdateMsg.SetTemp[0]),
         operation_mode: statusUpdateMsg.BaseMode[0] as OperationMode,
         fan_mode: fanMode,
         is_on: statusUpdateMsg.TurnOn[0] as PowerState,
@@ -594,6 +599,10 @@ export class AirConditionerAPI extends EventEmitter {
           ? parseFloat(statusUpdateMsg.OutdoorTemp[0])
           : undefined,
       };
+
+      // Optional: Round to 1 decimal for cleaner logs
+      status.target_temp = Math.round(status.target_temp * 10) / 10;
+      status.current_temp = Math.round(status.current_temp * 10) / 10;
 
       // Derive turbo state when fan_mode indicates Turbo
       if (status.fan_mode === FanSpeed.Turbo) {
