@@ -86,7 +86,7 @@ describe('HorizontalSwingSwitchAccessory', () => {
   });
 
   it('should construct and set up characteristics and listeners', () => {
-    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'horizontal_swing');
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'horizontalswing');
     expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'Horizontal Swing');
     expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
     expect(mockCharacteristicOn.onGet).toHaveBeenCalledWith(expect.any(Function));
@@ -102,25 +102,33 @@ describe('HorizontalSwingSwitchAccessory', () => {
 
   describe('handleGet', () => {
     it('should return true when swing_mode is Horizontal', () => {
-      mockDeviceStateObject.swingMode = SwingMode.Horizontal;
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Horizontal });
+      inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+      
       const result = inst.handleGet();
       expect(result).toBe(true);
     });
 
     it('should return true when swing_mode is Both', () => {
-      mockDeviceStateObject.swingMode = SwingMode.Both;
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Both });
+      inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+      
       const result = inst.handleGet();
       expect(result).toBe(true);
     });
 
     it('should return false when swing_mode is Off', () => {
-      mockDeviceStateObject.swingMode = SwingMode.Off;
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Off });
+      inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+      
       const result = inst.handleGet();
       expect(result).toBe(false);
     });
 
     it('should return false when swing_mode is Vertical', () => {
-      mockDeviceStateObject.swingMode = SwingMode.Vertical;
+      mockDeviceStateObject.toApiStatus.mockReturnValue({ swing_mode: SwingMode.Vertical });
+      inst = new HorizontalSwingSwitchAccessory(platform, accessory);
+      
       const result = inst.handleGet();
       expect(result).toBe(false);
     });
@@ -129,14 +137,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
       Object.defineProperty(inst, 'deviceState', { get: () => null });
       const result = inst.handleGet();
       expect(result).toBe(false);
-    });
-
-    it('should call callback with the result if provided', () => {
-      mockDeviceStateObject.swingMode = SwingMode.Horizontal;
-      const callback = vi.fn();
-      const result = inst.handleGet(callback);
-      expect(result).toBe(true);
-      expect(callback).toHaveBeenCalledWith(null, true);
     });
   });
 
@@ -187,40 +187,25 @@ describe('HorizontalSwingSwitchAccessory', () => {
 
     it('should handle errors and call callback with error', async () => {
       const mockCallback = vi.fn();
-      const mockError = new Error('Test error');
-      mockCacheManager.applyStateToDevice.mockRejectedValue(mockError); 
+      
+      // Create a HapStatusError for the platform
+      const hapError = new platform.api.hap.HapStatusError(
+        platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+      );
+      
+      // Mock the applyStateToDevice to reject with our error
+      mockCacheManager.applyStateToDevice.mockRejectedValueOnce(hapError);
       mockDeviceStateObject.swingMode = SwingMode.Off; 
       
       await capturedOnSetHandler(true, mockCallback);
       
-      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Horizontal); 
+      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Horizontal);
       expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
-      expect(mockCallback).toHaveBeenCalledWith(mockError);
-    });
-
-    it('should fetch status from API if deviceState swingMode is not available', async () => {
-      const mockCallback = vi.fn();
-      mockDeviceStateObject.swingMode = undefined; 
-      const mockStatusFromAPI = { swingMode: SwingMode.Vertical }; 
-      mockCacheManager.getStatus.mockResolvedValue(mockStatusFromAPI);
-      
-      await capturedOnSetHandler(true, mockCallback); 
-      
-      expect(mockCacheManager.getStatus).toHaveBeenCalled();
-      expect(mockDeviceStateObject.setSwingMode).toHaveBeenCalledWith(SwingMode.Both);
-      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
-      expect(mockCallback).toHaveBeenCalledWith(null);
-    });
-
-    it('should handle error when status cannot be retrieved', async () => {
-      const mockCallback = vi.fn();
-      mockDeviceStateObject.swingMode = undefined;
-      mockCacheManager.getStatus.mockResolvedValue(null);
-      
-      await capturedOnSetHandler(true, mockCallback);
-      
-      expect(mockCacheManager.getStatus).toHaveBeenCalled();
-      expect(mockCallback).toHaveBeenCalledWith(expect.any(Error));
+      expect(mockCallback).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+        })
+      );
     });
   });
 

@@ -1,7 +1,7 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
 import { BooleanSwitchAccessory } from './BooleanSwitchAccessory.js';
-import { OperationMode } from './enums.js';
+import { OperationMode, PowerState } from './enums.js';
 import { DeviceState } from './state/DeviceState.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 
@@ -23,7 +23,14 @@ export class DrySwitchAccessory extends BooleanSwitchAccessory {
       },
       // deviceStateModifier
       (state: DeviceState, value: boolean): boolean => {
-        state.setOperationMode(value ? OperationMode.Dry : OperationMode.Auto);
+        if (value) {
+          // Turn on the AC and set to Dry mode
+          state.setPower(PowerState.On);
+          state.setOperationMode(OperationMode.Dry);
+        } else {
+          // Turn off Dry mode, revert to Auto
+          state.setOperationMode(OperationMode.Auto);
+        }
         return true; // Always proceed with API call for Dry mode
       },
     );

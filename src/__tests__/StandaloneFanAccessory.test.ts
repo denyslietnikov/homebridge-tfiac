@@ -125,6 +125,7 @@ describe('StandaloneFanAccessory', () => {
     // Create and setup CacheManager
     mockCacheManager = createMockCacheManager();
     mockCacheManager.getDeviceState = vi.fn().mockReturnValue(mockDeviceState);
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
     mockCacheManager.api = {
       setPower: vi.fn().mockResolvedValue(undefined),
       setFanAndSleep: vi.fn().mockResolvedValue(undefined)
@@ -236,64 +237,64 @@ describe('StandaloneFanAccessory', () => {
     expect(service.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.RotationSpeed, 25);
   });
 
-  it('should handle get for On characteristic', () => {
+  it('should handle get for On characteristic', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    const callback = vi.fn();
     
     // Mock the service.getCharacteristic to return a value
     service.getCharacteristic = vi.fn().mockImplementation(() => {
       return { value: true };
     });
     
-    // Call the handleGet method
-    (inst as any).handleGet(callback);
+    // Call the handleOnGet method
+    const result = await (inst as any).handleOnGet();
     
-    // Callback should be called with true
-    expect(callback).toHaveBeenCalledWith(null, true);
+    // Should return true
+    expect(result).toBe(true);
   });
 
   it('should handle set for On characteristic to turn on', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    const callback = vi.fn();
     
-    // Call the handleSet method with true
-    await (inst as any).handleSet(true, callback);
+    // Mock cacheManager.applyStateToDevice
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
     
-    // Should call setPower with PowerState.On and call the callback
-    expect(mockCacheManager.api.setPower).toHaveBeenCalledWith(PowerState.On);
-    expect(callback).toHaveBeenCalledWith(null);
+    // Call the handleOnSet method with true
+    await (inst as any).handleOnSet(true);
+    
+    // Should call applyStateToDevice
+    expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledTimes(1);
+    const calledState = mockCacheManager.applyStateToDevice.mock.calls[0][0];
+    expect(calledState.power).toBe(PowerState.On);
   });
 
   it('should handle set for On characteristic to turn off', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    const callback = vi.fn();
     
-    // Call the handleSet method with false
-    await (inst as any).handleSet(false, callback);
+    // Mock cacheManager.applyStateToDevice
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
     
-    // Should call setPower with PowerState.Off and call the callback
-    expect(mockCacheManager.api.setPower).toHaveBeenCalledWith(PowerState.Off);
-    expect(callback).toHaveBeenCalledWith(null);
+    // Call the handleOnSet method with false
+    await (inst as any).handleOnSet(false);
+    
+    // Should call applyStateToDevice
+    expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledTimes(1);
+    const calledState = mockCacheManager.applyStateToDevice.mock.calls[0][0];
+    expect(calledState.power).toBe(PowerState.Off);
   });
 
   it('should handle set error for On characteristic', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    const callback = vi.fn();
     const error = new Error('Test error');
     
-    // Make the API call fail
-    mockCacheManager.api.setPower.mockRejectedValueOnce(error);
+    // Make the applyStateToDevice call fail
+    mockCacheManager.applyStateToDevice = vi.fn().mockRejectedValueOnce(error);
     
-    // Call the handleSet method with true
-    await (inst as any).handleSet(true, callback);
-    
-    // Should pass the error to the callback
-    expect(callback).toHaveBeenCalledWith(error);
+    // Call the handleOnSet method with true and expect it to throw
+    await expect((inst as any).handleOnSet(true)).rejects.toThrow('Test error');
   });
   
-  it('should handle get for RotationSpeed', () => {
+  it('should handle get for RotationSpeed', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    const callback = vi.fn();
     
     // Mock the service.getCharacteristic to return a value
     service.getCharacteristic = vi.fn().mockImplementation(() => {
@@ -301,25 +302,25 @@ describe('StandaloneFanAccessory', () => {
     });
     
     // Call the handleRotationSpeedGet method
-    (inst as any).handleRotationSpeedGet(callback);
+    const result = await (inst as any).handleRotationSpeedGet();
     
-    // Callback should be called with 50
-    expect(callback).toHaveBeenCalledWith(null, 50);
+    // Should return 50
+    expect(result).toBe(50);
   });
 
   it('should handle set for RotationSpeed', async () => {
     const inst = createAccessoryAndOverrideCacheManager();
-    const callback = vi.fn();
+    
+    // Mock cacheManager.applyStateToDevice
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
     
     // Call the handleRotationSpeedSet method with 75 (High)
-    await (inst as any).handleRotationSpeedSet(75, callback);
+    await (inst as any).handleRotationSpeedSet(75);
     
-    // Should call setFanAndSleep with FanSpeed.High and current sleep mode
-    expect(mockCacheManager.api.setFanAndSleep).toHaveBeenCalledWith(
-      FanSpeed.High,
-      mockDeviceState.sleepMode
-    );
-    expect(callback).toHaveBeenCalledWith(null);
+    // Should call applyStateToDevice
+    expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledTimes(1);
+    const calledState = mockCacheManager.applyStateToDevice.mock.calls[0][0];
+    expect(calledState.fanSpeed).toBe(FanSpeed.High);
   });
 
   it('should map fan modes to rotation speeds correctly', () => {
