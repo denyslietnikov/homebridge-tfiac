@@ -96,19 +96,15 @@ export class StandaloneFanAccessory {
   }
 
   private async handleOnSet(value: CharacteristicValue): Promise<void> {
-    try {
-      const modifiedState = this.deviceState.clone();
-      
-      if (value) {
-        modifiedState.setPower(PowerState.On);
-      } else {
-        modifiedState.setPower(PowerState.Off);
-      }
-      
-      await this.cacheManager.applyStateToDevice(modifiedState);
-    } catch (err) {
-      throw err;
+    const modifiedState = this.deviceState.clone();
+    
+    if (value) {
+      modifiedState.setPower(PowerState.On);
+    } else {
+      modifiedState.setPower(PowerState.Off);
     }
+    
+    await this.cacheManager.applyStateToDevice(modifiedState);
   }
 
   private async handleRotationSpeedGet(): Promise<number> {
@@ -117,16 +113,12 @@ export class StandaloneFanAccessory {
   }
 
   private async handleRotationSpeedSet(value: CharacteristicValue): Promise<void> {
-    try {
-      const modifiedState = this.deviceState.clone();
-      
-      // Set the fan speed while maintaining current sleep mode
-      modifiedState.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
-      
-      await this.cacheManager.applyStateToDevice(modifiedState);
-    } catch (err) {
-      throw err;
-    }
+    const modifiedState = this.deviceState.clone();
+    
+    // Set the fan speed while maintaining current sleep mode
+    modifiedState.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
+    
+    await this.cacheManager.applyStateToDevice(modifiedState);
   }
 
   private mapFanModeToRotationSpeed(fanMode: FanSpeed): number {
