@@ -154,6 +154,17 @@ export class FanSpeedAccessory {
     
     this.platform.log.info(`[FanSpeedAccessory] SET RotationSpeed to ${speedPercent}% (mapped to: ${fanMode})`);
 
+    // Optimistic update: If current fan speed is 100% (Turbo) and new speed is lower, 
+    // immediately update the Turbo switch to "off" for better UI responsiveness
+    const currentSpeed = this.handleRotationSpeedGet();
+    if (currentSpeed === 100 && speedPercent < 100) {
+      const turboSwitchService = this.accessory.getServiceById(this.platform.Service.Switch.UUID, 'turbo');
+      if (turboSwitchService) {
+        this.platform.log.debug('[FanSpeedAccessory] Optimistically updating Turbo switch to OFF due to fan speed reduction from 100%');
+        turboSwitchService.updateCharacteristic(this.platform.Characteristic.On, false);
+      }
+    }
+
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
