@@ -465,15 +465,15 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     // Service subtype mapping for proper cleanup
     const serviceSubtypeMap: Record<string, { serviceUUID: string; subtype: string }> = {
       'Display': { serviceUUID: this.Service.Switch.UUID, subtype: 'display' },
-      'Sleep': { serviceUUID: this.Service.Switch.UUID, subtype: 'sleepmode' },
+      'Sleep': { serviceUUID: this.Service.Switch.UUID, subtype: 'sleep' },
       'FanSpeed': { serviceUUID: this.Service.Fanv2.UUID, subtype: 'fan_speed' },
-      'Dry': { serviceUUID: this.Service.Switch.UUID, subtype: 'drymode' },
-      'FanOnly': { serviceUUID: this.Service.Switch.UUID, subtype: 'fanonlyswitch' },
-      'Turbo': { serviceUUID: this.Service.Switch.UUID, subtype: 'turbomode' },
-      'Eco': { serviceUUID: this.Service.Switch.UUID, subtype: 'ecomode' },
-      'StandaloneFan': { serviceUUID: this.Service.Fan.UUID, subtype: 'standalone_fan' },
+      'Dry': { serviceUUID: this.Service.Switch.UUID, subtype: 'dry' },
+      'FanOnly': { serviceUUID: this.Service.Switch.UUID, subtype: 'fanonly' },
+      'Turbo': { serviceUUID: this.Service.Switch.UUID, subtype: 'turbo' },
+      'Eco': { serviceUUID: this.Service.Switch.UUID, subtype: 'eco' },
+      'StandaloneFan': { serviceUUID: this.Service.Fan.UUID, subtype: 'standalonefan' },
       'HorizontalSwing': { serviceUUID: this.Service.Switch.UUID, subtype: 'horizontalswing' },
-      'Beep': { serviceUUID: this.Service.Switch.UUID, subtype: 'beepsound' },
+      'Beep': { serviceUUID: this.Service.Switch.UUID, subtype: 'beep' },
     };
 
     servicesToRemove.forEach(({ name, displayName }) => {
