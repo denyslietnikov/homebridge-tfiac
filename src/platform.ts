@@ -453,6 +453,23 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   }
 
   private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
+    this.log.debug(`[${deviceConfig.name}] Starting service removal check for accessory: ${accessory.displayName}`);
+    this.log.debug(`[${deviceConfig.name}] Device config:`, JSON.stringify({
+      enableDisplay: deviceConfig.enableDisplay,
+      enableSleep: deviceConfig.enableSleep,
+      enableFanSpeed: deviceConfig.enableFanSpeed,
+      enableDry: deviceConfig.enableDry,
+      enableFanOnly: deviceConfig.enableFanOnly,
+      enableTurbo: deviceConfig.enableTurbo,
+      enableEco: deviceConfig.enableEco,
+      enableStandaloneFan: deviceConfig.enableStandaloneFan,
+      enableHorizontalSwing: deviceConfig.enableHorizontalSwing,
+      enableBeep: deviceConfig.enableBeep,
+      enableTemperature: deviceConfig.enableTemperature,
+      enableIFeelSensor: deviceConfig.enableIFeelSensor,
+      debug: deviceConfig.debug,
+    }, null, 2));
+
     const servicesToRemove: OptionalAccessoryConfig<unknown>[] = this.optionalAccessoryConfigs.map(config => ({
       name: config.name,
       displayName: config.displayName,
@@ -461,6 +478,21 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     }));
 
     let serviceRemoved = false;
+
+    // List all current services on the accessory
+    if (!accessory.services) {
+      this.log.warn(`⚠️ [${deviceConfig.name}] Accessory has no services array, skipping service removal`);
+      return;
+    }
+    
+    this.log.debug(`[${deviceConfig.name}] Current services on accessory:`, 
+      accessory.services.map(s => ({
+        UUID: s.UUID,
+        subtype: s.subtype,
+        displayName: s.displayName,
+        name: s.constructor.name,
+      })),
+    );
 
     // Service subtype mapping for proper cleanup
     const serviceSubtypeMap: Record<string, { serviceUUID: string; subtype: string }> = {
@@ -476,26 +508,63 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       'Beep': { serviceUUID: this.Service.Switch.UUID, subtype: 'beep' },
     };
 
+    this.log.debug(`[${deviceConfig.name}] Service subtype mapping:`, serviceSubtypeMap);
+
     servicesToRemove.forEach(({ name, displayName }) => {
       const configKey = `enable${name}` as keyof TfiacDeviceConfig;
-      if (deviceConfig[configKey] === false) {
+      const configValue = deviceConfig[configKey];
+      
+      this.log.debug(`[${deviceConfig.name}] Checking service: ${displayName} (${name})`);
+      this.log.debug(`[${deviceConfig.name}] Config key: ${configKey}, value: ${configValue}`);
+      
+      if (configValue === false) {
+        this.log.debug(`[${deviceConfig.name}] Service ${displayName} is disabled, attempting to remove...`);
+        
         const serviceInfo = serviceSubtypeMap[name];
         if (serviceInfo) {
+          this.log.debug(`[${deviceConfig.name}] Looking for service with UUID: ${serviceInfo.serviceUUID}, subtype: ${serviceInfo.subtype}`);
+          
           const service = accessory.getServiceById(serviceInfo.serviceUUID, serviceInfo.subtype);
           if (service) {
-            accessory.removeService(service);
-            this.log.debug(`[${deviceConfig.name}] Removed service: ${displayName}`);
-            serviceRemoved = true;
+            this.log.debug(`[${deviceConfig.name}] Found service to remove:`, {
+              UUID: service.UUID,
+              subtype: service.subtype,
+              displayName: service.displayName,
+            });
+            
+            try {
+              accessory.removeService(service);
+              this.log.info(`[${deviceConfig.name}] ✅ Successfully removed service: ${displayName}`);
+              serviceRemoved = true;
+            } catch (error) {
+              this.log.error(`[${deviceConfig.name}] ❌ Error removing service ${displayName}:`, error);
+            }
+          } else {
+            this.log.debug(`[${deviceConfig.name}] ⚠️ Service ${displayName} not found with ` +
+              `UUID ${serviceInfo.serviceUUID} and subtype ${serviceInfo.subtype}`);
           }
         } else {
+          this.log.debug(`[${deviceConfig.name}] No service mapping found for ${name}, trying fallback method...`);
+          
           // Fallback to old method for any unmapped services (shouldn't happen)
           const service = accessory.getService(displayName);
           if (service) {
-            accessory.removeService(service);
-            this.log.debug(`[${deviceConfig.name}] Removed service: ${displayName}`);
-            serviceRemoved = true;
+            this.log.debug(`[${deviceConfig.name}] Found service via fallback method: ${displayName}`);
+            
+            try {
+              accessory.removeService(service);
+              this.log.info(`[${deviceConfig.name}] ✅ Successfully removed service via fallback: ${displayName}`);
+              serviceRemoved = true;
+            } catch (error) {
+              this.log.error(`[${deviceConfig.name}] ❌ Error removing service via fallback ${displayName}:`, error);
+            }
+          } else {
+            this.log.debug(`[${deviceConfig.name}] ⚠️ Service ${displayName} not found via fallback method either`);
           }
         }
+      } else {
+        this.log.debug(`[${deviceConfig.name}] Service ${displayName} is enabled or not explicitly disabled ` +
+          `(value: ${configValue}), skipping removal`);
       }
     });
 
@@ -503,42 +572,106 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     const isTemperatureDisabled = deviceConfig.enableTemperature === false;
     const isIFeelDisabled = deviceConfig.enableIFeelSensor === false;
 
+    this.log.debug(`[${deviceConfig.name}] Temperature sensor check: isTemperatureDisabled=${isTemperatureDisabled}, isIFeelDisabled=${isIFeelDisabled}`);
+
     if (isTemperatureDisabled) {
+      this.log.debug(`[${deviceConfig.name}] Temperature sensors are disabled, checking for existing services...`);
+      
       if (deviceConfig.debug) {
         this.log.info(`Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
-      const indoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'indoor_temperature');
+      
+      // Check for indoor temperature sensor
+      this.log.debug(`[${deviceConfig.name}] Looking for indoor temperature sensor with ` +
+        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: indoor_temperature`);
+      const indoorTempService = accessory.getServiceById(
+        this.Service.TemperatureSensor.UUID, 
+        'indoor_temperature',
+      );
       if (indoorTempService) {
-        accessory.removeService(indoorTempService);
-        this.log.debug(`[${deviceConfig.name}] Removed existing indoor temperature sensor service.`);
-        serviceRemoved = true;
+        this.log.debug(`[${deviceConfig.name}] Found indoor temperature sensor to remove`);
+        try {
+          accessory.removeService(indoorTempService);
+          this.log.info(`[${deviceConfig.name}] ✅ Successfully removed indoor temperature sensor service`);
+          serviceRemoved = true;
+        } catch (error) {
+          this.log.error(`[${deviceConfig.name}] ❌ Error removing indoor temperature sensor:`, error);
+        }
+      } else {
+        this.log.debug(`[${deviceConfig.name}] ⚠️ Indoor temperature sensor not found`);
       }
-      const outdoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'outdoor_temperature');
+      
+      // Check for outdoor temperature sensor
+      this.log.debug(`[${deviceConfig.name}] Looking for outdoor temperature sensor with ` +
+        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: outdoor_temperature`);
+      const outdoorTempService = accessory.getServiceById(
+        this.Service.TemperatureSensor.UUID, 
+        'outdoor_temperature',
+      );
       if (outdoorTempService) {
-        accessory.removeService(outdoorTempService);
-        this.log.debug(`[${deviceConfig.name}] Removed existing outdoor temperature sensor service.`);
-        serviceRemoved = true;
+        this.log.debug(`[${deviceConfig.name}] Found outdoor temperature sensor to remove`);
+        try {
+          accessory.removeService(outdoorTempService);
+          this.log.info(`[${deviceConfig.name}] ✅ Successfully removed outdoor temperature sensor service`);
+          serviceRemoved = true;
+        } catch (error) {
+          this.log.error(`[${deviceConfig.name}] ❌ Error removing outdoor temperature sensor:`, error);
+        }
+      } else {
+        this.log.debug(`[${deviceConfig.name}] ⚠️ Outdoor temperature sensor not found`);
       }
+    } else {
+      this.log.debug(`[${deviceConfig.name}] Temperature sensors are enabled or not explicitly disabled, skipping removal`);
     }
 
     if (isIFeelDisabled) {
+      this.log.debug(`[${deviceConfig.name}] iFeel sensor is disabled, checking for existing service...`);
+      
       if (deviceConfig.debug) {
         this.log.info(`iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
+      
+      this.log.debug(`[${deviceConfig.name}] Looking for iFeel sensor with UUID: ${this.Service.Switch.UUID}, subtype: ifeel_sensor`);
       const iFeelService = accessory.getServiceById(this.Service.Switch.UUID, 'ifeel_sensor');
       if (iFeelService) {
-        accessory.removeService(iFeelService);
-        this.log.debug(`[${deviceConfig.name}] Removed existing iFeel sensor service.`);
-        serviceRemoved = true;
+        this.log.debug(`[${deviceConfig.name}] Found iFeel sensor to remove`);
+        try {
+          accessory.removeService(iFeelService);
+          this.log.info(`[${deviceConfig.name}] ✅ Successfully removed iFeel sensor service`);
+          serviceRemoved = true;
+        } catch (error) {
+          this.log.error(`[${deviceConfig.name}] ❌ Error removing iFeel sensor:`, error);
+        }
+      } else {
+        this.log.debug(`[${deviceConfig.name}] ⚠️ iFeel sensor not found`);
       }
+    } else {
+      this.log.debug(`[${deviceConfig.name}] iFeel sensor is enabled or not explicitly disabled, skipping removal`);
     }
 
+    // Final summary and accessory update
+    this.log.debug(`[${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);
+    
     if (serviceRemoved) {
-      this.log.info(`Updating accessory ${accessory.displayName} after removing disabled services.`);
+      this.log.info(`✅ Updating accessory ${accessory.displayName} after removing disabled services.`);
+      
+      // List remaining services after removal
+      this.log.debug(`[${deviceConfig.name}] Remaining services after removal:`, 
+        accessory.services.map(s => ({
+          UUID: s.UUID,
+          subtype: s.subtype,
+          displayName: s.displayName,
+          name: s.constructor.name,
+        })),
+      );
+      
       this.api.updatePlatformAccessories([accessory]);
+      this.log.debug(`[${deviceConfig.name}] Accessory update completed`);
     } else {
-      this.log.debug(`No services needed removal for ${accessory.displayName}.`);
+      this.log.debug(`ℹ️ No services needed removal for ${accessory.displayName}.`);
     }
+    
+    this.log.debug(`[${deviceConfig.name}] removeDisabledServices completed`);
   }
 
   private setupOptionalAccessories(

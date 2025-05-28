@@ -180,7 +180,7 @@ describe('StandaloneFanAccessory', () => {
     // Also need to mock getServiceById to return the service for the other checks
     accessory.getServiceById = vi.fn().mockImplementation((service, subtype) => {
       if ((service === platform.Service.Fan || service === platform.Service.Fan.UUID) && 
-          subtype === 'standalone_fan') {
+          subtype === 'standalonefan') {
         return existingService;
       }
       return undefined;

@@ -28,12 +28,12 @@ export class StandaloneFanAccessory {
 
     const existingService =
       this.accessory.getService(serviceName) ||
-      this.accessory.getServiceById(this.platform.Service.Fan, 'standalone_fan') ||
-      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalone_fan');
+      this.accessory.getServiceById(this.platform.Service.Fan, 'standalonefan') ||
+      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalonefan');
 
     this.service =
       existingService ||
-      this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalone_fan');
+      this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalonefan');
     this.service.updateCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
 
     // Subscribe to DeviceState changes for reactive UI updates
