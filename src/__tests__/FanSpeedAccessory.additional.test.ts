@@ -150,11 +150,13 @@ describe('FanSpeedAccessory - Additional Tests', () => {
     expect(mapRotationSpeedToFanMode(1)).toBe(FanSpeed.Silent);
     
     // Test basic ranges - just test a few key points to ensure the method is covered
-    expect(mapRotationSpeedToFanMode(20)).toBe(FanSpeed.Silent);
-    expect(mapRotationSpeedToFanMode(30)).toBe(FanSpeed.Low);
-    expect(mapRotationSpeedToFanMode(60)).toBe(FanSpeed.Medium);
-    expect(mapRotationSpeedToFanMode(90)).toBe(FanSpeed.High);
-    expect(mapRotationSpeedToFanMode(100)).toBe(FanSpeed.Turbo);
+    expect(mapRotationSpeedToFanMode(10)).toBe(FanSpeed.Silent);     // Below 15% → Silent
+    expect(mapRotationSpeedToFanMode(20)).toBe(FanSpeed.Low);        // Between 15% and 30% → Low
+    expect(mapRotationSpeedToFanMode(35)).toBe(FanSpeed.MediumLow);  // Between 30% and 45% → MediumLow
+    expect(mapRotationSpeedToFanMode(50)).toBe(FanSpeed.Auto);       // Between 45% and 55% → Auto
+    expect(mapRotationSpeedToFanMode(60)).toBe(FanSpeed.MediumHigh); // Between 60% and 75% → MediumHigh
+    expect(mapRotationSpeedToFanMode(90)).toBe(FanSpeed.High);       // Between 75% and 95% → High
+    expect(mapRotationSpeedToFanMode(100)).toBe(FanSpeed.Turbo);     // 95% or above → Turbo
   });
 
   // Test with non-standard speeds

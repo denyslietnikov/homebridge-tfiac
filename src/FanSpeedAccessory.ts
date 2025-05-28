@@ -8,7 +8,11 @@ import {
 import { TfiacPlatform } from './platform.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
+// DeviceState mutators used: setSleepMode, setTurbo, setFanSpeed, setPower
 import { OperationMode, FanSpeed, SleepModeState, PowerState, FanSpeedPercentMap } from './enums.js';
+// Constants for RotationSpeed mapping
+const AUTO_PERCENT = 50;      // Slider value that represents “Auto”
+const TURBO_THRESHOLD = 95;   // Everything ≥ 95 % is treated as Turbo
 import { DeviceState } from './state/DeviceState.js';
 
 export class FanSpeedAccessory {
@@ -71,23 +75,28 @@ export class FanSpeedAccessory {
   private handleStateChange(state: DeviceState): void {
     this.platform.log.debug(`[FanSpeedAccessory] Received stateChanged: Power: ${state.power}, Mode: ${state.operationMode}, Fan: ${state.fanSpeed}`);
     const isActive = state.power === PowerState.On && this.isFanControlAllowedForMode(state.operationMode);
-    
+
     this.service.updateCharacteristic(
       this.platform.Characteristic.Active,
       isActive ? this.platform.Characteristic.Active.ACTIVE : this.platform.Characteristic.Active.INACTIVE,
     );
 
     let rotationSpeedValue: number;
+
+    // Power-off ⇒ slider at 0 %
     if (!isActive) {
       rotationSpeedValue = 0;
-    } else if (state.turboMode === PowerState.On) {
-      rotationSpeedValue = FanSpeedPercentMap[FanSpeed.Turbo];
-    } else if (state.sleepMode === SleepModeState.On) { // Assuming SleepModeState.On is the correct check for sleep mode active
-      rotationSpeedValue = FanSpeedPercentMap[FanSpeed.Silent]; // Changed from Low to Silent
+    } else if (state.turboMode === PowerState.On || state.fanSpeed === FanSpeed.Turbo) {
+      rotationSpeedValue = 100;
+    } else if (state.sleepMode === SleepModeState.On) {
+      // Sleep shows as Silent (lowest) – 15 %
+      rotationSpeedValue = FanSpeedPercentMap[FanSpeed.Silent];
+    } else if (state.fanSpeed === FanSpeed.Auto) {
+      rotationSpeedValue = AUTO_PERCENT;
     } else {
-      rotationSpeedValue = FanSpeedPercentMap[state.fanSpeed] ?? FanSpeedPercentMap[FanSpeed.Auto];
+      rotationSpeedValue = FanSpeedPercentMap[state.fanSpeed] ?? AUTO_PERCENT;
     }
-    
+
     this.service.updateCharacteristic(
       this.platform.Characteristic.RotationSpeed,
       rotationSpeedValue,
@@ -133,28 +142,51 @@ export class FanSpeedAccessory {
   private handleRotationSpeedGet(): CharacteristicValue {
     const state = this.deviceState;
     const isActive = state.power === PowerState.On && this.isFanControlAllowedForMode(state.operationMode);
-    
-    let rotationSpeedValue: number;
+
     if (!isActive) {
-      rotationSpeedValue = 0;
-    } else if (state.turboMode === PowerState.On) {
-      rotationSpeedValue = FanSpeedPercentMap[FanSpeed.Turbo];
-    } else if (state.sleepMode === SleepModeState.On) {
-      rotationSpeedValue = FanSpeedPercentMap[FanSpeed.Silent];
-    } else {
-      rotationSpeedValue = FanSpeedPercentMap[state.fanSpeed] ?? FanSpeedPercentMap[FanSpeed.Auto];
+      this.platform.log.debug('[FanSpeedAccessory] GET RotationSpeed: 0 % (inactive)');
+      return 0;
     }
-    this.platform.log.debug(`[FanSpeedAccessory] GET RotationSpeed: ${rotationSpeedValue}%`);
-    return rotationSpeedValue;
+
+    let pct: number;
+    if (state.turboMode === PowerState.On || state.fanSpeed === FanSpeed.Turbo) {
+      pct = 100;
+    } else if (state.sleepMode === SleepModeState.On) {
+      pct = FanSpeedPercentMap[FanSpeed.Silent];
+    } else if (state.fanSpeed === FanSpeed.Auto) {
+      pct = AUTO_PERCENT;
+    } else {
+      pct = FanSpeedPercentMap[state.fanSpeed] ?? AUTO_PERCENT;
+    }
+    this.platform.log.debug(`[FanSpeedAccessory] GET RotationSpeed: ${pct}%`);
+    return pct;
   }
 
   private async handleRotationSpeedSet(value: CharacteristicValue): Promise<void> {
     const speedPercent = value as number;
+
+    // 0 % ⇒ Power OFF
+    if (speedPercent === 0) {
+      this.platform.log.info('[FanSpeedAccessory] 0 % detected – powering OFF');
+      const offState = this.cacheManager.getDeviceState().clone();
+      offState.setPower(PowerState.Off);
+      offState.setTurboMode(PowerState.Off);
+      offState.setSleepMode(SleepModeState.Off);
+
+      await this.cacheManager.applyStateToDevice(offState).catch(err => {
+        this.platform.log.error(`[FanSpeedAccessory] Error powering off via speed slider: ${err}`);
+      });
+
+      // Optimistic UI update
+      this.service.updateCharacteristic(this.platform.Characteristic.Active, this.platform.Characteristic.Active.INACTIVE);
+      this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, 0);
+      return;
+    }
+
     const fanMode = this.mapRotationSpeedToFanMode(speedPercent);
-    
     this.platform.log.info(`[FanSpeedAccessory] SET RotationSpeed to ${speedPercent}% (mapped to: ${fanMode})`);
 
-    // Optimistic update: If current fan speed is 100% (Turbo) and new speed is lower, 
+    // Optimistic update: If current fan speed is 100% (Turbo) and new speed is lower,
     // immediately update the Turbo switch to "off" for better UI responsiveness
     const currentSpeed = this.handleRotationSpeedGet();
     if (currentSpeed === 100 && speedPercent < 100) {
@@ -168,12 +200,20 @@ export class FanSpeedAccessory {
     if (this.debounceTimer) {
       clearTimeout(this.debounceTimer);
     }
-    
+
     this.debounceTimer = setTimeout(async () => {
       try {
         const desiredState = this.cacheManager.getDeviceState().clone();
+
+        // Keep Turbo / Sleep mutual exclusivity
+        if (fanMode === FanSpeed.Turbo) {
+          desiredState.setTurboMode(PowerState.On);
+          desiredState.setSleepMode(SleepModeState.Off);
+        } else {
+          desiredState.setTurboMode(PowerState.Off);
+        }
+
         desiredState.setFanSpeed(fanMode);
-        
         await this.cacheManager.applyStateToDevice(desiredState);
       } catch (error) {
         this.platform.log.error(`[FanSpeedAccessory] Error setting RotationSpeed via debounced call: ${error}`);
@@ -197,40 +237,31 @@ export class FanSpeedAccessory {
   }
 
   private mapRotationSpeedToFanMode(speed: number): FanSpeed {
+    if (speed >= TURBO_THRESHOLD) {
+      return FanSpeed.Turbo;
+    }
     if (speed === 0) {
+      // We will interpret 0 % as a pure power-off request; caller handles it.
       return FanSpeed.Auto;
     }
-    if (speed <= (FanSpeedPercentMap[FanSpeed.Low] + FanSpeedPercentMap[FanSpeed.Silent]) / 2 && speed > 0) {
+    if (speed >= 45 && speed <= 55) {
+      return FanSpeed.Auto;
+    }
+    if (speed < FanSpeedPercentMap[FanSpeed.Silent]) {
       return FanSpeed.Silent;
     }
-    if (speed <= FanSpeedPercentMap[FanSpeed.Low]) {
+    if (speed < FanSpeedPercentMap[FanSpeed.Low]) {
       return FanSpeed.Low;
     }
-    if (speed <= (FanSpeedPercentMap[FanSpeed.Low] + FanSpeedPercentMap[FanSpeed.MediumLow]) / 2) {
-      return FanSpeed.Low;
-    }
-    if (speed <= FanSpeedPercentMap[FanSpeed.MediumLow]) {
+    if (speed < FanSpeedPercentMap[FanSpeed.MediumLow]) {
       return FanSpeed.MediumLow;
     }
-    if (speed <= (FanSpeedPercentMap[FanSpeed.MediumLow] + FanSpeedPercentMap[FanSpeed.Medium]) / 2) {
-      return FanSpeed.MediumLow;
-    }
-    if (speed <= FanSpeedPercentMap[FanSpeed.Medium]) {
+    if (speed < FanSpeedPercentMap[FanSpeed.Medium]) {
       return FanSpeed.Medium;
     }
-    if (speed <= (FanSpeedPercentMap[FanSpeed.Medium] + FanSpeedPercentMap[FanSpeed.MediumHigh]) / 2) {
-      return FanSpeed.Medium;
-    }
-    if (speed <= FanSpeedPercentMap[FanSpeed.MediumHigh]) {
+    if (speed < FanSpeedPercentMap[FanSpeed.MediumHigh]) {
       return FanSpeed.MediumHigh;
     }
-    if (speed <= (FanSpeedPercentMap[FanSpeed.MediumHigh] + FanSpeedPercentMap[FanSpeed.High]) / 2) {
-      return FanSpeed.MediumHigh;
-    }
-    if (speed < FanSpeedPercentMap[FanSpeed.High]) {
-      return FanSpeed.High;
-    }
-    // When speed is exactly 100 or more, return Turbo
-    return FanSpeed.Turbo;
+    return FanSpeed.High;
   }
 }
