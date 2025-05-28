@@ -373,7 +373,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       if (deviceConfig.debug) {
         this.log.info(`iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
-      const iFeelService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, 'ifeel_temperature');
+      const iFeelService = accessory.getServiceById(this.Service.Switch.UUID, 'ifeel_sensor');
       if (iFeelService) {
         accessory.removeService(iFeelService);
         this.log.debug(`[${deviceConfig.name}] Removed existing iFeel sensor service.`);

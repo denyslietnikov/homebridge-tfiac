@@ -221,6 +221,9 @@ describe('TfiacPlatformAccessory - Advanced Features', () => {
         TemperatureSensor: { UUID: 'TemperatureSensorService' },
       };
 
+      // Enable IFeelSensor explicitly
+      deviceConfig.enableIFeelSensor = true;
+
       // Create accessory with temperature sensors enabled
       platformAccessory = new TfiacPlatformAccessory(mockPlatform, mockAccessory);
 

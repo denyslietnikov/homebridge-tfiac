@@ -166,11 +166,32 @@ export class TfiacPlatformAccessory {
       );
     }
 
-    this.iFeelSensorAccessory = new IFeelSensorAccessory(
-      this.platform,
-      this.accessory,
-      deviceConfig,
-    );
+    // Create IFeelSensorAccessory only if explicitly enabled
+    const enableIFeelSensor = deviceConfig.enableIFeelSensor === true;
+    if (enableIFeelSensor) {
+      this.iFeelSensorAccessory = new IFeelSensorAccessory(
+        this.platform,
+        this.accessory,
+        deviceConfig,
+      );
+    } else {
+      if (this.deviceConfig.debug) {
+        this.platform.log.info(
+          `IFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`,
+        );
+      }
+
+      // Remove existing IFeel sensor services if they exist
+      const iFeelSensorType = this.platform.Service?.Switch;
+      if (this.accessory.services && iFeelSensorType) {
+        this.accessory.services
+          .filter(s => s.UUID === iFeelSensorType.UUID && s.subtype === 'ifeel_sensor')
+          .forEach(s => {
+            this.accessory.removeService(s);
+            this.platform.log.debug('Removed existing IFeel sensor service.');
+          });
+      }
+    }
 
     this.deviceStateInstance = this.cacheManager.getDeviceState();
     this.boundHandleDeviceStateChanged = this.handleDeviceStateChanged.bind(this);
@@ -207,7 +228,7 @@ export class TfiacPlatformAccessory {
         this.outdoorTemperatureSensorAccessory.updateStatus(homekitStatus);
       }
     }
-    // IFeelSensor should work independently of enableTemperature setting
+    // Update IFeelSensor only if enabled and exists
     if (this.iFeelSensorAccessory) {
       this.iFeelSensorAccessory.updateStatus(homekitStatus);
     }
