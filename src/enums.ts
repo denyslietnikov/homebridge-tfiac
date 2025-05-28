@@ -9,6 +9,25 @@ export enum PowerState {
 }
 
 /**
+ * Service subtypes - single source of truth for all accessory service subtypes
+ */
+export const SUBTYPES = {
+  display: 'display',
+  sleep: 'sleep',
+  fanSpeed: 'fan_speed',
+  dry: 'dry',
+  fanOnly: 'fanonly',
+  turbo: 'turbo',
+  eco: 'eco',
+  standaloneFan: 'standalonefan',
+  horizontalSwing: 'horizontalswing',
+  beep: 'beep',
+  indoorTemperature: 'indoor_temperature',
+  outdoorTemperature: 'outdoor_temperature',
+  iFeelSensor: 'ifeel_sensor',
+} as const;
+
+/**
  * Represents the main operation modes of the air conditioner.
  */
 export enum OperationMode {

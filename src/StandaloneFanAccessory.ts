@@ -6,7 +6,7 @@ import {
 import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
-import { PowerState, FanSpeed } from './enums.js';
+import { PowerState, FanSpeed, SUBTYPES } from './enums.js';
 import CacheManager from './CacheManager.js';
 import { DeviceState } from './state/DeviceState.js';
 
@@ -28,12 +28,12 @@ export class StandaloneFanAccessory {
 
     const existingService =
       this.accessory.getService(serviceName) ||
-      this.accessory.getServiceById(this.platform.Service.Fan, 'standalonefan') ||
-      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalonefan');
+      this.accessory.getServiceById(this.platform.Service.Fan, SUBTYPES.standaloneFan) ||
+      this.accessory.getServiceById(this.platform.Service.Fan.UUID, SUBTYPES.standaloneFan);
 
     this.service =
       existingService ||
-      this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalonefan');
+      this.accessory.addService(this.platform.Service.Fan, serviceName, SUBTYPES.standaloneFan);
     this.service.updateCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
 
     // Subscribe to DeviceState changes for reactive UI updates

@@ -4,7 +4,7 @@ import { TfiacPlatform } from './platform.js';
 import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
 import { DeviceState } from './state/DeviceState.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
-import { PowerState } from './enums.js'; // Added PowerState import
+import { PowerState, SUBTYPES } from './enums.js'; // Added PowerState and SUBTYPES import
 
 // This function will receive Partial<AirConditionerStatus> because BaseSwitchAccessory ensures this.
 export type GetStatusValueFromApiFn = (status: Partial<AirConditionerStatus>) => boolean;
@@ -12,6 +12,24 @@ export type GetStatusValueFromApiFn = (status: Partial<AirConditionerStatus>) =>
 // This function modifies a DeviceState instance based on the boolean value from the switch.
 // It now returns a boolean: true if the API call should proceed, false otherwise.
 export type DeviceStateModifierFn = (state: DeviceState, value: boolean) => boolean;
+
+/**
+ * Maps display names to consistent service subtypes
+ */
+function getServiceSubtype(displayName: string): string {
+  const subtypeMap: Record<string, string> = {
+    'Display': SUBTYPES.display,
+    'Sleep': SUBTYPES.sleep,
+    'Dry': SUBTYPES.dry,
+    'FanOnly': SUBTYPES.fanOnly,
+    'Turbo': SUBTYPES.turbo,
+    'Eco': SUBTYPES.eco,
+    'HorizontalSwing': SUBTYPES.horizontalSwing,
+    'Beep': SUBTYPES.beep,
+  };
+  
+  return subtypeMap[displayName] || displayName.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
+}
 
 export class BooleanSwitchAccessory extends BaseSwitchAccessory {
   // Overload signatures
@@ -38,7 +56,7 @@ export class BooleanSwitchAccessory extends BaseSwitchAccessory {
     arg4: keyof AirConditionerStatus | GetStatusValueFromApiFn,
     arg5: keyof DeviceState | DeviceStateModifierFn,
   ) {
-    const serviceSubtype = displayName.toLowerCase().replace(/\s+/g, '').replace(/-/g, '');
+    const serviceSubtype = getServiceSubtype(displayName);
     let getStatusFunc: GetStatusValueFromApiFn;
     let modifierFunc: DeviceStateModifierFn;
 

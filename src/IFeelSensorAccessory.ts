@@ -4,7 +4,7 @@ import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
-import { PowerState, OperationMode, SleepModeState } from './enums.js';
+import { PowerState, OperationMode, SleepModeState, SUBTYPES } from './enums.js';
 
 export class IFeelSensorAccessory {
   private service?: Service;
@@ -37,7 +37,7 @@ export class IFeelSensorAccessory {
     
     // For test verification, get service using the exact ID expected by tests
     if (typeof this.accessory.getServiceById === 'function') {
-      existingService = this.accessory.getServiceById(this.platform.Service.Switch, 'ifeel_sensor');
+      existingService = this.accessory.getServiceById(this.platform.Service.Switch, SUBTYPES.iFeelSensor);
     }
 
     let service: Service;
@@ -49,7 +49,7 @@ export class IFeelSensorAccessory {
         service = this.accessory.addService(
           this.platform.Service.Switch,
           'iFeel',
-          'ifeel_sensor',
+          SUBTYPES.iFeelSensor,
         );
       } else {
         // For tests, create a mock service

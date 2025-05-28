@@ -4,6 +4,7 @@ import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import { fahrenheitToCelsius } from './utils.js';
+import { SUBTYPES } from './enums.js';
 
 // Extended service interface for test environment
 interface TestService extends Service {
@@ -21,7 +22,7 @@ export class IndoorTemperatureSensorAccessory {
   ) {
     // For test verification, check if service exists but don't create a new one
     if (this.accessory.getServiceById) {
-      const existingService = this.accessory.getServiceById(this.platform.Service?.TemperatureSensor, 'indoor_temperature');
+      const existingService = this.accessory.getServiceById(this.platform.Service?.TemperatureSensor, SUBTYPES.indoorTemperature);
       
       // Only create new service if we don't already have one
       if (!existingService && this.deviceConfig.enableIndoorTempSensor !== false) {
@@ -57,7 +58,7 @@ export class IndoorTemperatureSensorAccessory {
     let existingService: Service | undefined;
     
     if (typeof this.accessory.getServiceById === 'function') {
-      existingService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, 'indoor_temperature');
+      existingService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, SUBTYPES.indoorTemperature);
     }
 
     let service: TestService;
@@ -68,7 +69,7 @@ export class IndoorTemperatureSensorAccessory {
         service = this.accessory.addService(
           this.platform.Service.TemperatureSensor,
           'Indoor Temperature',
-          'indoor_temperature',
+          SUBTYPES.indoorTemperature,
         ) as TestService;
       } else {
         // For tests, create a mock service

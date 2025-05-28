@@ -13,6 +13,7 @@ import * as path from 'path';
 import * as fs from 'fs/promises';
 import * as xml2js from 'xml2js';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } from './settings.js';
+import { SUBTYPES } from './enums.js';
 import { TfiacPlatformAccessory } from './platformAccessory.js';
 import { DisplaySwitchAccessory } from './DisplaySwitchAccessory.js';
 import { SleepSwitchAccessory } from './SleepSwitchAccessory.js';
@@ -44,7 +45,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly optionalAccessoryConfigs: OptionalAccessoryConfig<unknown>[];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory>;
   private _debugEnabled: boolean = false; // Declare and initialize _debugEnabled
-  private readonly PLUGIN_VERSION = '1.27.0-beta.91'; // Current plugin version
+  private readonly PLUGIN_VERSION = '1.27.0-beta.92'; // Current plugin version
   private readonly CACHE_CLEANUP_VERSION = '1.26.0'; // Version that requires cache cleanup
 
   constructor(
@@ -452,6 +453,28 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     this.accessories.push(accessory);
   }
 
+  /**
+   * Get legacy subtypes for backward compatibility
+   * This method provides mapping from old subtype names to new consistent ones
+   */
+  private getLegacySubtypes(): Record<string, string[]> {
+    return {
+      [SUBTYPES.display]: ['Display', 'display'],
+      [SUBTYPES.sleep]: ['Sleep', 'sleep'],
+      [SUBTYPES.fanSpeed]: ['FanSpeed', 'fan_speed', 'fanspeed'],
+      [SUBTYPES.dry]: ['Dry', 'dry'],
+      [SUBTYPES.fanOnly]: ['FanOnly', 'fanonly', 'fan_only'],
+      [SUBTYPES.turbo]: ['Turbo', 'turbo'],
+      [SUBTYPES.eco]: ['Eco', 'eco'],
+      [SUBTYPES.standaloneFan]: ['StandaloneFan', 'standalonefan', 'standalone_fan'],
+      [SUBTYPES.horizontalSwing]: ['HorizontalSwing', 'horizontalswing', 'horizontal_swing'],
+      [SUBTYPES.beep]: ['Beep', 'beep'],
+      [SUBTYPES.indoorTemperature]: ['indoor_temperature', 'indoorTemperature', 'IndoorTemperature'],
+      [SUBTYPES.outdoorTemperature]: ['outdoor_temperature', 'outdoorTemperature', 'OutdoorTemperature'],
+      [SUBTYPES.iFeelSensor]: ['ifeel_sensor', 'iFeelSensor', 'IFeelSensor', 'iFeel'],
+    };
+  }
+
   private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
     // Force info logging for troubleshooting
     this.log.info(`🔍 [${deviceConfig.name}] removeDisabledServices: Starting service removal check for accessory: ${accessory.displayName}`);
@@ -511,18 +534,18 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       })),
     );
 
-    // Service subtype mapping for proper cleanup
+    // Service subtype mapping for proper cleanup - using consistent SUBTYPES
     const serviceSubtypeMap: Record<string, { serviceUUID: string; subtype: string }> = {
-      'Display': { serviceUUID: this.Service.Switch.UUID, subtype: 'display' },
-      'Sleep': { serviceUUID: this.Service.Switch.UUID, subtype: 'sleep' },
-      'FanSpeed': { serviceUUID: this.Service.Fanv2.UUID, subtype: 'fan_speed' },
-      'Dry': { serviceUUID: this.Service.Switch.UUID, subtype: 'dry' },
-      'FanOnly': { serviceUUID: this.Service.Switch.UUID, subtype: 'fanonly' },
-      'Turbo': { serviceUUID: this.Service.Switch.UUID, subtype: 'turbo' },
-      'Eco': { serviceUUID: this.Service.Switch.UUID, subtype: 'eco' },
-      'StandaloneFan': { serviceUUID: this.Service.Fan.UUID, subtype: 'standalonefan' },
-      'HorizontalSwing': { serviceUUID: this.Service.Switch.UUID, subtype: 'horizontalswing' },
-      'Beep': { serviceUUID: this.Service.Switch.UUID, subtype: 'beep' },
+      'Display': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.display },
+      'Sleep': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.sleep },
+      'FanSpeed': { serviceUUID: this.Service.Fanv2.UUID, subtype: SUBTYPES.fanSpeed },
+      'Dry': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.dry },
+      'FanOnly': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.fanOnly },
+      'Turbo': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.turbo },
+      'Eco': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.eco },
+      'StandaloneFan': { serviceUUID: this.Service.Fan.UUID, subtype: SUBTYPES.standaloneFan },
+      'HorizontalSwing': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.horizontalSwing },
+      'Beep': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.beep },
     };
 
     this.log.debug(`[${deviceConfig.name}] Service subtype mapping:`, serviceSubtypeMap);
@@ -542,24 +565,48 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         if (serviceInfo) {
           this.log.debug(`[${deviceConfig.name}] Looking for service with UUID: ${serviceInfo.serviceUUID}, subtype: ${serviceInfo.subtype}`);
           
-          const service = accessory.getServiceById(serviceInfo.serviceUUID, serviceInfo.subtype);
+          let service = accessory.getServiceById(serviceInfo.serviceUUID, serviceInfo.subtype);
+          let foundWithSubtype = serviceInfo.subtype;
+          
+          // If not found with current subtype, try legacy subtypes
+          if (!service) {
+            const legacySubtypes = this.getLegacySubtypes();
+            const legacyVariants = legacySubtypes[serviceInfo.subtype] || [];
+            
+            this.log.debug(`[${deviceConfig.name}] Service not found with current subtype ${serviceInfo.subtype}, ` +
+              `trying legacy subtypes: ${legacyVariants.join(', ')}`);
+            
+            for (const legacySubtype of legacyVariants) {
+              service = accessory.getServiceById(serviceInfo.serviceUUID, legacySubtype);
+              if (service) {
+                foundWithSubtype = legacySubtype;
+                this.log.info(`🔍 [${deviceConfig.name}] Found service with legacy subtype: ${legacySubtype}`);
+                break;
+              }
+            }
+          }
+          
           if (service) {
+            this.log.info(`🔍 [${deviceConfig.name}] Found service to remove: ${service.displayName} ` +
+              `(UUID: ${service.UUID}, subtype: ${foundWithSubtype})`);
             this.log.debug(`[${deviceConfig.name}] Found service to remove:`, {
               UUID: service.UUID,
-              subtype: service.subtype,
+              subtype: foundWithSubtype,
               displayName: service.displayName,
             });
             
             try {
               accessory.removeService(service);
-              this.log.info(`[${deviceConfig.name}] ✅ Successfully removed service: ${displayName}`);
+              this.log.info(`✅ [${deviceConfig.name}] Successfully removed service: ${displayName}`);
               serviceRemoved = true;
             } catch (error) {
-              this.log.error(`[${deviceConfig.name}] ❌ Error removing service ${displayName}:`, error);
+              this.log.error(`❌ [${deviceConfig.name}] Error removing service ${displayName}:`, error);
             }
           } else {
+            this.log.info(`⚠️ [${deviceConfig.name}] Service ${displayName} not found with ` +
+              `UUID ${serviceInfo.serviceUUID} and subtype ${serviceInfo.subtype} (or legacy variants)`);
             this.log.debug(`[${deviceConfig.name}] ⚠️ Service ${displayName} not found with ` +
-              `UUID ${serviceInfo.serviceUUID} and subtype ${serviceInfo.subtype}`);
+              `UUID ${serviceInfo.serviceUUID} and subtype ${serviceInfo.subtype} (or legacy variants)`);
           }
         } else {
           this.log.debug(`[${deviceConfig.name}] No service mapping found for ${name}, trying fallback method...`);
@@ -567,16 +614,18 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           // Fallback to old method for any unmapped services (shouldn't happen)
           const service = accessory.getService(displayName);
           if (service) {
+            this.log.info(`🔍 [${deviceConfig.name}] Found service via fallback method: ${displayName}`);
             this.log.debug(`[${deviceConfig.name}] Found service via fallback method: ${displayName}`);
             
             try {
               accessory.removeService(service);
-              this.log.info(`[${deviceConfig.name}] ✅ Successfully removed service via fallback: ${displayName}`);
+              this.log.info(`✅ [${deviceConfig.name}] Successfully removed service via fallback: ${displayName}`);
               serviceRemoved = true;
             } catch (error) {
-              this.log.error(`[${deviceConfig.name}] ❌ Error removing service via fallback ${displayName}:`, error);
+              this.log.error(`❌ [${deviceConfig.name}] Error removing service via fallback ${displayName}:`, error);
             }
           } else {
+            this.log.info(`⚠️ [${deviceConfig.name}] Service ${displayName} not found via fallback method either`);
             this.log.debug(`[${deviceConfig.name}] ⚠️ Service ${displayName} not found via fallback method either`);
           }
         }
@@ -601,19 +650,36 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       
       // Check for indoor temperature sensor
       this.log.debug(`[${deviceConfig.name}] Looking for indoor temperature sensor with ` +
-        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: indoor_temperature`);
-      const indoorTempService = accessory.getServiceById(
+        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: ${SUBTYPES.indoorTemperature}`);
+      let indoorTempService = accessory.getServiceById(
         this.Service.TemperatureSensor.UUID, 
-        'indoor_temperature',
+        SUBTYPES.indoorTemperature,
       );
+      
+      // Try legacy subtypes if not found
+      if (!indoorTempService) {
+        const legacySubtypes = this.getLegacySubtypes();
+        const legacyVariants = legacySubtypes[SUBTYPES.indoorTemperature] || [];
+        this.log.debug(`[${deviceConfig.name}] Indoor temperature sensor not found with current subtype, ` +
+          `trying legacy subtypes: ${legacyVariants.join(', ')}`);
+        
+        for (const legacySubtype of legacyVariants) {
+          indoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, legacySubtype);
+          if (indoorTempService) {
+            this.log.info(`🔍 [${deviceConfig.name}] Found indoor temperature sensor with legacy subtype: ${legacySubtype}`);
+            break;
+          }
+        }
+      }
+      
       if (indoorTempService) {
         this.log.debug(`[${deviceConfig.name}] Found indoor temperature sensor to remove`);
         try {
           accessory.removeService(indoorTempService);
-          this.log.info(`[${deviceConfig.name}] ✅ Successfully removed indoor temperature sensor service`);
+          this.log.info(`✅ [${deviceConfig.name}] Successfully removed indoor temperature sensor service`);
           serviceRemoved = true;
         } catch (error) {
-          this.log.error(`[${deviceConfig.name}] ❌ Error removing indoor temperature sensor:`, error);
+          this.log.error(`❌ [${deviceConfig.name}] Error removing indoor temperature sensor:`, error);
         }
       } else {
         this.log.debug(`[${deviceConfig.name}] ⚠️ Indoor temperature sensor not found`);
@@ -621,19 +687,36 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       
       // Check for outdoor temperature sensor
       this.log.debug(`[${deviceConfig.name}] Looking for outdoor temperature sensor with ` +
-        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: outdoor_temperature`);
-      const outdoorTempService = accessory.getServiceById(
+        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: ${SUBTYPES.outdoorTemperature}`);
+      let outdoorTempService = accessory.getServiceById(
         this.Service.TemperatureSensor.UUID, 
-        'outdoor_temperature',
+        SUBTYPES.outdoorTemperature,
       );
+      
+      // Try legacy subtypes if not found
+      if (!outdoorTempService) {
+        const legacySubtypes = this.getLegacySubtypes();
+        const legacyVariants = legacySubtypes[SUBTYPES.outdoorTemperature] || [];
+        this.log.debug(`[${deviceConfig.name}] Outdoor temperature sensor not found with current subtype, ` +
+          `trying legacy subtypes: ${legacyVariants.join(', ')}`);
+        
+        for (const legacySubtype of legacyVariants) {
+          outdoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, legacySubtype);
+          if (outdoorTempService) {
+            this.log.info(`🔍 [${deviceConfig.name}] Found outdoor temperature sensor with legacy subtype: ${legacySubtype}`);
+            break;
+          }
+        }
+      }
+      
       if (outdoorTempService) {
         this.log.debug(`[${deviceConfig.name}] Found outdoor temperature sensor to remove`);
         try {
           accessory.removeService(outdoorTempService);
-          this.log.info(`[${deviceConfig.name}] ✅ Successfully removed outdoor temperature sensor service`);
+          this.log.info(`✅ [${deviceConfig.name}] Successfully removed outdoor temperature sensor service`);
           serviceRemoved = true;
         } catch (error) {
-          this.log.error(`[${deviceConfig.name}] ❌ Error removing outdoor temperature sensor:`, error);
+          this.log.error(`❌ [${deviceConfig.name}] Error removing outdoor temperature sensor:`, error);
         }
       } else {
         this.log.debug(`[${deviceConfig.name}] ⚠️ Outdoor temperature sensor not found`);
@@ -649,16 +732,33 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         this.log.info(`⚠️ iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
       
-      this.log.debug(`[${deviceConfig.name}] Looking for iFeel sensor with UUID: ${this.Service.Switch.UUID}, subtype: ifeel_sensor`);
-      const iFeelService = accessory.getServiceById(this.Service.Switch.UUID, 'ifeel_sensor');
+      this.log.debug(`[${deviceConfig.name}] Looking for iFeel sensor with UUID: ${this.Service.Switch.UUID}, subtype: ${SUBTYPES.iFeelSensor}`);
+      let iFeelService = accessory.getServiceById(this.Service.Switch.UUID, SUBTYPES.iFeelSensor);
+      
+      // Try legacy subtypes if not found
+      if (!iFeelService) {
+        const legacySubtypes = this.getLegacySubtypes();
+        const legacyVariants = legacySubtypes[SUBTYPES.iFeelSensor] || [];
+        this.log.debug(`[${deviceConfig.name}] iFeel sensor not found with current subtype, ` +
+          `trying legacy subtypes: ${legacyVariants.join(', ')}`);
+        
+        for (const legacySubtype of legacyVariants) {
+          iFeelService = accessory.getServiceById(this.Service.Switch.UUID, legacySubtype);
+          if (iFeelService) {
+            this.log.info(`🔍 [${deviceConfig.name}] Found iFeel sensor with legacy subtype: ${legacySubtype}`);
+            break;
+          }
+        }
+      }
+      
       if (iFeelService) {
         this.log.debug(`[${deviceConfig.name}] Found iFeel sensor to remove`);
         try {
           accessory.removeService(iFeelService);
-          this.log.info(`[${deviceConfig.name}] ✅ Successfully removed iFeel sensor service`);
+          this.log.info(`✅ [${deviceConfig.name}] Successfully removed iFeel sensor service`);
           serviceRemoved = true;
         } catch (error) {
-          this.log.error(`[${deviceConfig.name}] ❌ Error removing iFeel sensor:`, error);
+          this.log.error(`❌ [${deviceConfig.name}] Error removing iFeel sensor:`, error);
         }
       } else {
         this.log.debug(`[${deviceConfig.name}] ⚠️ iFeel sensor not found`);
@@ -672,6 +772,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     this.log.debug(`[${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);
     
     if (serviceRemoved) {
+      this.log.info(`✅ [${deviceConfig.name}] Updating accessory in HomeKit after service removal`);
       this.log.info(`✅ Updating accessory ${accessory.displayName} after removing disabled services.`);
       
       // List remaining services after removal

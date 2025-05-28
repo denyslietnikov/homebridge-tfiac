@@ -9,7 +9,7 @@ import { TfiacPlatform } from './platform.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
 // DeviceState mutators used: setSleepMode, setTurbo, setFanSpeed, setPower
-import { OperationMode, FanSpeed, SleepModeState, PowerState, FanSpeedPercentMap } from './enums.js';
+import { OperationMode, FanSpeed, SleepModeState, PowerState, FanSpeedPercentMap, SUBTYPES } from './enums.js';
 // Constants for RotationSpeed mapping
 const AUTO_PERCENT = 50;      // Slider value that represents “Auto”
 const TURBO_THRESHOLD = 95;   // Everything ≥ 95 % is treated as Turbo
@@ -33,8 +33,8 @@ export class FanSpeedAccessory {
     this.deviceState = this.cacheManager.getDeviceState();
 
     this.service =
-      this.accessory.getServiceById(this.platform.Service.Fanv2, 'fan_speed') ||
-      this.accessory.addService(this.platform.Service.Fanv2, serviceName, 'fan_speed');
+      this.accessory.getServiceById(this.platform.Service.Fanv2, SUBTYPES.fanSpeed) ||
+      this.accessory.addService(this.platform.Service.Fanv2, serviceName, SUBTYPES.fanSpeed);
     
     this.service.setCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
 

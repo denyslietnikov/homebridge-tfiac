@@ -4,6 +4,7 @@ import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import { fahrenheitToCelsius } from './utils.js';
+import { SUBTYPES } from './enums.js';
 
 // Extended service interface for test environment
 interface TestService extends Service {
@@ -40,7 +41,7 @@ export class OutdoorTemperatureSensorAccessory {
     let existingService: Service | undefined;
     
     if (typeof this.accessory.getServiceById === 'function') {
-      existingService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, 'outdoor_temperature');
+      existingService = this.accessory.getServiceById(this.platform.Service.TemperatureSensor, SUBTYPES.outdoorTemperature);
     }
 
     let service: TestService;
@@ -51,7 +52,7 @@ export class OutdoorTemperatureSensorAccessory {
         service = this.accessory.addService(
           this.platform.Service.TemperatureSensor,
           'Outdoor Temperature',
-          'outdoor_temperature',
+          SUBTYPES.outdoorTemperature,
         ) as TestService;
       } else {
         // For tests, create a mock service
