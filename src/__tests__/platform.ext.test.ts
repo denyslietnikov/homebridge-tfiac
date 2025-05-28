@@ -244,7 +244,12 @@ const createMocks = (): { mockLogger: Logger; mockAPI: API } => {
 
   const mockAPI = {
     hap: {
-      Service: {},
+      Service: {
+        Switch: { UUID: 'switch-uuid' },
+        Fanv2: { UUID: 'fanv2-uuid' },
+        TemperatureSensor: { UUID: 'temperature-sensor-uuid' },
+        AccessoryInformation: { UUID: 'accessory-information-uuid' },
+      },
       Characteristic: {},
       uuid: {
         generate: vi.fn((input: string) => `generated-uuid-${input}`),
@@ -710,7 +715,12 @@ describe('TfiacPlatform UDP discovery error branches', () => {
   const mockAPI = {
     hap: {
       uuid: { generate: vi.fn((str: string) => 'uuid-' + str) },
-      Service: {},
+      Service: {
+        Switch: { UUID: 'switch-uuid' },
+        Fanv2: { UUID: 'fanv2-uuid' },
+        TemperatureSensor: { UUID: 'temperature-sensor-uuid' },
+        AccessoryInformation: { UUID: 'accessory-information-uuid' },
+      },
       Characteristic: {},
     },
     on: vi.fn(),

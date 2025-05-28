@@ -5,6 +5,16 @@ import { PlatformAccessory, Service, Characteristic } from 'homebridge';
 import { TfiacDeviceConfig, TfiacPlatformConfig } from '../settings.js';
 import { PLUGIN_NAME, PLATFORM_NAME } from '../settings.js';
 
+// Mock fs/promises and path before imports
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn().mockRejectedValue(new Error('ENOENT: no such file or directory, open \'/mock/storage/path/homebridge-tfiac-version.json\'')),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('path', () => ({
+  join: vi.fn((...args: string[]) => args.join('/')),
+}));
+
 // Mock implementations before imports
 vi.mock('../DrySwitchAccessory.js', () => ({ DrySwitchAccessory: vi.fn() }));
 vi.mock('../FanOnlySwitchAccessory.js', () => ({ FanOnlySwitchAccessory: vi.fn() }));
@@ -122,12 +132,12 @@ const mockAPI: API = {
       prototype: {},
       Thermostat: vi.fn(() => mockServiceInstance),
       HeaterCooler: vi.fn(() => mockServiceInstance),
-      AccessoryInformation: vi.fn(() => mockServiceInstance),
-      // Add missing service mocks
-      Switch: vi.fn(() => createMockService('Switch')),
-      Fanv2: vi.fn(() => createMockService('Fanv2')),
-      Fan: vi.fn(() => createMockService('Fan')), // For StandaloneFanAccessory if it uses Service.Fan
-      TemperatureSensor: vi.fn(() => createMockService('TemperatureSensor')),
+      AccessoryInformation: Object.assign(vi.fn(() => mockServiceInstance), { UUID: 'accessory-information-uuid' }),
+      // Add missing service mocks with UUID properties
+      Switch: Object.assign(vi.fn(() => createMockService('Switch')), { UUID: 'switch-uuid' }),
+      Fanv2: Object.assign(vi.fn(() => createMockService('Fanv2')), { UUID: 'fanv2-uuid' }),
+      Fan: Object.assign(vi.fn(() => createMockService('Fan')), { UUID: 'fan-uuid' }), // For StandaloneFanAccessory if it uses Service.Fan
+      TemperatureSensor: Object.assign(vi.fn(() => createMockService('TemperatureSensor')), { UUID: 'temperature-sensor-uuid' }),
     } as unknown as typeof Service,
     Characteristic: {
       prototype: {},

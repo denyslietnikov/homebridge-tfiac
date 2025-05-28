@@ -276,6 +276,7 @@ export function createMockAPI(customUuid?: string): MockAPI {
         Thermostat: createMockServiceConstructor('0000004A-0000-1000-8000-0026BB765291', 'Thermostat'),
         HeaterCooler: createMockServiceConstructor('000000BC-0000-1000-8000-0026BB765291', 'HeaterCooler'),
         Fan: createMockServiceConstructor('00000040-0000-1000-8000-0026BB765291', 'Fan'),
+        Fanv2: createMockServiceConstructor('000000B7-0000-1000-8000-0026BB765291', 'Fanv2'),
         Lightbulb: createMockServiceConstructor('00000043-0000-1000-8000-0026BB765291', 'Lightbulb'),
         TemperatureSensor: createMockServiceConstructor('0000008A-0000-1000-8000-0026BB765291', 'Temperature Sensor'),
       },

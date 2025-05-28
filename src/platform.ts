@@ -9,6 +9,8 @@ import {
   Characteristic,
 } from 'homebridge';
 import * as dgram from 'dgram';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 import * as xml2js from 'xml2js';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } from './settings.js';
 import { TfiacPlatformAccessory } from './platformAccessory.js';
@@ -42,6 +44,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly optionalAccessoryConfigs: OptionalAccessoryConfig<unknown>[];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory>;
   private _debugEnabled: boolean = false; // Declare and initialize _debugEnabled
+  private readonly PLUGIN_VERSION = '1.27.0'; // Current plugin version
+  private readonly CACHE_CLEANUP_VERSION = '1.26.0'; // Version that requires cache cleanup
 
   constructor(
     public readonly log: Logger,
@@ -86,13 +90,136 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         accessoryClass: HorizontalSwingSwitchAccessory,
         accessoryMap: new Map(),
       },
-      { name: 'BeepSwitch', displayName: 'Beep Sound', enabledByDefault: false, accessoryClass: BeepSwitchAccessory, accessoryMap: new Map() },
+      { name: 'Beep', displayName: 'Beep Sound', enabledByDefault: false, accessoryClass: BeepSwitchAccessory, accessoryMap: new Map() },
     ];
 
     this.api.on('didFinishLaunching', async () => {
       this.log.debug('didFinishLaunching callback');
+      await this.checkVersionAndCleanupCache();
       await this.discoverDevices();
     });
+  }
+
+  /**
+   * Check plugin version and perform cache cleanup if needed
+   */
+  async checkVersionAndCleanupCache(): Promise<void> {
+    try {
+      // Get stored version from HomeKit cache
+      const storedVersion = this.api.user.storagePath();
+      const versionFilePath = path.join(storedVersion, 'homebridge-tfiac-version.json');
+      
+      let lastVersion: string | null = null;
+      
+      try {
+        const versionData = await fs.readFile(versionFilePath, 'utf8');
+        const parsedData = JSON.parse(versionData);
+        lastVersion = parsedData.version;
+        this.log.debug(`Found previous plugin version: ${lastVersion}`);
+      } catch (error) {
+        // Version file doesn't exist or is corrupted - treat as first install
+        this.log.info('No previous version found - treating as fresh installation');
+      }
+
+      // Check if we need to perform cache cleanup
+      const needsCleanup = !lastVersion || this.compareVersions(lastVersion, this.CACHE_CLEANUP_VERSION) < 0;
+      
+      if (needsCleanup) {
+        this.log.warn(`Plugin updated from ${lastVersion || 'unknown'} to ${this.PLUGIN_VERSION} - performing cache cleanup`);
+        this.log.warn('This will remove all cached accessories to ensure compatibility with the new version');
+        this.log.warn('All accessories will be automatically recreated with the new configuration options');
+        await this.performCacheCleanup();
+      } else {
+        this.log.debug(`Plugin version ${this.PLUGIN_VERSION} - no cache cleanup needed (last version: ${lastVersion})`);
+      }
+
+      // Save current version
+      await fs.writeFile(versionFilePath, JSON.stringify({ 
+        version: this.PLUGIN_VERSION,
+        lastCleanup: new Date().toISOString(),
+        cleanupReason: needsCleanup ? 'version_upgrade' : 'no_cleanup_needed',
+      }), 'utf8');
+
+      this.log.debug(`Version tracking updated: ${this.PLUGIN_VERSION}`);
+
+    } catch (error) {
+      this.log.error('Error during version check and cache cleanup:', error);
+    }
+  }
+
+  /**
+   * Perform cache cleanup by removing all cached accessories
+   */
+  private async performCacheCleanup(): Promise<void> {
+    this.log.warn('Performing cache cleanup - removing all cached accessories to ensure clean state');
+    
+    // Remove all cached accessories to force recreation
+    if (this.accessories.length > 0) {
+      this.log.info(`Removing ${this.accessories.length} cached accessories for clean update`);
+      
+      // First, perform thorough cleanup of each accessory
+      this.accessories.forEach(acc => {
+        this.log.debug(`Cleaning up accessory: ${acc.displayName} (${acc.UUID})`);
+        
+        // Cleanup optional accessories first
+        this.cleanupOptionalAccessories(acc.UUID);
+        
+        // Remove all services from the accessory to ensure clean state
+        const servicesToRemove = acc.services.slice(); // Create a copy to avoid modification during iteration
+        servicesToRemove.forEach(service => {
+          // Don't remove the AccessoryInformation service as it's required
+          if (service.UUID !== this.Service.AccessoryInformation.UUID) {
+            try {
+              acc.removeService(service);
+              this.log.debug(`Removed service ${service.displayName || service.UUID} from ${acc.displayName}`);
+            } catch (error) {
+              this.log.debug(`Error removing service ${service.displayName || service.UUID}:`, error);
+            }
+          }
+        });
+      });
+
+      // Unregister all accessories from HomeKit
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, this.accessories);
+      
+      // Clear local array
+      this.accessories.length = 0;
+      
+      // Clear the discovered accessories map
+      this.discoveredAccessories.clear();
+      
+      // Clear all optional accessory maps
+      this.optionalAccessoryConfigs.forEach(config => {
+        config.accessoryMap?.clear();
+      });
+      
+      this.log.info('Cache cleanup completed - all accessories and services removed, will be recreated during discovery');
+    } else {
+      this.log.debug('No cached accessories found to cleanup');
+    }
+  }
+
+  /**
+   * Compare two semantic version strings
+   * Returns: -1 if version1 < version2, 0 if equal, 1 if version1 > version2
+   */
+  private compareVersions(version1: string, version2: string): number {
+    const v1parts = version1.split('.').map(Number);
+    const v2parts = version2.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(v1parts.length, v2parts.length); i++) {
+      const v1part = v1parts[i] || 0;
+      const v2part = v2parts[i] || 0;
+      
+      if (v1part < v2part) {
+        return -1;
+      }
+      if (v1part > v2part) {
+        return 1;
+      }
+    }
+    
+    return 0;
   }
 
   async discoverDevices() {
@@ -335,14 +462,39 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     let serviceRemoved = false;
 
+    // Service subtype mapping for proper cleanup
+    const serviceSubtypeMap: Record<string, { serviceUUID: string; subtype: string }> = {
+      'Display': { serviceUUID: this.Service.Switch.UUID, subtype: 'display' },
+      'Sleep': { serviceUUID: this.Service.Switch.UUID, subtype: 'sleepmode' },
+      'FanSpeed': { serviceUUID: this.Service.Fanv2.UUID, subtype: 'fan_speed' },
+      'Dry': { serviceUUID: this.Service.Switch.UUID, subtype: 'drymode' },
+      'FanOnly': { serviceUUID: this.Service.Switch.UUID, subtype: 'fanonlyswitch' },
+      'Turbo': { serviceUUID: this.Service.Switch.UUID, subtype: 'turbomode' },
+      'Eco': { serviceUUID: this.Service.Switch.UUID, subtype: 'ecomode' },
+      'StandaloneFan': { serviceUUID: this.Service.Fan.UUID, subtype: 'standalone_fan' },
+      'HorizontalSwing': { serviceUUID: this.Service.Switch.UUID, subtype: 'horizontalswing' },
+      'Beep': { serviceUUID: this.Service.Switch.UUID, subtype: 'beepsound' },
+    };
+
     servicesToRemove.forEach(({ name, displayName }) => {
       const configKey = `enable${name}` as keyof TfiacDeviceConfig;
       if (deviceConfig[configKey] === false) {
-        const service = accessory.getService(displayName);
-        if (service) {
-          accessory.removeService(service);
-          this.log.debug(`[${deviceConfig.name}] Removed service: ${displayName}`);
-          serviceRemoved = true;
+        const serviceInfo = serviceSubtypeMap[name];
+        if (serviceInfo) {
+          const service = accessory.getServiceById(serviceInfo.serviceUUID, serviceInfo.subtype);
+          if (service) {
+            accessory.removeService(service);
+            this.log.debug(`[${deviceConfig.name}] Removed service: ${displayName}`);
+            serviceRemoved = true;
+          }
+        } else {
+          // Fallback to old method for any unmapped services (shouldn't happen)
+          const service = accessory.getService(displayName);
+          if (service) {
+            accessory.removeService(service);
+            this.log.debug(`[${deviceConfig.name}] Removed service: ${displayName}`);
+            serviceRemoved = true;
+          }
         }
       }
     });
@@ -436,6 +588,13 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     }
 
     this.optionalAccessoryConfigs.forEach(config => {
+      const instance = config.accessoryMap?.get(uuid);
+      if (instance && typeof instance === 'object' && instance !== null && 'stopPolling' in instance) {
+        const instanceWithStopPolling = instance as { stopPolling?: () => void };
+        if (typeof instanceWithStopPolling.stopPolling === 'function') {
+          instanceWithStopPolling.stopPolling();
+        }
+      }
       config.accessoryMap?.delete(uuid);
     });
   }

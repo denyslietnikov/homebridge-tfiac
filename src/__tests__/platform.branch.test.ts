@@ -12,6 +12,17 @@ import {
   MockAPI,
 } from './testUtils';
 
+// Mock fs/promises and path for version checking
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn().mockRejectedValue(new Error('ENOENT: no such file or directory')),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('path', () => ({
+  join: vi.fn((...args: string[]) => args.join('/')),
+  dirname: vi.fn((p: string) => p.split('/').slice(0, -1).join('/') || '/'),
+}));
+
 // Mock modules with jest functions
 vi.mock('../platformAccessory');
 vi.mock('../DisplaySwitchAccessory', () => ({
@@ -101,7 +112,7 @@ describe('TfiacPlatform branch coverage tests', () => {
           if (subtype === 'display') return mockDisplayServiceViaId;
           if (subtype === 'sleep') return { UUID: 'SleepServiceUUID_ViaId', subtype: 'sleep', displayName: 'Sleep by ID' };
         } else if (uuid === mockApi.hap.Service.Fanv2.UUID) {
-          if (subtype === 'fanspeed') return mockFanSpeedService;
+          if (subtype === 'fan_speed') return mockFanSpeedService; // Fixed subtype to match platform.ts
         } else if (uuid === mockApi.hap.Service.TemperatureSensor.UUID) {
           return mockTempSensorServiceInstance;
         }
@@ -155,7 +166,7 @@ describe('TfiacPlatform branch coverage tests', () => {
 
     it('removes Display Switch when enableDisplaySwitch is false', () => {
       const deviceConfig = { name: mockAccessory.displayName, enableDisplay: false, debug: true } as any;
-      const expectedServiceToRemove = mockDisplayServiceViaDisplayName;
+      const expectedServiceToRemove = mockDisplayServiceViaId; // Updated to use ID-based service
 
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
 
@@ -170,14 +181,6 @@ describe('TfiacPlatform branch coverage tests', () => {
     it('removes Fan Speed when enableFanSpeedSwitch is false', () => {
       const deviceConfig = { name: mockAccessory.displayName, enableFanSpeed: false, debug: true } as any;
       const expectedServiceToRemove = mockFanSpeedService as any;
-
-      mockAccessory.getService = vi.fn((identifier: string | { UUID: string }) => {
-        if (typeof identifier === 'string') {
-          if (identifier === 'Display Light') return mockDisplayServiceViaDisplayName as any;
-          if (identifier === 'Fan Speed Control') return mockFanSpeedService as any;
-        }
-        return undefined;
-      }) as any;
 
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
 
