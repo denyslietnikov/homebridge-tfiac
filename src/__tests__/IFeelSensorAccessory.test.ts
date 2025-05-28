@@ -234,11 +234,10 @@ describe('IFeelSensorAccessory', () => {
   });
 
   it('should return current value in handleOnGet', async () => {
-    mockService.getCharacteristic.mockReturnValueOnce({ value: true });
-    
+    // By default DeviceState has operationMode !== selfFeel, so expect false
     const result = await (sensorAccessory as any).handleOnGet();
     
-    expect(result).toBe(true);
+    expect(result).toBe(false);
     expect(platform.log.debug).toHaveBeenCalledWith('Triggered GET iFeelSensor.On');
   });
 

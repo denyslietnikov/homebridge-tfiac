@@ -4,7 +4,7 @@ import { TfiacPlatform } from './platform.js';
 import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
 import CacheManager from './CacheManager.js';
-import { PowerState, OperationMode } from './enums.js';
+import { PowerState, OperationMode, SleepModeState } from './enums.js';
 
 export class IFeelSensorAccessory {
   private service?: Service;
@@ -99,13 +99,12 @@ export class IFeelSensorAccessory {
    */
   async handleOnGet() {
     this.platform.log.debug('Triggered GET iFeelSensor.On');
-    
-    if (!this.service) {
-      return false;
-    }
-    
-    const currentValue = this.service.getCharacteristic(this.platform.Characteristic.On).value;
-    return currentValue === true;
+
+    // Use latest known DeviceState (optimistic as well)
+    const isIFeelActive =
+      this.cacheManager.getDeviceState().operationMode === OperationMode.SelfFeel;
+
+    return isIFeelActive;
   }
 
   /**
@@ -115,6 +114,26 @@ export class IFeelSensorAccessory {
     // Convert HomeKit value to boolean
     const turnOn = value === true || value === 1;
     this.platform.log.debug(`[IFeelSensor] Triggered SET -> ${turnOn ? 'ON' : 'OFF'}`);
+
+    // Prevent enabling iFeel while Sleep or Turbo are active
+    if (turnOn) {
+      const currentState = this.cacheManager.getDeviceState();
+      if (currentState.sleepMode === SleepModeState.On || currentState.turboMode === PowerState.On) {
+        this.platform.log.info('[IFeelSensor] Cannot enable iFeel while Sleep or Turbo is active. Request ignored.');
+        // Revert optimistic characteristic change if it was already toggled
+        if (this.service) {
+          setTimeout(() => {
+            this.service!.updateCharacteristic(this.platform.Characteristic.On, false);
+          }, 100);
+        }
+        return;
+      }
+    }
+
+    // Optimistically update HomeKit characteristic right away
+    if (this.service) {
+      this.service.updateCharacteristic(this.platform.Characteristic.On, turnOn);
+    }
 
     try {
       // Clone current state so we only mutate a local copy
