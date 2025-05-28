@@ -162,10 +162,10 @@ describe('TfiacPlatform branch coverage tests', () => {
 
       expect(mockAccessory.removeService).not.toHaveBeenCalled();
       
-      // Check for the key log messages in the comprehensive logging output
+      // Check for the key log messages in the simplified logging output
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=false');
-      expect(mockLog.debug).toHaveBeenCalledWith('ℹ️ No services needed removal for Test Accessory.');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] No services needed removal for Test Accessory.');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
       
       expect(updateAccessoriesSpy).not.toHaveBeenCalled();
@@ -179,15 +179,15 @@ describe('TfiacPlatform branch coverage tests', () => {
 
       expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
       
-      // Check for the key log messages in the comprehensive logging output
+      // Check for the key log messages in the simplified logging output
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service check: Display Light (UUID: DisplayServiceUUID_ViaId, subtype: display) - should remove: true');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Display Light (display)');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
       
       expect(mockLog.info).toHaveBeenCalledWith(
-        '✅ Updating accessory Test Accessory after removing disabled services.'
+        'Updating accessory Test Accessory after removing disabled services.'
       );
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
     });
@@ -200,15 +200,15 @@ describe('TfiacPlatform branch coverage tests', () => {
 
       expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
       
-      // Check for the key log messages in the comprehensive logging output
+      // Check for the key log messages in the simplified logging output
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service check: Fan Speed Control by ID (UUID: FanSpeedServiceUUID, subtype: fan_speed) - should remove: true');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Fan Speed Control by ID (fan_speed)');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
       
       expect(mockLog.info).toHaveBeenCalledWith(
-        '✅ Updating accessory Test Accessory after removing disabled services.'
+        'Updating accessory Test Accessory after removing disabled services.'
       );
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
     });
@@ -220,15 +220,15 @@ describe('TfiacPlatform branch coverage tests', () => {
 
       expect(mockAccessory.removeService).toHaveBeenCalledWith(mockTempSensorServiceInstance as any);
       
-      // Check for the key log messages in the comprehensive logging output
+      // Check for the key log messages in the simplified logging output
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service check: Temperature Sensor (UUID: temp-sensor-uuid, subtype: indoor_temperature) - should remove: true');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Temperature Sensor (indoor_temperature)');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
       
       expect(mockLog.info).toHaveBeenCalledWith(
-        '✅ Updating accessory Test Accessory after removing disabled services.'
+        'Updating accessory Test Accessory after removing disabled services.'
       );
       expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
     });

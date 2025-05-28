@@ -45,7 +45,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly optionalAccessoryConfigs: OptionalAccessoryConfig<unknown>[];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory>;
   private _debugEnabled: boolean = false; // Declare and initialize _debugEnabled
-  private readonly PLUGIN_VERSION = '1.27.0-beta.92'; // Current plugin version
+  private readonly PLUGIN_VERSION = '1.27.0'; // Current plugin version
   private readonly CACHE_CLEANUP_VERSION = '1.26.0'; // Version that requires cache cleanup
 
   constructor(
@@ -529,62 +529,18 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   }
 
   private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
-    // Force info logging for troubleshooting
-    this.log.info(`🔍 [${deviceConfig.name}] removeDisabledServices: Starting service removal check for accessory: ${accessory.displayName}`);
-    
     this.log.debug(`[${deviceConfig.name}] Starting service removal check for accessory: ${accessory.displayName}`);
-    
-    // Force info logging for critical config diagnostic info  
-    this.log.info(`🔍 [${deviceConfig.name}] Device config flags: ` +
-      `enableDisplay=${deviceConfig.enableDisplay}, enableSleep=${deviceConfig.enableSleep}, ` +
-      `enableFanSpeed=${deviceConfig.enableFanSpeed}, enableDry=${deviceConfig.enableDry}, ` +
-      `enableFanOnly=${deviceConfig.enableFanOnly}, enableTurbo=${deviceConfig.enableTurbo}, ` +
-      `enableEco=${deviceConfig.enableEco}, enableStandaloneFan=${deviceConfig.enableStandaloneFan}, ` +
-      `enableHorizontalSwing=${deviceConfig.enableHorizontalSwing}, enableBeep=${deviceConfig.enableBeep}, ` +
-      `enableTemperature=${deviceConfig.enableTemperature}, enableIFeelSensor=${deviceConfig.enableIFeelSensor}`);
-    
-    this.log.debug(`[${deviceConfig.name}] Device config:`, JSON.stringify({
-      enableDisplay: deviceConfig.enableDisplay,
-      enableSleep: deviceConfig.enableSleep,
-      enableFanSpeed: deviceConfig.enableFanSpeed,
-      enableDry: deviceConfig.enableDry,
-      enableFanOnly: deviceConfig.enableFanOnly,
-      enableTurbo: deviceConfig.enableTurbo,
-      enableEco: deviceConfig.enableEco,
-      enableStandaloneFan: deviceConfig.enableStandaloneFan,
-      enableHorizontalSwing: deviceConfig.enableHorizontalSwing,
-      enableBeep: deviceConfig.enableBeep,
-      enableTemperature: deviceConfig.enableTemperature,
-      enableIFeelSensor: deviceConfig.enableIFeelSensor,
-      debug: deviceConfig.debug,
-    }, null, 2));
 
     let serviceRemoved = false;
 
     // List all current services on the accessory
     if (!accessory.services) {
-      this.log.warn(`⚠️ [${deviceConfig.name}] Accessory has no services array, skipping service removal`);
+      this.log.warn(`[${deviceConfig.name}] Accessory has no services array, skipping service removal`);
       return;
     }
-    
-    // Force info logging for service inventory
-    this.log.info(`🔍 [${deviceConfig.name}] Current services on accessory (${accessory.services.length} total): ` +
-      accessory.services.map(s => `${s.displayName || 'unnamed'}(${s.subtype || 'no-subtype'})`).join(', '));
-    
-    this.log.debug(`[${deviceConfig.name}] Current services on accessory:`, 
-      accessory.services.map(s => ({
-        UUID: s.UUID,
-        subtype: s.subtype,
-        displayName: s.displayName,
-        name: s.constructor.name,
-      })),
-    );
 
     // Build set of disabled subtypes (current + all legacy variants)
     const disabledSubtypes = this.buildDisabledSubtypeSet(deviceConfig);
-    
-    this.log.info(`🔍 [${deviceConfig.name}] Disabled subtypes to remove: [${Array.from(disabledSubtypes).join(', ')}]`);
-    this.log.debug(`[${deviceConfig.name}] Disabled subtypes set:`, Array.from(disabledSubtypes));
 
     // NEW APPROACH: Subtype-only service removal to handle UUID changes between plugin versions
     // Iterate through all services and remove any with disabled subtypes, regardless of UUID
@@ -594,51 +550,29 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         return false;
       }
       
-      const shouldRemove = disabledSubtypes.has(service.subtype);
-      this.log.debug(`[${deviceConfig.name}] Service check: ${service.displayName || 'unnamed'} ` +
-        `(UUID: ${service.UUID}, subtype: ${service.subtype}) - should remove: ${shouldRemove}`);
-      
-      return shouldRemove;
+      return disabledSubtypes.has(service.subtype);
     });
-
-    this.log.info(`🔍 [${deviceConfig.name}] Found ${servicesToRemove.length} services to remove based on subtype matching`);
 
     // Remove each identified service
     servicesToRemove.forEach(service => {
-      this.log.info(`🗑️ [${deviceConfig.name}] Removing service: ${service.displayName || 'unnamed'} ` +
-        `(UUID: ${service.UUID}, subtype: ${service.subtype})`);
-      
       try {
         accessory.removeService(service);
-        this.log.info(`✅ [${deviceConfig.name}] Successfully removed service: ${service.displayName || 'unnamed'}`);
+        this.log.debug(`[${deviceConfig.name}] Removed service: ${service.displayName || 'unnamed'} (${service.subtype})`);
         serviceRemoved = true;
       } catch (error) {
-        this.log.error(`❌ [${deviceConfig.name}] Error removing service ${service.displayName || 'unnamed'}:`, error);
+        this.log.error(`[${deviceConfig.name}] Error removing service ${service.displayName || 'unnamed'}:`, error);
       }
     });
 
     // Final summary and accessory update
-    this.log.info(`🔍 [${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);
     this.log.debug(`[${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);
     
     if (serviceRemoved) {
-      this.log.info(`✅ [${deviceConfig.name}] Updating accessory in HomeKit after service removal`);
-      this.log.info(`✅ Updating accessory ${accessory.displayName} after removing disabled services.`);
-      
-      // List remaining services after removal
-      this.log.debug(`[${deviceConfig.name}] Remaining services after removal:`, 
-        accessory.services.map(s => ({
-          UUID: s.UUID,
-          subtype: s.subtype,
-          displayName: s.displayName,
-          name: s.constructor.name,
-        })),
-      );
-      
+      this.log.info(`Updating accessory ${accessory.displayName} after removing disabled services.`);
       this.api.updatePlatformAccessories([accessory]);
       this.log.debug(`[${deviceConfig.name}] Accessory update completed`);
     } else {
-      this.log.debug(`ℹ️ No services needed removal for ${accessory.displayName}.`);
+      this.log.debug(`[${deviceConfig.name}] No services needed removal for ${accessory.displayName}.`);
     }
     
     this.log.debug(`[${deviceConfig.name}] removeDisabledServices completed`);

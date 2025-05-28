@@ -390,9 +390,9 @@ describe('TfiacPlatform - Additional Tests', () => {
 
     (platform as any).removeDisabledServices(mockAccessory as any, mockAccessory.context.deviceConfig);
 
-    // Check for the new comprehensive logging format - service was successfully removed
+    // Check for the simplified logging format - service was successfully removed
     expect(log.info).toHaveBeenCalledWith(
-      `✅ [${mockAccessory.context.deviceConfig.name}] Successfully removed service: Indoor Temperature`
+      `Updating accessory ${mockAccessory.context.deviceConfig.name} after removing disabled services.`
     );
   });
 
