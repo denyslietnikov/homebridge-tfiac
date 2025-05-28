@@ -391,7 +391,7 @@ describe('TfiacPlatform - Additional Tests', () => {
     (platform as any).removeDisabledServices(mockAccessory as any, mockAccessory.context.deviceConfig);
 
     expect(log.info).toHaveBeenCalledWith(
-      `Temperature sensors are disabled for ${mockAccessory.context.deviceConfig.name} - removing any that were cached.`
+      `⚠️ Temperature sensors are disabled for ${mockAccessory.context.deviceConfig.name} - removing any that were cached.`
     );
   });
 

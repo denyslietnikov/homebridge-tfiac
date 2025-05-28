@@ -129,7 +129,7 @@ describe('TfiacPlatformAccessory extra tests', () => {
       });
 
     new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    expect(platform.log!.info).toHaveBeenCalledWith('Temperature sensors are disabled for AC - removing any that were cached.');
+    expect(platform.log!.info).toHaveBeenCalledWith('⚠️ Temperature sensors are disabled for AC - removing any that were cached.');
     // We only need to make sure `removeService` was invoked at least once
     expect(accessory.removeService).toHaveBeenCalled();
     expect(platform.log!.debug).toHaveBeenCalledWith('Removed existing indoor temperature sensor service.');

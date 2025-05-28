@@ -240,7 +240,7 @@ describe('TfiacPlatform branch coverage tests', () => {
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
       
-      expect(mockLog.info).toHaveBeenCalledWith('Temperature sensors are disabled for Test Accessory - removing any that were cached.');
+      expect(mockLog.info).toHaveBeenCalledWith('⚠️ Temperature sensors are disabled for Test Accessory - removing any that were cached.');
       expect(mockLog.info).toHaveBeenCalledWith(
         '✅ Updating accessory Test Accessory after removing disabled services.'
       );

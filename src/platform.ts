@@ -44,7 +44,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   private readonly optionalAccessoryConfigs: OptionalAccessoryConfig<unknown>[];
   private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory>;
   private _debugEnabled: boolean = false; // Declare and initialize _debugEnabled
-  private readonly PLUGIN_VERSION = '1.27.0'; // Current plugin version
+  private readonly PLUGIN_VERSION = '1.27.0-beta.91'; // Current plugin version
   private readonly CACHE_CLEANUP_VERSION = '1.26.0'; // Version that requires cache cleanup
 
   constructor(
@@ -453,7 +453,20 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   }
 
   private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
+    // Force info logging for troubleshooting
+    this.log.info(`🔍 [${deviceConfig.name}] removeDisabledServices: Starting service removal check for accessory: ${accessory.displayName}`);
+    
     this.log.debug(`[${deviceConfig.name}] Starting service removal check for accessory: ${accessory.displayName}`);
+    
+    // Force info logging for critical config diagnostic info  
+    this.log.info(`🔍 [${deviceConfig.name}] Device config flags: ` +
+      `enableDisplay=${deviceConfig.enableDisplay}, enableSleep=${deviceConfig.enableSleep}, ` +
+      `enableFanSpeed=${deviceConfig.enableFanSpeed}, enableDry=${deviceConfig.enableDry}, ` +
+      `enableFanOnly=${deviceConfig.enableFanOnly}, enableTurbo=${deviceConfig.enableTurbo}, ` +
+      `enableEco=${deviceConfig.enableEco}, enableStandaloneFan=${deviceConfig.enableStandaloneFan}, ` +
+      `enableHorizontalSwing=${deviceConfig.enableHorizontalSwing}, enableBeep=${deviceConfig.enableBeep}, ` +
+      `enableTemperature=${deviceConfig.enableTemperature}, enableIFeelSensor=${deviceConfig.enableIFeelSensor}`);
+    
     this.log.debug(`[${deviceConfig.name}] Device config:`, JSON.stringify({
       enableDisplay: deviceConfig.enableDisplay,
       enableSleep: deviceConfig.enableSleep,
@@ -484,6 +497,10 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       this.log.warn(`⚠️ [${deviceConfig.name}] Accessory has no services array, skipping service removal`);
       return;
     }
+    
+    // Force info logging for service inventory
+    this.log.info(`🔍 [${deviceConfig.name}] Current services on accessory (${accessory.services.length} total): ` +
+      accessory.services.map(s => `${s.displayName || 'unnamed'}(${s.subtype || 'no-subtype'})`).join(', '));
     
     this.log.debug(`[${deviceConfig.name}] Current services on accessory:`, 
       accessory.services.map(s => ({
@@ -518,6 +535,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       this.log.debug(`[${deviceConfig.name}] Config key: ${configKey}, value: ${configValue}`);
       
       if (configValue === false) {
+        this.log.info(`🗑️ [${deviceConfig.name}] Service ${displayName} is disabled, attempting to remove...`);
         this.log.debug(`[${deviceConfig.name}] Service ${displayName} is disabled, attempting to remove...`);
         
         const serviceInfo = serviceSubtypeMap[name];
@@ -578,7 +596,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       this.log.debug(`[${deviceConfig.name}] Temperature sensors are disabled, checking for existing services...`);
       
       if (deviceConfig.debug) {
-        this.log.info(`Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`);
+        this.log.info(`⚠️ Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
       
       // Check for indoor temperature sensor
@@ -628,7 +646,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       this.log.debug(`[${deviceConfig.name}] iFeel sensor is disabled, checking for existing service...`);
       
       if (deviceConfig.debug) {
-        this.log.info(`iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
+        this.log.info(`⚠️ iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
       }
       
       this.log.debug(`[${deviceConfig.name}] Looking for iFeel sensor with UUID: ${this.Service.Switch.UUID}, subtype: ifeel_sensor`);
@@ -650,6 +668,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     }
 
     // Final summary and accessory update
+    this.log.info(`🔍 [${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);
     this.log.debug(`[${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);
     
     if (serviceRemoved) {

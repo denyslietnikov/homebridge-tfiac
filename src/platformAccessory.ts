@@ -139,7 +139,7 @@ export class TfiacPlatformAccessory {
     } else {
       if (this.deviceConfig.debug) {
         this.platform.log.info(
-          `Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`,
+          `⚠️ Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`,
         );
       }
 
@@ -177,7 +177,7 @@ export class TfiacPlatformAccessory {
     } else {
       if (this.deviceConfig.debug) {
         this.platform.log.info(
-          `IFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`,
+          `⚠️ IFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`,
         );
       }
 
