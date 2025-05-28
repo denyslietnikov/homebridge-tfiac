@@ -66,11 +66,10 @@ export abstract class BaseSwitchAccessory {
   ) {
     this.deviceConfig = accessory.context.deviceConfig;
 
-    // Log context and config only once when debug is enabled
+    // Log context and config only once per device when debug is enabled
     if (this.deviceConfig?.debug && !BaseSwitchAccessory.hasLoggedContext) {
       console.log('BaseSwitchAccessory constructor starts', accessory.UUID || 'no-uuid');
       console.log('accessory context?', accessory.context || 'no-context');
-      console.log('deviceConfig?', this.deviceConfig);
       console.log('Using CacheManagerClass.getInstance');
       BaseSwitchAccessory.hasLoggedContext = true;
     }
