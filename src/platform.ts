@@ -475,6 +475,59 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     };
   }
 
+  /**
+   * Build a set of disabled service subtypes based on device configuration
+   */
+  private buildDisabledSubtypeSet(deviceConfig: TfiacDeviceConfig): Set<string> {
+    const disabledSubtypes = new Set<string>();
+    const legacySubtypes = this.getLegacySubtypes();
+    
+    // Helper function to add all variants of a subtype (current + legacy)
+    const addSubtypeVariants = (subtype: string) => {
+      disabledSubtypes.add(subtype);
+      const legacyVariants = legacySubtypes[subtype] || [];
+      legacyVariants.forEach(variant => disabledSubtypes.add(variant));
+    };
+
+    // Check each optional service config flag and add disabled subtypes
+    this.optionalAccessoryConfigs.forEach(config => {
+      const configKey = `enable${config.name}` as keyof TfiacDeviceConfig;
+      if (deviceConfig[configKey] === false) {
+        // Map config name to subtype and add all variants
+        const subtypeMapping: Record<string, string> = {
+          'Display': SUBTYPES.display,
+          'Sleep': SUBTYPES.sleep,
+          'FanSpeed': SUBTYPES.fanSpeed,
+          'Dry': SUBTYPES.dry,
+          'FanOnly': SUBTYPES.fanOnly,
+          'Turbo': SUBTYPES.turbo,
+          'Eco': SUBTYPES.eco,
+          'StandaloneFan': SUBTYPES.standaloneFan,
+          'HorizontalSwing': SUBTYPES.horizontalSwing,
+          'Beep': SUBTYPES.beep,
+        };
+        
+        const subtype = subtypeMapping[config.name];
+        if (subtype) {
+          addSubtypeVariants(subtype);
+        }
+      }
+    });
+
+    // Special handling for temperature sensors
+    if (deviceConfig.enableTemperature === false) {
+      addSubtypeVariants(SUBTYPES.indoorTemperature);
+      addSubtypeVariants(SUBTYPES.outdoorTemperature);
+    }
+
+    // Special handling for iFeel sensor
+    if (deviceConfig.enableIFeelSensor === false) {
+      addSubtypeVariants(SUBTYPES.iFeelSensor);
+    }
+
+    return disabledSubtypes;
+  }
+
   private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
     // Force info logging for troubleshooting
     this.log.info(`🔍 [${deviceConfig.name}] removeDisabledServices: Starting service removal check for accessory: ${accessory.displayName}`);
@@ -506,13 +559,6 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       debug: deviceConfig.debug,
     }, null, 2));
 
-    const servicesToRemove: OptionalAccessoryConfig<unknown>[] = this.optionalAccessoryConfigs.map(config => ({
-      name: config.name,
-      displayName: config.displayName,
-      enabledByDefault: config.enabledByDefault,
-      accessoryClass: config.accessoryClass,
-    }));
-
     let serviceRemoved = false;
 
     // List all current services on the accessory
@@ -534,238 +580,42 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       })),
     );
 
-    // Service subtype mapping for proper cleanup - using consistent SUBTYPES
-    const serviceSubtypeMap: Record<string, { serviceUUID: string; subtype: string }> = {
-      'Display': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.display },
-      'Sleep': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.sleep },
-      'FanSpeed': { serviceUUID: this.Service.Fanv2.UUID, subtype: SUBTYPES.fanSpeed },
-      'Dry': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.dry },
-      'FanOnly': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.fanOnly },
-      'Turbo': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.turbo },
-      'Eco': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.eco },
-      'StandaloneFan': { serviceUUID: this.Service.Fan.UUID, subtype: SUBTYPES.standaloneFan },
-      'HorizontalSwing': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.horizontalSwing },
-      'Beep': { serviceUUID: this.Service.Switch.UUID, subtype: SUBTYPES.beep },
-    };
+    // Build set of disabled subtypes (current + all legacy variants)
+    const disabledSubtypes = this.buildDisabledSubtypeSet(deviceConfig);
+    
+    this.log.info(`🔍 [${deviceConfig.name}] Disabled subtypes to remove: [${Array.from(disabledSubtypes).join(', ')}]`);
+    this.log.debug(`[${deviceConfig.name}] Disabled subtypes set:`, Array.from(disabledSubtypes));
 
-    this.log.debug(`[${deviceConfig.name}] Service subtype mapping:`, serviceSubtypeMap);
-
-    servicesToRemove.forEach(({ name, displayName }) => {
-      const configKey = `enable${name}` as keyof TfiacDeviceConfig;
-      const configValue = deviceConfig[configKey];
-      
-      this.log.debug(`[${deviceConfig.name}] Checking service: ${displayName} (${name})`);
-      this.log.debug(`[${deviceConfig.name}] Config key: ${configKey}, value: ${configValue}`);
-      
-      if (configValue === false) {
-        this.log.info(`🗑️ [${deviceConfig.name}] Service ${displayName} is disabled, attempting to remove...`);
-        this.log.debug(`[${deviceConfig.name}] Service ${displayName} is disabled, attempting to remove...`);
-        
-        const serviceInfo = serviceSubtypeMap[name];
-        if (serviceInfo) {
-          this.log.debug(`[${deviceConfig.name}] Looking for service with UUID: ${serviceInfo.serviceUUID}, subtype: ${serviceInfo.subtype}`);
-          
-          let service = accessory.getServiceById(serviceInfo.serviceUUID, serviceInfo.subtype);
-          let foundWithSubtype = serviceInfo.subtype;
-          
-          // If not found with current subtype, try legacy subtypes
-          if (!service) {
-            const legacySubtypes = this.getLegacySubtypes();
-            const legacyVariants = legacySubtypes[serviceInfo.subtype] || [];
-            
-            this.log.debug(`[${deviceConfig.name}] Service not found with current subtype ${serviceInfo.subtype}, ` +
-              `trying legacy subtypes: ${legacyVariants.join(', ')}`);
-            
-            for (const legacySubtype of legacyVariants) {
-              service = accessory.getServiceById(serviceInfo.serviceUUID, legacySubtype);
-              if (service) {
-                foundWithSubtype = legacySubtype;
-                this.log.info(`🔍 [${deviceConfig.name}] Found service with legacy subtype: ${legacySubtype}`);
-                break;
-              }
-            }
-          }
-          
-          if (service) {
-            this.log.info(`🔍 [${deviceConfig.name}] Found service to remove: ${service.displayName} ` +
-              `(UUID: ${service.UUID}, subtype: ${foundWithSubtype})`);
-            this.log.debug(`[${deviceConfig.name}] Found service to remove:`, {
-              UUID: service.UUID,
-              subtype: foundWithSubtype,
-              displayName: service.displayName,
-            });
-            
-            try {
-              accessory.removeService(service);
-              this.log.info(`✅ [${deviceConfig.name}] Successfully removed service: ${displayName}`);
-              serviceRemoved = true;
-            } catch (error) {
-              this.log.error(`❌ [${deviceConfig.name}] Error removing service ${displayName}:`, error);
-            }
-          } else {
-            this.log.info(`⚠️ [${deviceConfig.name}] Service ${displayName} not found with ` +
-              `UUID ${serviceInfo.serviceUUID} and subtype ${serviceInfo.subtype} (or legacy variants)`);
-            this.log.debug(`[${deviceConfig.name}] ⚠️ Service ${displayName} not found with ` +
-              `UUID ${serviceInfo.serviceUUID} and subtype ${serviceInfo.subtype} (or legacy variants)`);
-          }
-        } else {
-          this.log.debug(`[${deviceConfig.name}] No service mapping found for ${name}, trying fallback method...`);
-          
-          // Fallback to old method for any unmapped services (shouldn't happen)
-          const service = accessory.getService(displayName);
-          if (service) {
-            this.log.info(`🔍 [${deviceConfig.name}] Found service via fallback method: ${displayName}`);
-            this.log.debug(`[${deviceConfig.name}] Found service via fallback method: ${displayName}`);
-            
-            try {
-              accessory.removeService(service);
-              this.log.info(`✅ [${deviceConfig.name}] Successfully removed service via fallback: ${displayName}`);
-              serviceRemoved = true;
-            } catch (error) {
-              this.log.error(`❌ [${deviceConfig.name}] Error removing service via fallback ${displayName}:`, error);
-            }
-          } else {
-            this.log.info(`⚠️ [${deviceConfig.name}] Service ${displayName} not found via fallback method either`);
-            this.log.debug(`[${deviceConfig.name}] ⚠️ Service ${displayName} not found via fallback method either`);
-          }
-        }
-      } else {
-        this.log.debug(`[${deviceConfig.name}] Service ${displayName} is enabled or not explicitly disabled ` +
-          `(value: ${configValue}), skipping removal`);
+    // NEW APPROACH: Subtype-only service removal to handle UUID changes between plugin versions
+    // Iterate through all services and remove any with disabled subtypes, regardless of UUID
+    const servicesToRemove = accessory.services.filter(service => {
+      // Skip core services that should never be removed (AccessoryInformation, etc.)
+      if (!service.subtype) {
+        return false;
       }
+      
+      const shouldRemove = disabledSubtypes.has(service.subtype);
+      this.log.debug(`[${deviceConfig.name}] Service check: ${service.displayName || 'unnamed'} ` +
+        `(UUID: ${service.UUID}, subtype: ${service.subtype}) - should remove: ${shouldRemove}`);
+      
+      return shouldRemove;
     });
 
-    // Special case for temperature sensors
-    const isTemperatureDisabled = deviceConfig.enableTemperature === false;
-    const isIFeelDisabled = deviceConfig.enableIFeelSensor === false;
+    this.log.info(`🔍 [${deviceConfig.name}] Found ${servicesToRemove.length} services to remove based on subtype matching`);
 
-    this.log.debug(`[${deviceConfig.name}] Temperature sensor check: isTemperatureDisabled=${isTemperatureDisabled}, isIFeelDisabled=${isIFeelDisabled}`);
-
-    if (isTemperatureDisabled) {
-      this.log.debug(`[${deviceConfig.name}] Temperature sensors are disabled, checking for existing services...`);
+    // Remove each identified service
+    servicesToRemove.forEach(service => {
+      this.log.info(`🗑️ [${deviceConfig.name}] Removing service: ${service.displayName || 'unnamed'} ` +
+        `(UUID: ${service.UUID}, subtype: ${service.subtype})`);
       
-      if (deviceConfig.debug) {
-        this.log.info(`⚠️ Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`);
+      try {
+        accessory.removeService(service);
+        this.log.info(`✅ [${deviceConfig.name}] Successfully removed service: ${service.displayName || 'unnamed'}`);
+        serviceRemoved = true;
+      } catch (error) {
+        this.log.error(`❌ [${deviceConfig.name}] Error removing service ${service.displayName || 'unnamed'}:`, error);
       }
-      
-      // Check for indoor temperature sensor
-      this.log.debug(`[${deviceConfig.name}] Looking for indoor temperature sensor with ` +
-        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: ${SUBTYPES.indoorTemperature}`);
-      let indoorTempService = accessory.getServiceById(
-        this.Service.TemperatureSensor.UUID, 
-        SUBTYPES.indoorTemperature,
-      );
-      
-      // Try legacy subtypes if not found
-      if (!indoorTempService) {
-        const legacySubtypes = this.getLegacySubtypes();
-        const legacyVariants = legacySubtypes[SUBTYPES.indoorTemperature] || [];
-        this.log.debug(`[${deviceConfig.name}] Indoor temperature sensor not found with current subtype, ` +
-          `trying legacy subtypes: ${legacyVariants.join(', ')}`);
-        
-        for (const legacySubtype of legacyVariants) {
-          indoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, legacySubtype);
-          if (indoorTempService) {
-            this.log.info(`🔍 [${deviceConfig.name}] Found indoor temperature sensor with legacy subtype: ${legacySubtype}`);
-            break;
-          }
-        }
-      }
-      
-      if (indoorTempService) {
-        this.log.debug(`[${deviceConfig.name}] Found indoor temperature sensor to remove`);
-        try {
-          accessory.removeService(indoorTempService);
-          this.log.info(`✅ [${deviceConfig.name}] Successfully removed indoor temperature sensor service`);
-          serviceRemoved = true;
-        } catch (error) {
-          this.log.error(`❌ [${deviceConfig.name}] Error removing indoor temperature sensor:`, error);
-        }
-      } else {
-        this.log.debug(`[${deviceConfig.name}] ⚠️ Indoor temperature sensor not found`);
-      }
-      
-      // Check for outdoor temperature sensor
-      this.log.debug(`[${deviceConfig.name}] Looking for outdoor temperature sensor with ` +
-        `UUID: ${this.Service.TemperatureSensor.UUID}, subtype: ${SUBTYPES.outdoorTemperature}`);
-      let outdoorTempService = accessory.getServiceById(
-        this.Service.TemperatureSensor.UUID, 
-        SUBTYPES.outdoorTemperature,
-      );
-      
-      // Try legacy subtypes if not found
-      if (!outdoorTempService) {
-        const legacySubtypes = this.getLegacySubtypes();
-        const legacyVariants = legacySubtypes[SUBTYPES.outdoorTemperature] || [];
-        this.log.debug(`[${deviceConfig.name}] Outdoor temperature sensor not found with current subtype, ` +
-          `trying legacy subtypes: ${legacyVariants.join(', ')}`);
-        
-        for (const legacySubtype of legacyVariants) {
-          outdoorTempService = accessory.getServiceById(this.Service.TemperatureSensor.UUID, legacySubtype);
-          if (outdoorTempService) {
-            this.log.info(`🔍 [${deviceConfig.name}] Found outdoor temperature sensor with legacy subtype: ${legacySubtype}`);
-            break;
-          }
-        }
-      }
-      
-      if (outdoorTempService) {
-        this.log.debug(`[${deviceConfig.name}] Found outdoor temperature sensor to remove`);
-        try {
-          accessory.removeService(outdoorTempService);
-          this.log.info(`✅ [${deviceConfig.name}] Successfully removed outdoor temperature sensor service`);
-          serviceRemoved = true;
-        } catch (error) {
-          this.log.error(`❌ [${deviceConfig.name}] Error removing outdoor temperature sensor:`, error);
-        }
-      } else {
-        this.log.debug(`[${deviceConfig.name}] ⚠️ Outdoor temperature sensor not found`);
-      }
-    } else {
-      this.log.debug(`[${deviceConfig.name}] Temperature sensors are enabled or not explicitly disabled, skipping removal`);
-    }
-
-    if (isIFeelDisabled) {
-      this.log.debug(`[${deviceConfig.name}] iFeel sensor is disabled, checking for existing service...`);
-      
-      if (deviceConfig.debug) {
-        this.log.info(`⚠️ iFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`);
-      }
-      
-      this.log.debug(`[${deviceConfig.name}] Looking for iFeel sensor with UUID: ${this.Service.Switch.UUID}, subtype: ${SUBTYPES.iFeelSensor}`);
-      let iFeelService = accessory.getServiceById(this.Service.Switch.UUID, SUBTYPES.iFeelSensor);
-      
-      // Try legacy subtypes if not found
-      if (!iFeelService) {
-        const legacySubtypes = this.getLegacySubtypes();
-        const legacyVariants = legacySubtypes[SUBTYPES.iFeelSensor] || [];
-        this.log.debug(`[${deviceConfig.name}] iFeel sensor not found with current subtype, ` +
-          `trying legacy subtypes: ${legacyVariants.join(', ')}`);
-        
-        for (const legacySubtype of legacyVariants) {
-          iFeelService = accessory.getServiceById(this.Service.Switch.UUID, legacySubtype);
-          if (iFeelService) {
-            this.log.info(`🔍 [${deviceConfig.name}] Found iFeel sensor with legacy subtype: ${legacySubtype}`);
-            break;
-          }
-        }
-      }
-      
-      if (iFeelService) {
-        this.log.debug(`[${deviceConfig.name}] Found iFeel sensor to remove`);
-        try {
-          accessory.removeService(iFeelService);
-          this.log.info(`✅ [${deviceConfig.name}] Successfully removed iFeel sensor service`);
-          serviceRemoved = true;
-        } catch (error) {
-          this.log.error(`❌ [${deviceConfig.name}] Error removing iFeel sensor:`, error);
-        }
-      } else {
-        this.log.debug(`[${deviceConfig.name}] ⚠️ iFeel sensor not found`);
-      }
-    } else {
-      this.log.debug(`[${deviceConfig.name}] iFeel sensor is enabled or not explicitly disabled, skipping removal`);
-    }
+    });
 
     // Final summary and accessory update
     this.log.info(`🔍 [${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);

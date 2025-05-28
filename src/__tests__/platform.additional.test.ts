@@ -390,8 +390,9 @@ describe('TfiacPlatform - Additional Tests', () => {
 
     (platform as any).removeDisabledServices(mockAccessory as any, mockAccessory.context.deviceConfig);
 
+    // Check for the new comprehensive logging format - service was successfully removed
     expect(log.info).toHaveBeenCalledWith(
-      `⚠️ Temperature sensors are disabled for ${mockAccessory.context.deviceConfig.name} - removing any that were cached.`
+      `✅ [${mockAccessory.context.deviceConfig.name}] Successfully removed service: Indoor Temperature`
     );
   });
 

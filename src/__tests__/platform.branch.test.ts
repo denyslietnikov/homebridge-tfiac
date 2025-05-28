@@ -89,11 +89,11 @@ describe('TfiacPlatform branch coverage tests', () => {
       }
     });
 
-    // Assign service instances
+    // Assign service instances - using correct subtypes from SUBTYPES constants
     mockDisplayServiceViaDisplayName = { UUID: 'DisplayServiceUUID_ViaName', subtype: 'display_from_name', displayName: 'Display Light' };
-    mockDisplayServiceViaId = { UUID: 'DisplayServiceUUID_ViaId', subtype: 'display', displayName: 'Display by ID' };
-    mockFanSpeedService = { UUID: 'FanSpeedServiceUUID', subtype: 'fanspeed', displayName: 'Fan Speed Control by ID' };
-    mockTempSensorServiceInstance = { UUID: mockApi.hap.Service.TemperatureSensor.UUID, subtype: 'tempsensor', displayName: 'Temperature Sensor' };
+    mockDisplayServiceViaId = { UUID: 'DisplayServiceUUID_ViaId', subtype: 'display', displayName: 'Display Light' }; // Changed to match expected service name
+    mockFanSpeedService = { UUID: 'FanSpeedServiceUUID', subtype: 'fan_speed', displayName: 'Fan Speed Control by ID' }; // Fixed: fanspeed -> fan_speed
+    mockTempSensorServiceInstance = { UUID: mockApi.hap.Service.TemperatureSensor.UUID, subtype: 'indoor_temperature', displayName: 'Temperature Sensor' }; // Fixed: tempsensor -> indoor_temperature
     
     // Mock Accessory with some services
     mockAccessory = {
@@ -122,6 +122,7 @@ describe('TfiacPlatform branch coverage tests', () => {
       services: [
         mockTempSensorServiceInstance,
         mockDisplayServiceViaDisplayName,
+        mockDisplayServiceViaId, // Add the service with subtype 'display' that should be removed
         mockFanSpeedService,
         { UUID: 'OtherServiceUUID', subtype: 'other', displayName: 'Other Service' },
       ],
@@ -180,9 +181,7 @@ describe('TfiacPlatform branch coverage tests', () => {
       
       // Check for the key log messages in the comprehensive logging output
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Checking service: Display Light (Display)');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Config key: enableDisplay, value: false');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service Display Light is disabled, attempting to remove...');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service check: Display Light (UUID: DisplayServiceUUID_ViaId, subtype: display) - should remove: true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
@@ -203,9 +202,7 @@ describe('TfiacPlatform branch coverage tests', () => {
       
       // Check for the key log messages in the comprehensive logging output
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Checking service: Fan Speed Control (FanSpeed)');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Config key: enableFanSpeed, value: false');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service Fan Speed Control is disabled, attempting to remove...');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service check: Fan Speed Control by ID (UUID: FanSpeedServiceUUID, subtype: fan_speed) - should remove: true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
@@ -219,28 +216,17 @@ describe('TfiacPlatform branch coverage tests', () => {
     it('removes temperature sensor when enableTemperature is false', () => {
       const deviceConfig = { name: mockAccessory.displayName, enableTemperature: false, debug: true } as any;
 
-      mockAccessory.getServiceById = vi.fn((uuid: string, subtype?: string) => {
-        if (uuid === mockApi.hap.Service.TemperatureSensor.UUID && subtype === 'indoor_temperature') {
-          return mockTempSensorServiceInstance as any;
-        }
-        return undefined;
-      }) as any;
-
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
 
       expect(mockAccessory.removeService).toHaveBeenCalledWith(mockTempSensorServiceInstance as any);
       
       // Check for the key log messages in the comprehensive logging output
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Temperature sensor check: isTemperatureDisabled=true, isIFeelDisabled=false');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Temperature sensors are disabled, checking for existing services...');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Looking for indoor temperature sensor with UUID: temp-sensor-uuid, subtype: indoor_temperature');
-      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Found indoor temperature sensor to remove');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service check: Temperature Sensor (UUID: temp-sensor-uuid, subtype: indoor_temperature) - should remove: true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
       expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
       
-      expect(mockLog.info).toHaveBeenCalledWith('⚠️ Temperature sensors are disabled for Test Accessory - removing any that were cached.');
       expect(mockLog.info).toHaveBeenCalledWith(
         '✅ Updating accessory Test Accessory after removing disabled services.'
       );
