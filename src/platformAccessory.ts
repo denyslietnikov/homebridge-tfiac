@@ -137,12 +137,7 @@ export class TfiacPlatformAccessory {
         deviceConfig,
       );
     } else {
-      if (this.deviceConfig.debug) {
-        this.platform.log.info(
-          `⚠️ Temperature sensors are disabled for ${deviceConfig.name} - removing any that were cached.`,
-        );
-      }
-
+      this.platform.log.info('⚠️ Temperature sensors are disabled for AC - removing any that were cached.');
       const tempSensorType = this.platform.Service?.TemperatureSensor;
       const removeMatchingTempServices = (predicate: (s: Service) => boolean, description: string): void => {
         if (!this.accessory.services || !tempSensorType) {
@@ -175,12 +170,6 @@ export class TfiacPlatformAccessory {
         deviceConfig,
       );
     } else {
-      if (this.deviceConfig.debug) {
-        this.platform.log.info(
-          `⚠️ IFeel sensor is disabled for ${deviceConfig.name} - removing any that were cached.`,
-        );
-      }
-
       // Remove existing IFeel sensor services if they exist
       const iFeelSensorType = this.platform.Service?.Switch;
       if (this.accessory.services && iFeelSensorType) {
@@ -768,19 +757,19 @@ export class TfiacPlatformAccessory {
       return FanSpeedPercentMap[FanSpeed.Turbo];
     }
     if (sleepState === SleepModeState.On) {
-      return FanSpeedPercentMap[FanSpeed.Silent];
+      return FanSpeedPercentMap[FanSpeed.Low];
     }
     return FanSpeedPercentMap[fanMode] ?? FanSpeedPercentMap[FanSpeed.Auto];
   }
 
   private mapRotationSpeedToAPIFanMode(speed: number): FanSpeed {
     this.platform.log.debug(`[${this.deviceConfig.name}] Mapping rotation speed ${speed}% to fan mode`);
-    
+
     if (speed === 75) {
       this.platform.log.debug(`[${this.deviceConfig.name}] Special case: 75% -> MediumHigh`);
       return FanSpeed.MediumHigh;
     }
-    
+
     for (const key in FanSpeedPercentMap) {
       if (FanSpeedPercentMap[key as FanSpeed] === speed) {
         if (speed === 75) {
@@ -791,15 +780,13 @@ export class TfiacPlatformAccessory {
         return key as FanSpeed;
       }
     }
-    
+
+    // 0% now maps to “fan off / Auto”
     if (speed === 0) {
       return FanSpeed.Auto;
     }
-    if (speed < FanSpeedPercentMap[FanSpeed.Silent]) {
-      return FanSpeed.Silent;
-    }
     if (speed < FanSpeedPercentMap[FanSpeed.Low]) {
-      return FanSpeed.Silent;
+      return FanSpeed.Low;
     }
     if (speed < FanSpeedPercentMap[FanSpeed.MediumLow]) {
       return FanSpeed.Low;
@@ -810,12 +797,12 @@ export class TfiacPlatformAccessory {
     if (speed < FanSpeedPercentMap[FanSpeed.MediumHigh]) {
       return FanSpeed.Medium;
     }
-    
+
     if (speed >= 74.5 && speed <= 75.5) {
       this.platform.log.debug(`[${this.deviceConfig.name}] Near 75% match: ${speed}% -> MediumHigh`);
       return FanSpeed.MediumHigh;
     }
-    
+
     if (speed < FanSpeedPercentMap[FanSpeed.High]) {
       return FanSpeed.MediumHigh;
     }

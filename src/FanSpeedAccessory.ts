@@ -11,7 +11,6 @@ import CacheManager from './CacheManager.js';
 // DeviceState mutators used: setSleepMode, setTurbo, setFanSpeed, setPower
 import { OperationMode, FanSpeed, SleepModeState, PowerState, FanSpeedPercentMap, SUBTYPES } from './enums.js';
 // Constants for RotationSpeed mapping
-const AUTO_PERCENT = 50;      // Slider value that represents “Auto”
 const TURBO_THRESHOLD = 95;   // Everything ≥ 95 % is treated as Turbo
 import { DeviceState } from './state/DeviceState.js';
 
@@ -89,12 +88,11 @@ export class FanSpeedAccessory {
     } else if (state.turboMode === PowerState.On || state.fanSpeed === FanSpeed.Turbo) {
       rotationSpeedValue = 100;
     } else if (state.sleepMode === SleepModeState.On) {
-      // Sleep shows as Silent (lowest) – 15 %
-      rotationSpeedValue = FanSpeedPercentMap[FanSpeed.Silent];
+      rotationSpeedValue = FanSpeedPercentMap[FanSpeed.Low]; // Sleep shows as Low
     } else if (state.fanSpeed === FanSpeed.Auto) {
-      rotationSpeedValue = AUTO_PERCENT;
+      rotationSpeedValue = 50;
     } else {
-      rotationSpeedValue = FanSpeedPercentMap[state.fanSpeed] ?? AUTO_PERCENT;
+      rotationSpeedValue = FanSpeedPercentMap[state.fanSpeed] ?? 50;
     }
 
     this.service.updateCharacteristic(
@@ -152,11 +150,11 @@ export class FanSpeedAccessory {
     if (state.turboMode === PowerState.On || state.fanSpeed === FanSpeed.Turbo) {
       pct = 100;
     } else if (state.sleepMode === SleepModeState.On) {
-      pct = FanSpeedPercentMap[FanSpeed.Silent];
+      pct = FanSpeedPercentMap[FanSpeed.Low];
     } else if (state.fanSpeed === FanSpeed.Auto) {
-      pct = AUTO_PERCENT;
+      pct = 50;
     } else {
-      pct = FanSpeedPercentMap[state.fanSpeed] ?? AUTO_PERCENT;
+      pct = FanSpeedPercentMap[state.fanSpeed] ?? 50;
     }
     this.platform.log.debug(`[FanSpeedAccessory] GET RotationSpeed: ${pct}%`);
     return pct;
@@ -244,14 +242,11 @@ export class FanSpeedAccessory {
       // We will interpret 0 % as a pure power-off request; caller handles it.
       return FanSpeed.Auto;
     }
-    if (speed >= 45 && speed <= 55) {
-      return FanSpeed.Auto;
-    }
-    if (speed < FanSpeedPercentMap[FanSpeed.Silent]) {
-      return FanSpeed.Silent;
-    }
     if (speed < FanSpeedPercentMap[FanSpeed.Low]) {
       return FanSpeed.Low;
+    }
+    if (speed >= 45 && speed <= 55) {
+      return FanSpeed.Auto;
     }
     if (speed < FanSpeedPercentMap[FanSpeed.MediumLow]) {
       return FanSpeed.MediumLow;

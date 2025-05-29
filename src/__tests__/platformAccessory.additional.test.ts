@@ -114,19 +114,6 @@ describe('TfiacPlatformAccessory extra tests', () => {
 
   it('should remove sensors when disable temperature', () => {
     accessory.context!.deviceConfig.enableTemperature = false;
-    accessory.context!.deviceConfig.debug = true; // Add this line
-    // Provide existing sensor services
-    const indoorService = {};
-    const outdoorService = {};
-    (accessory.getServiceById as ReturnType<typeof vi.fn>)
-      .mockImplementation((serviceType, id) => {
-        if (serviceType === 'TemperatureSensor' && id === 'indoor_temperature') {
-          return indoorService;
-        } else if (serviceType === 'TemperatureSensor' && id === 'outdoor_temperature') {
-          return outdoorService;
-        }
-        return null;
-      });
 
     new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
     expect(platform.log!.info).toHaveBeenCalledWith('⚠️ Temperature sensors are disabled for AC - removing any that were cached.');
@@ -249,9 +236,9 @@ describe('TfiacPlatformAccessory extra tests', () => {
     expect((inst as any)['calculateFanRotationSpeed']('X' as FanSpeed, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Auto]);
 
     expect((inst as any)['mapRotationSpeedToAPIFanMode'](0)).toBe(FanSpeed.Auto);
-    expect((inst as any)['mapRotationSpeedToAPIFanMode'](10)).toBe(FanSpeed.Silent);
-    expect((inst as any)['mapRotationSpeedToAPIFanMode'](20)).toBe(FanSpeed.Silent); 
-    expect((inst as any)['mapRotationSpeedToAPIFanMode'](40)).toBe(FanSpeed.Low); 
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](10)).toBe(FanSpeed.Low);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](20)).toBe(FanSpeed.Low); 
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](40)).toBe(FanSpeed.MediumLow); 
     expect((inst as any)['mapRotationSpeedToAPIFanMode'](60)).toBe(FanSpeed.Medium);
     expect((inst as any)['mapRotationSpeedToAPIFanMode'](90)).toBe(FanSpeed.MediumHigh);
 

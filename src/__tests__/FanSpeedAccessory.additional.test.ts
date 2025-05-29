@@ -147,11 +147,11 @@ describe('FanSpeedAccessory - Additional Tests', () => {
     
     // Test exact boundaries and mid-ranges
     expect(mapRotationSpeedToFanMode(0)).toBe(FanSpeed.Auto);
-    expect(mapRotationSpeedToFanMode(1)).toBe(FanSpeed.Silent);
+    expect(mapRotationSpeedToFanMode(1)).toBe(FanSpeed.Low);
     
     // Test basic ranges - just test a few key points to ensure the method is covered
-    expect(mapRotationSpeedToFanMode(10)).toBe(FanSpeed.Silent);     // Below 15% → Silent
-    expect(mapRotationSpeedToFanMode(20)).toBe(FanSpeed.Low);        // Between 15% and 30% → Low
+    expect(mapRotationSpeedToFanMode(10)).toBe(FanSpeed.Low);        // Low speed for small percentages
+    expect(mapRotationSpeedToFanMode(20)).toBe(FanSpeed.Low);        // Still in Low range
     expect(mapRotationSpeedToFanMode(35)).toBe(FanSpeed.MediumLow);  // Between 30% and 45% → MediumLow
     expect(mapRotationSpeedToFanMode(50)).toBe(FanSpeed.Auto);       // Between 45% and 55% → Auto
     expect(mapRotationSpeedToFanMode(60)).toBe(FanSpeed.MediumHigh); // Between 60% and 75% → MediumHigh
@@ -285,10 +285,10 @@ describe('FanSpeedAccessory - Additional Tests', () => {
     const stateChangedListener = (mockDeviceState as any).stateChangedListener;
     stateChangedListener(mockDeviceState);
     
-    // Should update with Silent speed percentage (as per implementation)
+    // Should update with Low speed percentage (as per implementation, since Silent doesn't exist)
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic.RotationSpeed,
-      FanSpeedPercentMap[FanSpeed.Silent]
+      FanSpeedPercentMap[FanSpeed.Low]
     );
   });
 

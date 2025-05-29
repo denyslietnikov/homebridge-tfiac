@@ -193,7 +193,7 @@ describe('AirConditionerAPI - Extended Tests', () => {
       const promise = api.updateState();
       vi.runOnlyPendingTimers();
       const status = await promise;
-      expect(status.fan_mode).toBe(FanSpeed.MediumLow);
+      expect(status.fan_mode).toBe(FanSpeed.Medium);
     });
   });
 

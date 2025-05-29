@@ -217,11 +217,11 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
 
       simulateResponse(mockResponseXML);
 
-      await api.setFanAndSleep(FanSpeed.Silent, 'sleepMode2:1:2:3:4:5:6:7:8:9:10');
+      await api.setFanAndSleep(FanSpeed.Low, 'sleepMode2:1:2:3:4:5:6:7:8:9:10');
 
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({
         power: PowerState.On,
-        fanSpeed: FanSpeed.Silent,
+        fanSpeed: FanSpeed.Low,
         sleep: 'sleepMode2:1:2:3:4:5:6:7:8:9:10',
       });
 
@@ -314,12 +314,12 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
 
       simulateResponse(mockResponseXML);
 
-      await api.setFanOnly(FanSpeed.Silent);
+      await api.setFanOnly(FanSpeed.Low);
 
       expect(setDeviceOptionsSpy).toHaveBeenCalledWith({
         power: PowerState.On,
         mode: OperationMode.FanOnly,
-        fanSpeed: FanSpeed.Silent,
+        fanSpeed: FanSpeed.Low,
       });
 
       vi.advanceTimersByTime(100);
@@ -421,8 +421,9 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
 
       const result = await api.updateState(true);
 
-      // Should map to closest fan speed - 37 is closer to Low (30) than MediumLow (45)
-      expect(result.fan_mode).toBe(FanSpeed.Low);
+      // Should map to closest fan speed - 37 is closer to MediumLow (40) than Low (25)
+      // Distance: |37-40| = 3 vs |37-25| = 12, so MediumLow is closest
+      expect(result.fan_mode).toBe(FanSpeed.MediumLow);
     });
 
     it('should handle fan speed mapping for percentage between Silent and Low', async () => {
@@ -452,8 +453,8 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
 
       const result = await api.updateState(true);
 
-      // 22 is closer to Silent (15) than Low (30), diff=7 vs diff=8, so Silent should win
-      expect(result.fan_mode).toBe(FanSpeed.Silent);
+      // 22 should map to Low (25) as the closest available speed (Silent doesn't exist)
+      expect(result.fan_mode).toBe(FanSpeed.Low);
     });
 
     it('should handle fan speed mapping with tie scenario and prefer higher speed', async () => {
@@ -484,9 +485,9 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
 
       const result = await api.updateState(true);
 
-      // 52 is between MediumLow (45) and Medium (60)
-      // 52-45=7, 60-52=8, so MediumLow should be closest
-      expect(result.fan_mode).toBe(FanSpeed.MediumLow);
+      // 52 is between MediumLow (40) and Medium (60)
+      // 52-40=12, 60-52=8, so Medium is closest
+      expect(result.fan_mode).toBe(FanSpeed.Medium);
     });
 
     it('should exclude Auto and Turbo from general numeric matching unless exact', async () => {
@@ -516,8 +517,8 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
 
       const result = await api.updateState(true);
 
-      // 5 is closest to Silent (15) among non-Auto/Turbo speeds
-      expect(result.fan_mode).toBe(FanSpeed.Silent);
+      // 5 should map to Low (25) as the closest available speed (Silent doesn't exist)
+      expect(result.fan_mode).toBe(FanSpeed.Low);
     });
 
     it('should handle non-numeric WindSpeed values', async () => {
@@ -589,8 +590,8 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
 
       const result = await api.updateState(true);
 
-      // 37 is closest to Low (30) with diff=7 vs MediumLow (45) with diff=8
-      expect(result.fan_mode).toBe(FanSpeed.Low);
+      // 37 is closest to MediumLow (40) with diff=3 vs Low (25) with diff=12
+      expect(result.fan_mode).toBe(FanSpeed.MediumLow);
     });
 
     it('should handle multiple fan speeds with same percentage values', async () => {
@@ -636,8 +637,7 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
       
       const originalFanSpeedPercentMap = {
         [FanSpeed.Auto]: 0,
-        [FanSpeed.Silent]: 10,  // Modified for test
-        [FanSpeed.Low]: 20,     // Modified for test  
+        [FanSpeed.Low]: 10,     // Modified for test (lowest available speed)
         [FanSpeed.MediumLow]: 45,
         [FanSpeed.Medium]: 60,
         [FanSpeed.MediumHigh]: 75,
@@ -675,9 +675,9 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
       const result = await api.updateState(true);
 
       // With our mocked values:
-      // Silent: 10, diff = |15-10| = 5
-      // Low: 20, diff = |15-20| = 5
-      // This creates an exact tie, and the tie-breaking logic should prefer the higher speed (Low)
+      // Low: 10, diff = |15-10| = 5
+      // MediumLow: 45, diff = |15-45| = 30
+      // Low should be chosen as it's closest to 15
       expect(result.fan_mode).toBe(FanSpeed.Low);
     });
   });

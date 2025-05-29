@@ -247,7 +247,9 @@ describe('AirConditionerAPI - Additional Coverage Tests', () => {
     const status = await api.updateState(true);
     
     // Verify that numeric fan speed (50) was converted to proper FanSpeed enum value
-    expect(status.fan_mode).toBe(FanSpeed.MediumLow); // 50 is closest to MediumLow (45)
+    // 50 has equal distance to MediumLow (40) and Medium (60): |50-40|=10, |50-60|=10
+    // The tie-breaking logic prefers the higher fan speed, so Medium is selected
+    expect(status.fan_mode).toBe(FanSpeed.Medium);
     
     // Verify debug output
     expect(api.emit).toHaveBeenCalledWith(

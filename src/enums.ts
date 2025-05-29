@@ -43,7 +43,6 @@ export enum OperationMode {
  * Represents the fan speed modes.
  */
 export enum FanSpeed {
-  Silent = 'Silent',
   Low = 'Low',
   MediumLow = 'MediumLow',
   Medium = 'Medium', // Renamed from Middle
@@ -57,10 +56,9 @@ export enum FanSpeed {
  * Mapping from FanSpeed modes to HomeKit RotationSpeed percentages.
  */
 export const FanSpeedPercentMap: Record<FanSpeed, number> = {
-  [FanSpeed.Auto]: 0,
-  [FanSpeed.Silent]: 15,
-  [FanSpeed.Low]: 30,
-  [FanSpeed.MediumLow]: 45,
+  [FanSpeed.Auto]: 50,
+  [FanSpeed.Low]: 25,
+  [FanSpeed.MediumLow]: 40,
   [FanSpeed.Medium]: 60, // Was Middle, percentage adjusted
   [FanSpeed.MediumHigh]: 75,
   [FanSpeed.High]: 100, // Changed from 90 to 100
