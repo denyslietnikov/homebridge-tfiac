@@ -137,7 +137,6 @@ export class TfiacPlatformAccessory {
         deviceConfig,
       );
     } else {
-      this.platform.log.info('⚠️ Temperature sensors are disabled for AC - removing any that were cached.');
       const tempSensorType = this.platform.Service?.TemperatureSensor;
       const removeMatchingTempServices = (predicate: (s: Service) => boolean, description: string): void => {
         if (!this.accessory.services || !tempSensorType) {
