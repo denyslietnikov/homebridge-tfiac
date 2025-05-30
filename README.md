@@ -8,10 +8,13 @@ Homebridge Tfiac is a Homebridge plugin that enables you to control air conditio
 * Fan Speed: Set the fan speed (Low, Medium, High, or Auto).  
 * Swing Control: Control the horizontal/vertical swing settings.  
 * Real-Time Status Updates: Polling mechanism to update the current state of your AC.  
+
 * Dynamic Platform: Easily manage multiple AC units from a single configuration.  
 
+* Intuitive Fan‑Speed Slider: 0 % powers the AC **off**, 25 %‑90 % pick fixed speeds (Low → High), 50 % means **Auto**, and 100 % enables **Turbo**
+
 ## Requirements
-* Node.js: v16 or later.  
+* Node.js: v20 or later.  
 * Homebridge: v1.8.0 or later (v2.0.0-beta.0 supported).  
 * Air Conditioners: Devices that support the TFIAC protocol via UDP.  
 
@@ -111,6 +114,7 @@ See the Configuration example above for a complete JSON snippet including flags.
 #### Device Discovery
 If you do not specify device addresses (the `devices` array) in your configuration, the plugin will automatically attempt to discover compatible air conditioners on your local network and use default settings for them. Manual control of this behavior is not required.
 
+
 ## Usage  
 After configuring, restart Homebridge. The plugin will:  
 * Create accessories for each configured AC unit.  
@@ -118,3 +122,5 @@ After configuring, restart Homebridge. The plugin will:
 * Allow you to control power, temperature, mode, fan speed, and swing through HomeKit-enabled apps.  
 
 You can control your ACs using Siri, HomeKit apps, or through automations set up in Homebridge Config UI X.
+
+**Turbo vs Sleep:** Turbo and Sleep cannot run at the same time. The plugin blocks an attempt to enable one while the other is active—you must first turn the currently‑active mode off.  
