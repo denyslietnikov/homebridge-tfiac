@@ -890,6 +890,5 @@ export class TfiacPlatformAccessory {
       // This might need adjustment if AUTO mode implies specific threshold behavior in HomeKit
       return Math.min(Math.max(tempC, 10), 35); // Default to cooling range for safety if mode is ambiguous
     }
-    return value;
   }
 }

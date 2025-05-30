@@ -138,9 +138,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
       const result = inst.handleGet();
       expect(result).toBe(false);
     });
-    const castedResult = result as { err: any, val: any };
-    expect(castedResult.err).toBeNull();
-    expect(castedResult.val).toBe(true);
   });
 
   describe('handleSet', () => {
@@ -210,9 +207,6 @@ describe('HorizontalSwingSwitchAccessory', () => {
         })
       );
     });
-    const castedResult = result as { err: any, val: any };
-    expect(castedResult.err).toBeNull();
-    expect(castedResult.val).toBe(false);
   });
 
   describe('stateChanged listener', () => {
