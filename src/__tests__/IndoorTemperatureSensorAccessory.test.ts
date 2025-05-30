@@ -142,4 +142,71 @@ describe('IndoorTemperatureSensorAccessory', () => {
     expect(platform.log.info).toHaveBeenCalled();
     expect(accessory.removeService).toHaveBeenCalledWith(mockService);
   });
+
+  it('should skip update when sensor disabled', () => {
+    mockService.updateCharacteristic.mockClear();
+    deviceConfig.enableIndoorTempSensor = false;
+    sensorAccessory = new IndoorTemperatureSensorAccessory(platform, accessory, deviceConfig);
+    sensorAccessory.updateStatus({ current_temp: 80 } as any);
+    expect(platform.log.debug).toHaveBeenCalledWith(
+      '[IndoorTemperatureSensor] Not enabled, skipping update.'
+    );
+    expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
+  });
+
+  it('should apply temperature correction', () => {
+    mockService.updateCharacteristic.mockClear();
+    deviceConfig.temperatureCorrection = 2;
+    sensorAccessory = new IndoorTemperatureSensorAccessory(platform, accessory, deviceConfig);
+    sensorAccessory.updateStatus({ current_temp: 68 } as any); // 20°C expected + 2 = 22
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.CurrentTemperature,
+      20 + 2
+    );
+  });
+
+  it('should use default on invalid temperature', () => {
+    mockService.updateCharacteristic.mockClear();
+    sensorAccessory.updateStatus({ current_temp: NaN } as any);
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.CurrentTemperature,
+      20
+    );
+  });
+
+  it('should use fallback _testUpdateCharacteristic when updateCharacteristic missing', () => {
+    // Mock existing service without updateCharacteristic
+    const existingService: any = {
+      setCharacteristic: vi.fn().mockReturnThis(),
+      getCharacteristic: vi.fn().mockReturnValue({ on: vi.fn(), value: 100 }),
+      _testUpdateCharacteristic: vi.fn(),
+    };
+    (accessory.getServiceById as ReturnType<typeof vi.fn>).mockReturnValue(existingService);
+    sensorAccessory = new IndoorTemperatureSensorAccessory(platform, accessory, deviceConfig);
+    sensorAccessory.updateStatus({ current_temp: 86 } as any); // 86°F -> 30°C
+    expect(existingService._testUpdateCharacteristic).toHaveBeenCalledWith(
+      platform.Characteristic.CurrentTemperature,
+      30,
+    );
+  });
+
+  it('should skip update when platform.Service is missing', () => {
+    platform.Service = undefined as any;
+    mockService.updateCharacteristic.mockClear();
+    sensorAccessory.updateStatus({ current_temp: 77 } as any);
+    expect(mockService.updateCharacteristic).not.toHaveBeenCalled();
+  });
+
+  it('should not remove service when none exists', () => {
+    // Ensure service undefined
+    (sensorAccessory as any).service = undefined;
+    sensorAccessory.removeService();
+    expect(accessory.removeService).not.toHaveBeenCalled();
+  });
+
+  it('should not create service when enableTemperature is false', () => {
+    deviceConfig.enableTemperature = false;
+    const newSensor = new IndoorTemperatureSensorAccessory(platform, accessory, deviceConfig);
+    expect((newSensor as any).service).toBeUndefined();
+  });
 });

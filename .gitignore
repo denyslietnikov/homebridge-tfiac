@@ -125,5 +125,5 @@ dist
 
 /test/hbConfig
 
-todo.txt
+*.txt
 todo.prompt.md

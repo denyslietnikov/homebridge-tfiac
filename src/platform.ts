@@ -9,8 +9,11 @@ import {
   Characteristic,
 } from 'homebridge';
 import * as dgram from 'dgram';
+import * as path from 'path';
+import * as fs from 'fs/promises';
 import * as xml2js from 'xml2js';
 import { PLATFORM_NAME, PLUGIN_NAME, TfiacPlatformConfig, TfiacDeviceConfig } from './settings.js';
+import { SUBTYPES } from './enums.js';
 import { TfiacPlatformAccessory } from './platformAccessory.js';
 import { DisplaySwitchAccessory } from './DisplaySwitchAccessory.js';
 import { SleepSwitchAccessory } from './SleepSwitchAccessory.js';
@@ -18,32 +21,19 @@ import { FanSpeedAccessory } from './FanSpeedAccessory.js';
 import { DrySwitchAccessory } from './DrySwitchAccessory.js';
 import { FanOnlySwitchAccessory } from './FanOnlySwitchAccessory.js';
 import { StandaloneFanAccessory } from './StandaloneFanAccessory.js';
-import { HorizontalSwingSwitchAccessory } from './HorizontalSwingSwitchAccessory.js'; // Add Horizontal Swing accessory import
-import { TurboSwitchAccessory } from './TurboSwitchAccessory.js'; // Add Turbo accessory import
+import { HorizontalSwingSwitchAccessory } from './HorizontalSwingSwitchAccessory.js';
+import { TurboSwitchAccessory } from './TurboSwitchAccessory.js';
 import { EcoSwitchAccessory } from './EcoSwitchAccessory.js';
 import { BeepSwitchAccessory } from './BeepSwitchAccessory.js';
+import { CacheManager } from './CacheManager.js';
 
-// Define a structure for discovered devices
-interface DiscoveredDevice {
-  ip: string;
-  name?: string; // Name might not be available via discovery
-  port?: number; // Port might be discovered or assumed
-}
-
-// Define a type for the service removal configuration
-type ServiceRemovalConfig = {
-  configFlag: keyof TfiacDeviceConfig;
-  serviceName: string;
-  logMessage: string;
-};
-
-// Define a configuration for optional accessories
 interface OptionalAccessoryConfig<T> {
-  configFlag: keyof TfiacDeviceConfig;  // Configuration flag name (e.g., 'enableDisplay')
-  accessoryClass: new (platform: TfiacPlatform, accessory: PlatformAccessory) => T; // Constructor class
-  accessoryMap: Map<string, T>;        // Map to store instances
-  displayName: string;                 // Name for logging
-  defaultValue?: boolean;              // Default value if not specified (true if undefined)
+  name: string;
+  displayName: string;
+  enabledByDefault: boolean;
+  accessoryClass: new (platform: TfiacPlatform, accessory: PlatformAccessory, cacheManager: CacheManager) => T;
+  condition?: (config: TfiacDeviceConfig) => boolean;
+  accessoryMap?: Map<string, T>;
 }
 
 export class TfiacPlatform implements DynamicPlatformPlugin {
@@ -51,33 +41,12 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
   public Characteristic: typeof Characteristic;
   public readonly api: API;
 
-  // Array of discovered accessories
   private readonly accessories: PlatformAccessory[] = [];
-  private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory> = new Map();
-  private readonly displayAccessories: Map<string, DisplaySwitchAccessory> = new Map();
-  private readonly sleepAccessories: Map<string, SleepSwitchAccessory> = new Map();
-  private readonly fanSpeedAccessories: Map<string, FanSpeedAccessory> = new Map();
-  private readonly dryAccessories: Map<string, DrySwitchAccessory> = new Map(); // Track dry switch accessories
-  private readonly fanOnlyAccessories: Map<string, FanOnlySwitchAccessory> = new Map(); // Track Fan Only Mode accessories
-  private readonly standaloneFanAccessories: Map<string, StandaloneFanAccessory> = new Map(); // Track Standalone Fan accessories
-  private readonly horizontalSwingAccessories: Map<string, HorizontalSwingSwitchAccessory> = new Map(); // Track Horizontal Swing accessories
-  private readonly turboAccessories: Map<string, TurboSwitchAccessory> = new Map(); // Track Turbo accessories
-  private readonly ecoAccessories: Map<string, EcoSwitchAccessory> = new Map();
-  private readonly beepAccessories: Map<string, BeepSwitchAccessory> = new Map();
-
-  // Array of optional accessory configurations
-  private optionalAccessoryConfigs: Array<OptionalAccessoryConfig<
-    | DisplaySwitchAccessory
-    | SleepSwitchAccessory
-    | FanSpeedAccessory
-    | DrySwitchAccessory
-    | FanOnlySwitchAccessory
-    | StandaloneFanAccessory
-    | HorizontalSwingSwitchAccessory
-    | TurboSwitchAccessory
-    | EcoSwitchAccessory
-    | BeepSwitchAccessory
-  >> = [];
+  private readonly optionalAccessoryConfigs: OptionalAccessoryConfig<unknown>[];
+  private readonly discoveredAccessories: Map<string, TfiacPlatformAccessory>;
+  private _debugEnabled: boolean = false; // Declare and initialize _debugEnabled
+  private readonly PLUGIN_VERSION = '1.27.0'; // Current plugin version
+  private readonly CACHE_CLEANUP_VERSION = '1.26.0'; // Version that requires cache cleanup
 
   constructor(
     public readonly log: Logger,
@@ -85,144 +54,207 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     apiParam: unknown,
   ) {
     this.api = apiParam as API;
-    // Initialize Service and Characteristic after api is assigned
     this.Service = this.api.hap.Service;
     this.Characteristic = this.api.hap.Characteristic;
+    this.discoveredAccessories = new Map<string, TfiacPlatformAccessory>();
+
+    // Initialize _debugEnabled based on global config first
+    this._debugEnabled = !!this.config.debug;
+
+    // Then, if global debug is not set, check device-specific debug flags
+    if (!this._debugEnabled && Array.isArray(this.config.devices)) {
+      this._debugEnabled = this.config.devices.some(device => device.debug === true);
+    }
+
+    const originalDebug = this.log.debug.bind(this.log);
+    this.log.debug = (...args: [message: string, ...optionalParams: unknown[]]) => {
+      if (this._debugEnabled) { // Use the class property
+        originalDebug(...args);
+      }
+    };
 
     this.log.debug('TfiacPlatform constructor called');
-    
-    // Initialize accessory configs
-    this.initializeAccessoryConfigs();
 
-    // Homebridge will fire "didFinishLaunching" when it has loaded all configs
+    this.optionalAccessoryConfigs = [
+      { name: 'Display', displayName: 'Display Light', enabledByDefault: true, accessoryClass: DisplaySwitchAccessory, accessoryMap: new Map() },
+      { name: 'Sleep', displayName: 'Sleep Mode', enabledByDefault: true, accessoryClass: SleepSwitchAccessory, accessoryMap: new Map() },
+      { name: 'FanSpeed', displayName: 'Fan Speed Control', enabledByDefault: true, accessoryClass: FanSpeedAccessory, accessoryMap: new Map() },
+      { name: 'Dry', displayName: 'Dry Mode', enabledByDefault: true, accessoryClass: DrySwitchAccessory, accessoryMap: new Map() },
+      { name: 'FanOnly', displayName: 'Fan Only Switch', enabledByDefault: true, accessoryClass: FanOnlySwitchAccessory, accessoryMap: new Map() },
+      { name: 'Turbo', displayName: 'Turbo Mode', enabledByDefault: true, accessoryClass: TurboSwitchAccessory, accessoryMap: new Map() },
+      { name: 'Eco', displayName: 'Eco Mode', enabledByDefault: true, accessoryClass: EcoSwitchAccessory, accessoryMap: new Map() },
+      { name: 'StandaloneFan', displayName: 'Fan Only Mode', enabledByDefault: false, accessoryClass: StandaloneFanAccessory, accessoryMap: new Map() },
+      {
+        name: 'HorizontalSwing',
+        displayName: 'Horizontal Swing',
+        enabledByDefault: false,
+        accessoryClass: HorizontalSwingSwitchAccessory,
+        accessoryMap: new Map(),
+      },
+      { name: 'Beep', displayName: 'Beep Sound', enabledByDefault: false, accessoryClass: BeepSwitchAccessory, accessoryMap: new Map() },
+    ];
+
     this.api.on('didFinishLaunching', async () => {
       this.log.debug('didFinishLaunching callback');
-      await this.discoverDevices(); // Make discoverDevices async
+      await this.checkVersionAndCleanupCache();
+      await this.discoverDevices();
     });
   }
 
   /**
-   * Initialize all optional accessory configurations
+   * Check plugin version and perform cache cleanup if needed
    */
-  private initializeAccessoryConfigs(): void {
-    this.optionalAccessoryConfigs = [
-      {
-        configFlag: 'enableDisplay',
-        accessoryClass: DisplaySwitchAccessory,
-        accessoryMap: this.displayAccessories,
-        displayName: 'Display Switch',
-        defaultValue: true,
-      },
-      {
-        configFlag: 'enableSleep',
-        accessoryClass: SleepSwitchAccessory,
-        accessoryMap: this.sleepAccessories,
-        displayName: 'Sleep Switch',
-        defaultValue: true, // Changed default to true to enable sleep by default
-      },
-      {
-        configFlag: 'enableFanSpeed',
-        accessoryClass: FanSpeedAccessory,
-        accessoryMap: this.fanSpeedAccessories,
-        displayName: 'Fan Speed',
-        defaultValue: true,
-      },
-      {
-        configFlag: 'enableDry',
-        accessoryClass: DrySwitchAccessory,
-        accessoryMap: this.dryAccessories,
-        displayName: 'Dry Switch',
-        defaultValue: false,
-      },
-      {
-        configFlag: 'enableFanOnly',
-        accessoryClass: FanOnlySwitchAccessory,
-        accessoryMap: this.fanOnlyAccessories,
-        displayName: 'Fan Only Switch',
-        defaultValue: false,
-      },
-      {
-        configFlag: 'enableStandaloneFan',
-        accessoryClass: StandaloneFanAccessory,
-        accessoryMap: this.standaloneFanAccessories,
-        displayName: 'Standalone Fan',
-        defaultValue: false,
-      },
-      {
-        configFlag: 'enableHorizontalSwing',
-        accessoryClass: HorizontalSwingSwitchAccessory,
-        accessoryMap: this.horizontalSwingAccessories,
-        displayName: 'Horizontal Swing Switch',
-        defaultValue: false,
-      },
-      {
-        configFlag: 'enableTurbo',
-        accessoryClass: TurboSwitchAccessory,
-        accessoryMap: this.turboAccessories,
-        displayName: 'Turbo Switch',
-        defaultValue: true,
-      },
-      {
-        configFlag: 'enableEco',
-        accessoryClass: EcoSwitchAccessory,
-        accessoryMap: this.ecoAccessories,
-        displayName: 'Eco Switch',
-        defaultValue: false,
-      },
-      {
-        configFlag: 'enableBeep',
-        accessoryClass: BeepSwitchAccessory,
-        accessoryMap: this.beepAccessories,
-        displayName: 'Beep Switch',
-        defaultValue: false,
-      },
-    ];
+  async checkVersionAndCleanupCache(): Promise<void> {
+    try {
+      // Get stored version from HomeKit cache
+      const storedVersion = this.api.user.storagePath();
+      const versionFilePath = path.join(storedVersion, 'homebridge-tfiac-version.json');
+      
+      let lastVersion: string | null = null;
+      
+      try {
+        const versionData = await fs.readFile(versionFilePath, 'utf8');
+        const parsedData = JSON.parse(versionData);
+        lastVersion = parsedData.version;
+        this.log.debug(`Found previous plugin version: ${lastVersion}`);
+      } catch (error) {
+        // Version file doesn't exist or is corrupted - treat as first install
+        this.log.info('No previous version found - treating as fresh installation');
+      }
+
+      // Check if we need to perform cache cleanup
+      const needsCleanup = !lastVersion || this.compareVersions(lastVersion, this.CACHE_CLEANUP_VERSION) < 0;
+      
+      if (needsCleanup) {
+        this.log.warn(`Plugin updated from ${lastVersion || 'unknown'} to ${this.PLUGIN_VERSION} - performing cache cleanup`);
+        this.log.warn('This will remove all cached accessories to ensure compatibility with the new version');
+        this.log.warn('All accessories will be automatically recreated with the new configuration options');
+        await this.performCacheCleanup();
+      } else {
+        this.log.debug(`Plugin version ${this.PLUGIN_VERSION} - no cache cleanup needed (last version: ${lastVersion})`);
+      }
+
+      // Save current version
+      await fs.writeFile(versionFilePath, JSON.stringify({ 
+        version: this.PLUGIN_VERSION,
+        lastCleanup: new Date().toISOString(),
+        cleanupReason: needsCleanup ? 'version_upgrade' : 'no_cleanup_needed',
+      }), 'utf8');
+
+      this.log.debug(`Version tracking updated: ${this.PLUGIN_VERSION}`);
+
+    } catch (error) {
+      this.log.error('Error during version check and cache cleanup:', error);
+    }
   }
 
   /**
-   * Discover devices from config and optionally via network broadcast.
+   * Perform cache cleanup by removing all cached accessories
    */
+  private async performCacheCleanup(): Promise<void> {
+    this.log.warn('Performing cache cleanup - removing all cached accessories to ensure clean state');
+    
+    // Remove all cached accessories to force recreation
+    if (this.accessories.length > 0) {
+      this.log.info(`Removing ${this.accessories.length} cached accessories for clean update`);
+      
+      // First, perform thorough cleanup of each accessory
+      this.accessories.forEach(acc => {
+        this.log.debug(`Cleaning up accessory: ${acc.displayName} (${acc.UUID})`);
+        
+        // Cleanup optional accessories first
+        this.cleanupOptionalAccessories(acc.UUID);
+        
+        // Remove all services from the accessory to ensure clean state
+        const servicesToRemove = acc.services.slice(); // Create a copy to avoid modification during iteration
+        servicesToRemove.forEach(service => {
+          // Don't remove the AccessoryInformation service as it's required
+          if (service.UUID !== this.Service.AccessoryInformation.UUID) {
+            try {
+              acc.removeService(service);
+              this.log.debug(`Removed service ${service.displayName || service.UUID} from ${acc.displayName}`);
+            } catch (error) {
+              this.log.debug(`Error removing service ${service.displayName || service.UUID}:`, error);
+            }
+          }
+        });
+      });
+
+      // Unregister all accessories from HomeKit
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, this.accessories);
+      
+      // Clear local array
+      this.accessories.length = 0;
+      
+      // Clear the discovered accessories map
+      this.discoveredAccessories.clear();
+      
+      // Clear all optional accessory maps
+      this.optionalAccessoryConfigs.forEach(config => {
+        config.accessoryMap?.clear();
+      });
+      
+      this.log.info('Cache cleanup completed - all accessories and services removed, will be recreated during discovery');
+    } else {
+      this.log.debug('No cached accessories found to cleanup');
+    }
+  }
+
+  /**
+   * Compare two semantic version strings
+   * Returns: -1 if version1 < version2, 0 if equal, 1 if version1 > version2
+   */
+  private compareVersions(version1: string, version2: string): number {
+    const v1parts = version1.split('.').map(Number);
+    const v2parts = version2.split('.').map(Number);
+    
+    for (let i = 0; i < Math.max(v1parts.length, v2parts.length); i++) {
+      const v1part = v1parts[i] || 0;
+      const v2part = v2parts[i] || 0;
+      
+      if (v1part < v2part) {
+        return -1;
+      }
+      if (v1part > v2part) {
+        return 1;
+      }
+    }
+    
+    return 0;
+  }
+
   async discoverDevices() {
     const configuredDevices = (this.config.devices || []) as TfiacDeviceConfig[];
-    const discoveredDevicesMap = new Map<string, DiscoveredDevice>();
-    const enableDiscovery = this.config.enableDiscovery !== false; // default true
-    
-    // Track IPs that have already been processed to detect duplicates
+    const discoveredDevicesMap = new Map<string, TfiacDeviceConfig>();
+    const enableDiscovery = this.config.enableDiscovery !== false;
+
     const processedIPs = new Set<string>();
 
-    // 1. Process configured devices first
     for (const deviceConfig of configuredDevices) {
       if (!deviceConfig.ip) {
         this.log.error('Missing required IP address for configured device:', deviceConfig.name);
         continue;
       }
-      
-      // Check for duplicate IP addresses
+
       if (processedIPs.has(deviceConfig.ip)) {
         this.log.error('Failed to initialize device:', new Error(`Duplicate IP address detected: ${deviceConfig.ip}`));
         continue;
       }
-      
-      // Mark this IP as processed
+
       processedIPs.add(deviceConfig.ip);
-      
-      // Use IP as the key to handle potential duplicates between config and discovery
-      // Preserve all properties including feature flags
+
       discoveredDevicesMap.set(deviceConfig.ip, { ...deviceConfig });
       this.log.debug(`Found configured device: ${deviceConfig.name} (${deviceConfig.ip})`);
     }
 
     if (enableDiscovery) {
-      // 2. Perform network discovery (if enabled, add config option later)
-      // For now, let's assume discovery is always attempted
       this.log.info('Starting network discovery for TFIAC devices...');
       try {
-        const networkDiscoveredIPs = await this.discoverDevicesNetwork(5000); // Discover for 5 seconds
+        const networkDiscoveredIPs = await this.discoverDevicesNetwork(5000);
         this.log.info(`Network discovery finished. Found ${networkDiscoveredIPs.size} potential devices.`);
         for (const ip of networkDiscoveredIPs) {
           if (!discoveredDevicesMap.has(ip)) {
-            // Add newly discovered device if not already configured
-            discoveredDevicesMap.set(ip, { ip: ip, name: `TFIAC ${ip}` }); // Default name
+            discoveredDevicesMap.set(ip, { ip: ip, name: `TFIAC ${ip}` });
             this.log.debug(`Discovered new device via network: ${ip}`);
           } else {
             this.log.debug(`Network discovered device ${ip} is already configured.`);
@@ -239,10 +271,8 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
     if (allDevices.length === 0) {
       this.log.info('No configured or discovered devices found.');
-      // Proceed to remove any stale accessories even when no devices are configured or discovered
     }
 
-    // 3. Register or update accessories based on the combined list
     const currentAccessoryUUIDs = new Set<string>();
 
     for (const device of allDevices) {
@@ -256,25 +286,23 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         name: device.name || `TFIAC ${device.ip}`,
       };
 
+      const cacheManager = CacheManager.getInstance(deviceConfigForAccessory, this.log);
+
       if (existingAccessory) {
-        // Check if config has changed
         const prevConfig = existingAccessory.context.deviceConfig as TfiacDeviceConfig | undefined;
         const configChanged = !prevConfig ||
           prevConfig.name !== deviceConfigForAccessory.name ||
           prevConfig.ip !== deviceConfigForAccessory.ip ||
           prevConfig.port !== deviceConfigForAccessory.port;
 
-        // Remove services that have been disabled in the config
         this.removeDisabledServices(existingAccessory, deviceConfigForAccessory);
 
-        // Always update context.deviceConfig so that feature flags (e.g., enableTemperature) are current
         existingAccessory.context.deviceConfig = deviceConfigForAccessory;
 
         if (configChanged) {
           this.log.info(`Updating existing accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
           existingAccessory.context.deviceConfig = deviceConfigForAccessory;
           existingAccessory.displayName = deviceConfigForAccessory.name;
-          // Set device category for proper HomeKit behavior
           existingAccessory.category = this.api.hap.Categories.AIR_CONDITIONER;
           this.api.updatePlatformAccessories([existingAccessory]);
         }
@@ -282,26 +310,22 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
           if (!this.discoveredAccessories.has(uuid)) {
             const tfiacAccessory = new TfiacPlatformAccessory(this, existingAccessory);
             this.discoveredAccessories.set(uuid, tfiacAccessory);
-            this.setupOptionalAccessories(existingAccessory, deviceConfigForAccessory, uuid);
+            this.setupOptionalAccessories(existingAccessory, deviceConfigForAccessory, uuid, cacheManager);
           }
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
         }
       } else {
-        // Create new accessory
         this.log.info(`Adding new accessory: ${deviceConfigForAccessory.name} (${device.ip})`);
         const accessory = new this.api.platformAccessory(deviceConfigForAccessory.name, uuid);
-        // Set device category for proper HomeKit behavior
         accessory.category = this.api.hap.Categories.AIR_CONDITIONER;
         accessory.context.deviceConfig = deviceConfigForAccessory;
         try {
           const tfiacAccessory = new TfiacPlatformAccessory(this, accessory);
           this.discoveredAccessories.set(uuid, tfiacAccessory);
-          this.setupOptionalAccessories(accessory, deviceConfigForAccessory, uuid);
-          // Remove any services for disabled features before registering the accessory
+          this.setupOptionalAccessories(accessory, deviceConfigForAccessory, uuid, cacheManager);
           this.removeDisabledServices(accessory, deviceConfigForAccessory);
           this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-          // Track the newly added accessory for future updates and removals
           this.accessories.push(accessory);
         } catch (error) {
           this.log.error('Failed to initialize device:', error);
@@ -309,7 +333,6 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
       }
     }
 
-    // 4. Unregister accessories that are no longer found/configured
     const accessoriesToRemove = this.accessories.filter(acc => !currentAccessoryUUIDs.has(acc.UUID));
     if (accessoriesToRemove.length > 0) {
       this.log.info(`Removing ${accessoriesToRemove.length} stale accessories.`);
@@ -317,7 +340,6 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
         this.cleanupOptionalAccessories(acc.UUID);
       });
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, accessoriesToRemove);
-      // Remove stale accessories from internal cache
       accessoriesToRemove.forEach(acc => {
         const idx = this.accessories.findIndex(a => a.UUID === acc.UUID);
         if (idx > -1) {
@@ -327,11 +349,6 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     }
   }
 
-  /**
-   * Performs UDP broadcast to discover TFIAC devices on the network.
-   * @param timeoutMs - Duration to listen for responses.
-   * @returns A Promise resolving to a Set of discovered IP addresses.
-   */
   private discoverDevicesNetwork(timeoutMs: number): Promise<Set<string>> {
     return new Promise((resolve) => {
       const discoveredIPs = new Set<string>();
@@ -349,8 +366,7 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
 
       let discoveryTimeout: NodeJS.Timeout | null = null;
       let finished = false;
-      
-      // Helper function to cleanup and resolve the promise with discovered IPs
+
       const cleanupAndResolve = () => {
         if (finished) {
           return;
@@ -435,156 +451,192 @@ export class TfiacPlatform implements DynamicPlatformPlugin {
     });
   }
 
-  /**
-   * Homebridge will call this method for restored cached accessories.
-   */
   configureAccessory(accessory: PlatformAccessory) {
     this.log.info(`Loading accessory from cache: ${accessory.displayName}`);
-    // Ensure the category is set for cached accessories
     accessory.category = this.api.hap.Categories.AIR_CONDITIONER;
     this.accessories.push(accessory);
   }
 
   /**
-   * Removes services from an accessory that are disabled in the configuration.
-   * @param accessory - The accessory to update.
-   * @param deviceConfig - The configuration for the device.
+   * Get legacy subtypes for backward compatibility
+   * This method provides mapping from old subtype names to new consistent ones
    */
-  private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
-    const servicesToRemove: ServiceRemovalConfig[] = [
-      { configFlag: 'enableDisplay', serviceName: 'Display', logMessage: 'Display Switch' },
-      { configFlag: 'enableSleep', serviceName: 'Sleep', logMessage: 'Sleep Switch' },
-      { configFlag: 'enableFanSpeed', serviceName: 'Fan Speed', logMessage: 'Fan Speed' },
-      { configFlag: 'enableDry', serviceName: 'Dry', logMessage: 'Dry Mode' },
-      { configFlag: 'enableFanOnly', serviceName: 'Fan Only', logMessage: 'Fan Only Mode' },
-      { configFlag: 'enableStandaloneFan', serviceName: 'Standalone Fan', logMessage: 'Standalone Fan' },
-      { configFlag: 'enableHorizontalSwing', serviceName: 'Horizontal Swing', logMessage: 'Horizontal Swing' },
-      { configFlag: 'enableTurbo', serviceName: 'Turbo', logMessage: 'Turbo' },
-      { configFlag: 'enableEco', serviceName: 'Eco', logMessage: 'Eco' },
-      { configFlag: 'enableBeep', serviceName: 'Beep', logMessage: 'Beep' },
-    ];
+  private getLegacySubtypes(): Record<string, string[]> {
+    return {
+      [SUBTYPES.display]: ['Display', 'display'],
+      [SUBTYPES.sleep]: ['Sleep', 'sleep'],
+      [SUBTYPES.fanSpeed]: ['FanSpeed', 'fan_speed', 'fanspeed'],
+      [SUBTYPES.dry]: ['Dry', 'dry'],
+      [SUBTYPES.fanOnly]: ['FanOnly', 'fanonly', 'fan_only'],
+      [SUBTYPES.turbo]: ['Turbo', 'turbo'],
+      [SUBTYPES.eco]: ['Eco', 'eco'],
+      [SUBTYPES.standaloneFan]: ['StandaloneFan', 'standalonefan', 'standalone_fan'],
+      [SUBTYPES.horizontalSwing]: ['HorizontalSwing', 'horizontalswing', 'horizontal_swing'],
+      [SUBTYPES.beep]: ['Beep', 'beep'],
+      [SUBTYPES.indoorTemperature]: ['indoor_temperature', 'indoorTemperature', 'IndoorTemperature'],
+      [SUBTYPES.outdoorTemperature]: ['outdoor_temperature', 'outdoorTemperature', 'OutdoorTemperature'],
+      [SUBTYPES.iFeelSensor]: ['ifeel_sensor', 'iFeelSensor', 'IFeelSensor', 'iFeel'],
+    };
+  }
 
-    let serviceRemoved = false;
+  /**
+   * Build a set of disabled service subtypes based on device configuration
+   */
+  private buildDisabledSubtypeSet(deviceConfig: TfiacDeviceConfig): Set<string> {
+    const disabledSubtypes = new Set<string>();
+    const legacySubtypes = this.getLegacySubtypes();
+    
+    // Helper function to add all variants of a subtype (current + legacy)
+    const addSubtypeVariants = (subtype: string) => {
+      disabledSubtypes.add(subtype);
+      const legacyVariants = legacySubtypes[subtype] || [];
+      legacyVariants.forEach(variant => disabledSubtypes.add(variant));
+    };
 
-    servicesToRemove.forEach(({ configFlag, serviceName, logMessage }) => {
-      if (deviceConfig[configFlag] === false) {
-        // Try finding by name first (for accessories created with specific names)
-        let service = accessory.getService(serviceName);
-        // If not found by name, try finding by subtype (for accessories created with subtypes)
-        if (!service) {
-          // Generate potential subtype from serviceName (lowercase, no spaces)
-          const subtype = serviceName.toLowerCase().replace(/ /g, '');
-          // Assume Switch service for these optional accessories
-          service = accessory.getServiceById(this.Service.Switch.UUID, subtype);
-          // Add specific checks if other service types are used (e.g., Fanv2 for FanSpeed)
-          if (!service && serviceName === 'Standalone Fan') {
-            service = accessory.getServiceById(this.Service.Fan.UUID, 'standalone_fan');
-          }
-          if (!service && serviceName === 'Fan Speed') {
-            service = accessory.getServiceById(this.Service.Fanv2.UUID, 'fanspeed');
-          }
-        }
-
-        if (service) {
-          accessory.removeService(service);
-          this.log.info(`Removed ${logMessage} service from ${accessory.displayName}`);
-          serviceRemoved = true;
-        } else {
-          this.log.debug(`${logMessage} service already disabled or not found for ${accessory.displayName}.`);
+    // Check each optional service config flag and add disabled subtypes
+    this.optionalAccessoryConfigs.forEach(config => {
+      const configKey = `enable${config.name}` as keyof TfiacDeviceConfig;
+      if (deviceConfig[configKey] === false) {
+        // Map config name to subtype and add all variants
+        const subtypeMapping: Record<string, string> = {
+          'Display': SUBTYPES.display,
+          'Sleep': SUBTYPES.sleep,
+          'FanSpeed': SUBTYPES.fanSpeed,
+          'Dry': SUBTYPES.dry,
+          'FanOnly': SUBTYPES.fanOnly,
+          'Turbo': SUBTYPES.turbo,
+          'Eco': SUBTYPES.eco,
+          'StandaloneFan': SUBTYPES.standaloneFan,
+          'HorizontalSwing': SUBTYPES.horizontalSwing,
+          'Beep': SUBTYPES.beep,
+        };
+        
+        const subtype = subtypeMapping[config.name];
+        if (subtype) {
+          addSubtypeVariants(subtype);
         }
       }
     });
 
-    // Special handling for Temperature Sensor(s) - potentially multiple
+    // Special handling for temperature sensors
     if (deviceConfig.enableTemperature === false) {
-      // Find ALL temperature sensor services by UUID, regardless of name or subtype
-      const tempSensorServices = accessory.services.filter(
-        service => service.UUID === this.api.hap.Service.TemperatureSensor.UUID,
-      );
-
-      if (tempSensorServices.length > 0) {
-        this.log.info(`Temperature sensor is disabled for ${accessory.displayName}. Removing ${tempSensorServices.length} sensor(s).`);
-        tempSensorServices.forEach(service => {
-          accessory.removeService(service);
-          this.log.debug(`Removed temperature sensor service "${service.displayName || 'unnamed'}" (UUID: ${service.UUID}, Subtype: ${service.subtype})`);
-          serviceRemoved = true;
-        });
-      } else {
-        this.log.debug(`Temperature sensor already disabled or not found for ${accessory.displayName}.`);
-      }
+      addSubtypeVariants(SUBTYPES.indoorTemperature);
+      addSubtypeVariants(SUBTYPES.outdoorTemperature);
     }
 
-    // Apply the updated accessory to HomeKit only if changes were made
+    // Special handling for iFeel sensor
+    if (deviceConfig.enableIFeelSensor === false) {
+      addSubtypeVariants(SUBTYPES.iFeelSensor);
+    }
+
+    return disabledSubtypes;
+  }
+
+  private removeDisabledServices(accessory: PlatformAccessory, deviceConfig: TfiacDeviceConfig) {
+    this.log.debug(`[${deviceConfig.name}] Starting service removal check for accessory: ${accessory.displayName}`);
+
+    let serviceRemoved = false;
+
+    // List all current services on the accessory
+    if (!accessory.services) {
+      this.log.warn(`[${deviceConfig.name}] Accessory has no services array, skipping service removal`);
+      return;
+    }
+
+    // Build set of disabled subtypes (current + all legacy variants)
+    const disabledSubtypes = this.buildDisabledSubtypeSet(deviceConfig);
+
+    // NEW APPROACH: Subtype-only service removal to handle UUID changes between plugin versions
+    // Iterate through all services and remove any with disabled subtypes, regardless of UUID
+    const servicesToRemove = accessory.services.filter(service => {
+      // Skip core services that should never be removed (AccessoryInformation, etc.)
+      if (!service.subtype) {
+        return false;
+      }
+      
+      return disabledSubtypes.has(service.subtype);
+    });
+
+    // Remove each identified service
+    servicesToRemove.forEach(service => {
+      try {
+        accessory.removeService(service);
+        this.log.debug(`[${deviceConfig.name}] Removed service: ${service.displayName || 'unnamed'} (${service.subtype})`);
+        serviceRemoved = true;
+      } catch (error) {
+        this.log.error(`[${deviceConfig.name}] Error removing service ${service.displayName || 'unnamed'}:`, error);
+      }
+    });
+
+    // Final summary and accessory update
+    this.log.debug(`[${deviceConfig.name}] Service removal check completed. serviceRemoved=${serviceRemoved}`);
+    
     if (serviceRemoved) {
       this.log.info(`Updating accessory ${accessory.displayName} after removing disabled services.`);
       this.api.updatePlatformAccessories([accessory]);
+      this.log.debug(`[${deviceConfig.name}] Accessory update completed`);
     } else {
-      this.log.debug(`No services needed removal for ${accessory.displayName}.`);
+      this.log.debug(`[${deviceConfig.name}] No services needed removal for ${accessory.displayName}.`);
     }
+    
+    this.log.debug(`[${deviceConfig.name}] removeDisabledServices completed`);
   }
 
-  /**
-   * Create optional accessories based on the device configuration
-   * @param accessory - The platform accessory to add optional features to
-   * @param deviceConfig - The device configuration containing feature flags
-   * @param uuid - The unique identifier for the accessory
-   */
   private setupOptionalAccessories(
-    accessory: PlatformAccessory, 
-    deviceConfig: TfiacDeviceConfig, 
+    accessory: PlatformAccessory,
+    deviceConfig: TfiacDeviceConfig,
     uuid: string,
+    cacheManager: CacheManager,
   ): void {
     for (const config of this.optionalAccessoryConfigs) {
-      const { configFlag, accessoryClass, accessoryMap, displayName, defaultValue = false } = config;
-      const isEnabled = deviceConfig[configFlag] ?? defaultValue;
+      const { name, displayName, accessoryClass, enabledByDefault, accessoryMap } = config;
       
-      // If the feature is explicitly disabled, log that we're skipping it
-      if (deviceConfig[configFlag] === false) {
-        this.log.info(`Skipping ${displayName} for ${deviceConfig.name} as it is disabled in config.`);
-        continue;
+      const settingNameLegacy = name.toLowerCase() as keyof TfiacDeviceConfig;
+      const settingNameNew = `enable${name}` as keyof TfiacDeviceConfig;
+      const settingNameSwitch = `enable${name}Switch` as keyof TfiacDeviceConfig;
+      
+      let isEnabled = enabledByDefault;
+      
+      if (deviceConfig[settingNameLegacy] !== undefined) {
+        isEnabled = Boolean(deviceConfig[settingNameLegacy]);
       }
       
-      // Otherwise, if it's enabled (either explicitly or by default), create the accessory
+      if (deviceConfig[settingNameNew] !== undefined) {
+        isEnabled = Boolean(deviceConfig[settingNameNew]);
+      }
+      
+      if (deviceConfig[settingNameSwitch] !== undefined) {
+        isEnabled = Boolean(deviceConfig[settingNameSwitch]);
+      }
+
       if (isEnabled) {
-        const instance = new accessoryClass(this, accessory);
-        accessoryMap.set(uuid, instance);
+        const instance = new accessoryClass(this, accessory, cacheManager);
+        accessoryMap?.set(uuid, instance);
+        this.log.info(`Added ${displayName} for ${deviceConfig.name}`);
+      } else {
+        if (deviceConfig.debug) {
+          this.log.info(`Skipping ${displayName} for ${deviceConfig.name} as it is disabled in config.`);
+        }
       }
     }
   }
 
-  /**
-   * Clean up optional accessories by stopping polling and removing them from maps
-   * @param uuid - The unique identifier of the accessory to clean up
-   */
   private cleanupOptionalAccessories(uuid: string): void {
-    // First clean up the main TfiacPlatformAccessory
     const tfiacAcc = this.discoveredAccessories.get(uuid);
     if (tfiacAcc) {
       tfiacAcc.stopPolling();
       this.discoveredAccessories.delete(uuid);
     }
-    
-    // Then clean up all optional accessories
-    for (const config of this.optionalAccessoryConfigs) {
-      const instance = config.accessoryMap.get(uuid);
-      if (instance) {
-        // Call stopPolling if defined on the instance
-        (instance as { stopPolling?: () => void }).stopPolling?.();
-        config.accessoryMap.delete(uuid);
-      }
-    }
 
-    // Manually clean up any maps that might not be in the optionalAccessoryConfigs
-    // This ensures backward compatibility with tests expecting direct map cleanup
-    this.displayAccessories.delete(uuid);
-    this.sleepAccessories.delete(uuid);
-    this.fanSpeedAccessories.delete(uuid);
-    this.dryAccessories.delete(uuid);
-    this.fanOnlyAccessories.delete(uuid);
-    this.standaloneFanAccessories.delete(uuid);
-    this.horizontalSwingAccessories.delete(uuid);
-    this.turboAccessories.delete(uuid);
-    this.ecoAccessories.delete(uuid);
-    this.beepAccessories.delete(uuid);
+    this.optionalAccessoryConfigs.forEach(config => {
+      const instance = config.accessoryMap?.get(uuid);
+      if (instance && typeof instance === 'object' && instance !== null && 'stopPolling' in instance) {
+        const instanceWithStopPolling = instance as { stopPolling?: () => void };
+        if (typeof instanceWithStopPolling.stopPolling === 'function') {
+          instanceWithStopPolling.stopPolling();
+        }
+      }
+      config.accessoryMap?.delete(uuid);
+    });
   }
 }

@@ -1,231 +1,164 @@
 import { vi, it, expect, describe, beforeEach, afterEach } from 'vitest';
-import { PlatformAccessory } from 'homebridge';
-import { OperationMode, PowerState } from '../enums.js';
-import type { AirConditionerStatus } from '../AirConditionerAPI.js';
-import type { TfiacPlatform } from '../platform.js';
-
-// Define mock types first
-interface MockService {
-  setCharacteristic: ReturnType<typeof vi.fn>;
-  getCharacteristic: ReturnType<typeof vi.fn>;
-  updateCharacteristic: ReturnType<typeof vi.fn>;
-}
-
-interface MockCacheManager {
-  api: {
-    setAirConditionerState: ReturnType<typeof vi.fn>;
-    updateState: ReturnType<typeof vi.fn>;
-    on: ReturnType<typeof vi.fn>;
-    off: ReturnType<typeof vi.fn>;
-  };
-  clear: ReturnType<typeof vi.fn>;
-  getStatus: ReturnType<typeof vi.fn>;
-  cleanup: ReturnType<typeof vi.fn>;
-}
-
-interface MockAccessory extends PlatformAccessory {
-  context: { deviceConfig: { name: string; ip: string; updateInterval: number } };
-  displayName: string;
-}
-
-// First, mock BaseSwitchAccessory - this is the key to avoiding initialization issues
-vi.mock('../BaseSwitchAccessory.js', () => {
-  return {
-    BaseSwitchAccessory: class MockBaseSwitchAccessory {
-      platform: any;
-      accessory: MockAccessory;
-      protected serviceName: string;
-      protected serviceSubtype: string;
-      private getStatusValue: (status: AirConditionerStatus) => boolean;
-      private setApiState: (value: boolean) => Promise<void>;
-      protected logPrefix: string;
-      protected service: MockService;
-      protected cacheManager: MockCacheManager;
-
-      constructor(
-        platform: any,
-        accessory: MockAccessory,
-        serviceName: string,
-        serviceSubtype: string,
-        getStatusValue: (status: AirConditionerStatus) => boolean,
-        setApiState: (value: boolean) => Promise<void>,
-        logPrefix: string
-      ) {
-        this.platform = platform;
-        this.accessory = accessory;
-        this.serviceName = serviceName;
-        this.serviceSubtype = serviceSubtype;
-        this.getStatusValue = getStatusValue;
-        this.setApiState = setApiState;
-        this.logPrefix = logPrefix;
-
-        // Create a mock service
-        this.service = {
-          setCharacteristic: vi.fn().mockReturnThis(),
-          getCharacteristic: vi.fn().mockReturnValue({
-            on: vi.fn().mockReturnThis(),
-            onGet: vi.fn().mockReturnThis(),
-            onSet: vi.fn().mockReturnThis(),
-          }),
-          updateCharacteristic: vi.fn()
-        };
-
-        // Mock cacheManager
-        this.cacheManager = {
-          api: {
-            setAirConditionerState: vi.fn().mockResolvedValue({}),
-            updateState: vi.fn().mockResolvedValue({ 
-              operation_mode: OperationMode.Auto,
-              is_on: PowerState.On,
-              target_temp: 25,
-              current_temp: 22,
-              fan_mode: 'auto',
-              swing_mode: 'off'
-            }),
-            on: vi.fn(),
-            off: vi.fn()
-          },
-          clear: vi.fn(),
-          getStatus: vi.fn().mockResolvedValue({ 
-            operation_mode: OperationMode.Auto,
-            is_on: PowerState.On,
-            target_temp: 25,
-            current_temp: 22,
-            fan_mode: 'auto',
-            swing_mode: 'off'
-          }),
-          cleanup: vi.fn()
-        };
-      }
-      
-      updateStatus(status: Partial<AirConditionerStatus>) {
-        return this.service.updateCharacteristic('On', this.getStatusValue(status as AirConditionerStatus));
-      }
-      
-      stopPolling() {
-        // No-op in the mock
-      }
-    }
-  };
-});
-
-// Now import FanOnlySwitchAccessory after the mock is set up
 import { FanOnlySwitchAccessory } from '../FanOnlySwitchAccessory.js';
+import { PlatformAccessory, Service, CharacteristicValue, CharacteristicSetCallback } from 'homebridge';
+import { TfiacPlatform } from '../platform.js';
+import { createMockCacheManager, createMockDeviceState, createMockPlatform, defaultDeviceOptions } from './testUtils';
+import { PowerState, OperationMode } from '../enums.js';
+import { AirConditionerStatus } from '../AirConditionerAPI.js';
+import { CacheManager } from '../CacheManager.js';
+import { DeviceState } from '../state/DeviceState.js';
 
-// Create a more complete platform mock that satisfies TfiacPlatform interface
-const mockPlatform = {
-  Service: { Switch: vi.fn() },
-  Characteristic: { Name: 'Name', On: 'On' },
-  log: { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
-  config: {},
-  api: {},
-  accessories: [],
-  discoveredAccessories: new Map(),
-  displayAccessories: new Map(),
-  fanSpeedAccessories: new Map(),
-  indoorTemperatureSensorAccessories: new Map(),
-  outdoorTemperatureSensorAccessories: new Map(),
-  airConditionerLookup: new Map(),
-  echoAccessories: new Map(),
-  displaySwitchAccessories: new Map(),
-  turboSwitchAccessories: new Map(),
-  drySwitchAccessories: new Map(),
-  beepSwitchAccessories: new Map(),
-  ecoSwitchAccessories: new Map(),
-  fanOnlySwitchAccessories: new Map(),
-  sleepSwitchAccessories: new Map(),
-  horizontalSwingSwitchAccessories: new Map(),
-  standaloneFanAccessories: new Map(),
-  registerPlatformAccessories: vi.fn(),
-  unregisterPlatformAccessories: vi.fn(),
-  refreshDeviceStatus: vi.fn(),
-  removeAccessory: vi.fn()
-} as unknown as TfiacPlatform;
+vi.mock('../CacheManager.js', () => ({
+  CacheManager: {
+    getInstance: vi.fn(),
+  },
+}));
 
-const mockAccessory = {
-  context: { deviceConfig: { name: 'AC', ip: '1.2.3.4', updateInterval: 1 } },
-  displayName: 'Test Accessory',
-  getService: vi.fn(),
-  getServiceById: vi.fn(),
-  addService: vi.fn()
-} as unknown as MockAccessory;
+describe('FanOnlySwitchAccessory', () => {
+  let platform: TfiacPlatform;
+  let accessory: any;
+  let mockService: any;
+  let mockCharacteristicOn: any;
+  let inst: FanOnlySwitchAccessory;
+  let mockCacheManager: any;
+  let mockDeviceStateObject: any;
+  let capturedStateChangeListener: (state: any) => void;
+  let capturedOnSetHandler: (value: CharacteristicValue, callback: CharacteristicSetCallback) => Promise<void>;
 
-// Helper function to create a full AirConditionerStatus object
-function createStatus(mode: OperationMode): AirConditionerStatus {
-  return {
-    operation_mode: mode,
-    is_on: PowerState.On,
-    target_temp: 25,
-    current_temp: 22,
-    fan_mode: 'auto',
-    swing_mode: 'off'
-  };
-}
-
-describe('FanOnlySwitchAccessory – unit', () => {
-  let fanOnlySwitch: any; // Use any to bypass strict typechecking for testing 
-  
   beforeEach(() => {
     vi.clearAllMocks();
-  });
-  
-  afterEach(() => {
-    if (fanOnlySwitch) {
-      fanOnlySwitch.stopPolling();
-    }
+
+    platform = createMockPlatform();
+
+    mockCharacteristicOn = {
+      onGet: vi.fn().mockReturnThis(),
+      onSet: vi.fn((handler) => {
+        capturedOnSetHandler = handler;
+        return mockCharacteristicOn;
+      }),
+      updateValue: vi.fn(),
+    };
+
+    mockService = {
+      setCharacteristic: vi.fn().mockReturnThis(),
+      getCharacteristic: vi.fn((char) => {
+        if (char === platform.Characteristic.On) {
+          return mockCharacteristicOn;
+        }
+        return { onGet: vi.fn().mockReturnThis(), onSet: vi.fn().mockReturnThis(), updateValue: vi.fn() };
+      }),
+      updateCharacteristic: vi.fn(),
+    };
+
+    accessory = {
+      getService: vi.fn().mockReturnValue(null),
+      getServiceById: vi.fn().mockReturnValue(mockService),
+      addService: vi.fn().mockReturnValue(mockService),
+      context: {
+        deviceConfig: { ip: '192.168.1.100', port: 8080, name: 'Test AC Fan Only' },
+      },
+      displayName: 'Test AC Fan Only Display',
+    };
+
+    mockDeviceStateObject = createMockDeviceState(defaultDeviceOptions);
+    mockDeviceStateObject.on = vi.fn((event, listener) => {
+      if (event === 'stateChanged') {
+        capturedStateChangeListener = listener;
+      }
+      return mockDeviceStateObject;
+    });
+    mockDeviceStateObject.setOperationMode = vi.fn();
+    mockDeviceStateObject.clone = vi.fn().mockReturnValue(mockDeviceStateObject);
+
+    mockCacheManager = createMockCacheManager();
+    mockCacheManager.getDeviceState.mockReturnValue(mockDeviceStateObject);
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
+
+    (CacheManager.getInstance as ReturnType<typeof vi.fn>).mockReturnValue(mockCacheManager);
+
+    mockDeviceStateObject.toApiStatus.mockReturnValueOnce({ operation_mode: OperationMode.Auto, is_on: PowerState.Off });
+
+    inst = new FanOnlySwitchAccessory(platform, accessory);
   });
 
-  it('should initialize with correct parameters', () => {
-    fanOnlySwitch = new FanOnlySwitchAccessory(mockPlatform, mockAccessory);
-    
-    // Access private properties for testing purpose
-    expect(fanOnlySwitch['serviceName']).toBe('Fan Only');
-    expect(fanOnlySwitch['serviceSubtype']).toBe('fanonly');
-    expect(fanOnlySwitch['logPrefix']).toBe('Fan Only');
+  it('should construct and set up characteristics and listeners', () => {
+    expect(accessory.getServiceById).toHaveBeenCalledWith(platform.Service.Switch.UUID, 'fanonly');
+    expect(mockService.setCharacteristic).toHaveBeenCalledWith(platform.Characteristic.Name, 'FanOnly');
+    expect(mockService.getCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On);
+    expect(mockCharacteristicOn.onGet).toHaveBeenCalledWith(expect.any(Function));
+    expect(mockCharacteristicOn.onSet).toHaveBeenCalledWith(expect.any(Function));
+    expect(mockDeviceStateObject.on).toHaveBeenCalledWith('stateChanged', expect.any(Function));
+    expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
   });
 
-  it('should correctly identify fan_only mode in the status object', () => {
-    fanOnlySwitch = new FanOnlySwitchAccessory(mockPlatform, mockAccessory);
-    
-    // Test with FanOnly mode
-    expect(fanOnlySwitch['getStatusValue'](createStatus(OperationMode.FanOnly))).toBe(true);
-    
-    // Test with other modes
-    expect(fanOnlySwitch['getStatusValue'](createStatus(OperationMode.Auto))).toBe(false);
-    expect(fanOnlySwitch['getStatusValue'](createStatus(OperationMode.Cool))).toBe(false);
-    expect(fanOnlySwitch['getStatusValue'](createStatus(OperationMode.Heat))).toBe(false);
-    expect(fanOnlySwitch['getStatusValue'](createStatus(OperationMode.Dry))).toBe(false);
+  it('should stop polling by removing DeviceState listener', () => {
+    inst.stopPolling();
+    expect(mockDeviceStateObject.removeListener).toHaveBeenCalledWith('stateChanged', expect.any(Function));
   });
 
-  it('should set operation mode to fan_only when turning on', async () => {
-    fanOnlySwitch = new FanOnlySwitchAccessory(mockPlatform, mockAccessory);
-    
-    await fanOnlySwitch['setApiState'](true);
-    
-    expect(fanOnlySwitch['cacheManager'].api.setAirConditionerState)
-      .toHaveBeenCalledWith('operation_mode', OperationMode.FanOnly);
+  describe('handleGet (inherited from BaseSwitchAccessory)', () => {
+    it('should return true when operation_mode is FanOnly', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ operation_mode: OperationMode.FanOnly } as any);
+      const result = (inst as any).handleGet();
+      expect(result).toBe(true);
+    });
+
+    it('should return false when operation_mode is not FanOnly', () => {
+      vi.spyOn(mockDeviceStateObject, 'toApiStatus').mockReturnValue({ operation_mode: OperationMode.Auto } as any);
+      const result = (inst as any).handleGet();
+      expect(result).toBe(false);
+    });
   });
 
-  it('should set operation mode to auto when turning off', async () => {
-    fanOnlySwitch = new FanOnlySwitchAccessory(mockPlatform, mockAccessory);
-    
-    await fanOnlySwitch['setApiState'](false);
-    
-    expect(fanOnlySwitch['cacheManager'].api.setAirConditionerState)
-      .toHaveBeenCalledWith('operation_mode', OperationMode.Auto);
+  describe('handleSet (inherited from BaseSwitchAccessory)', () => {
+    it('should call setOperationMode with FanOnly when value is true', async () => {
+      const mockCallback = vi.fn();
+      await capturedOnSetHandler(true, mockCallback);
+      
+      expect(mockDeviceStateObject.setOperationMode).toHaveBeenCalledWith(OperationMode.FanOnly);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
+      expect(mockCallback).toHaveBeenCalledWith(null);
+    });
+
+    it('should call setOperationMode with Auto when value is false', async () => {
+      const mockCallback = vi.fn();
+      await capturedOnSetHandler(false, mockCallback);
+      
+      expect(mockDeviceStateObject.setOperationMode).toHaveBeenCalledWith(OperationMode.Auto);
+      expect(mockCacheManager.applyStateToDevice).toHaveBeenCalledWith(mockDeviceStateObject);
+      expect(mockCallback).toHaveBeenCalledWith(null);
+    });
+
+    it('should handle errors and call callback with error', async () => {
+      const mockCallback = vi.fn();
+      const mockError = new Error('Test error');
+      mockCacheManager.applyStateToDevice.mockRejectedValueOnce(mockError);
+      
+      await capturedOnSetHandler(true, mockCallback);
+      
+      expect(mockCallback).toHaveBeenCalledWith(expect.objectContaining({
+        status: platform.api.hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE
+      }));
+    });
   });
 
-  it('should update the characteristic based on status', () => {
-    fanOnlySwitch = new FanOnlySwitchAccessory(mockPlatform, mockAccessory);
-    
-    // Test with fan_only mode - should be ON
-    fanOnlySwitch.updateStatus(createStatus(OperationMode.FanOnly));
-    expect(fanOnlySwitch['service'].updateCharacteristic).toHaveBeenCalledWith('On', true);
-    
-    vi.clearAllMocks();
-    
-    // Test with auto mode - should be OFF
-    fanOnlySwitch.updateStatus(createStatus(OperationMode.Auto));
-    expect(fanOnlySwitch['service'].updateCharacteristic).toHaveBeenCalledWith('On', false);
+  describe('stateChanged listener (from BaseSwitchAccessory)', () => {
+    it('should update characteristic when state changes to FanOnly', () => {
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValueOnce({ operation_mode: OperationMode.FanOnly });
+      
+      capturedStateChangeListener(newState);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, true);
+    });
+
+    it('should update characteristic when state changes to another mode', () => {
+      const newState = createMockDeviceState(defaultDeviceOptions);
+      newState.toApiStatus.mockReturnValueOnce({ operation_mode: OperationMode.Cool });
+      
+      capturedStateChangeListener(newState);
+      
+      expect(mockService.updateCharacteristic).toHaveBeenCalledWith(platform.Characteristic.On, false);
+    });
   });
 });

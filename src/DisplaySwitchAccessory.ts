@@ -1,9 +1,12 @@
 import { PlatformAccessory } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
-import { BaseSwitchAccessory } from './BaseSwitchAccessory.js';
-import { PowerState } from './enums.js';
+import { BooleanSwitchAccessory } from './BooleanSwitchAccessory.js';
 
-export class DisplaySwitchAccessory extends BaseSwitchAccessory {
+/**
+ * Accessory for controlling the display (light) of the air conditioner.
+ * Extends BooleanSwitchAccessory to provide a simple On/Off switch.
+ */
+export class DisplaySwitchAccessory extends BooleanSwitchAccessory {
   constructor(
     platform: TfiacPlatform,
     accessory: PlatformAccessory,
@@ -12,13 +15,8 @@ export class DisplaySwitchAccessory extends BaseSwitchAccessory {
       platform,
       accessory,
       'Display',
-      'display',
-      (status) => status.opt_display === PowerState.On,
-      async (value) => {
-        const state = value ? PowerState.On : PowerState.Off;
-        await this.cacheManager.api.setDisplayState(state);
-      },
-      'Display',
+      'opt_display', // apiStatusKey
+      'setDisplayMode', // deviceStateSetterName
     );
   }
 

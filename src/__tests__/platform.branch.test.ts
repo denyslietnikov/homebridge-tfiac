@@ -12,6 +12,17 @@ import {
   MockAPI,
 } from './testUtils';
 
+// Mock fs/promises and path for version checking
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn().mockRejectedValue(new Error('ENOENT: no such file or directory')),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('path', () => ({
+  join: vi.fn((...args: string[]) => args.join('/')),
+  dirname: vi.fn((p: string) => p.split('/').slice(0, -1).join('/') || '/'),
+}));
+
 // Mock modules with jest functions
 vi.mock('../platformAccessory');
 vi.mock('../DisplaySwitchAccessory', () => ({
@@ -52,6 +63,11 @@ describe('TfiacPlatform branch coverage tests', () => {
   let mockConfig: TfiacPlatformConfig;
   let mockAccessory: PlatformAccessory;
   let didFinishLaunchingCallback: () => void;
+  // Declare service instances in the describe scope
+  let mockDisplayServiceViaDisplayName: { UUID: string; subtype: string; displayName: string };
+  let mockDisplayServiceViaId: { UUID: string; subtype: string; displayName: string };
+  let mockFanSpeedService: { UUID: string; subtype: string; displayName: string };
+  let mockTempSensorServiceInstance: { UUID: string; subtype: string; displayName: string };
 
   beforeEach(() => {
     // Reset mocks for each test
@@ -65,7 +81,6 @@ describe('TfiacPlatform branch coverage tests', () => {
     mockApi.hap.Service.Switch = { UUID: 'switch-uuid' };
     mockApi.hap.Service.Fanv2 = { UUID: 'fanv2-uuid' };
     mockApi.hap.Service.TemperatureSensor = { UUID: 'temp-sensor-uuid' };
-    mockApi.hap.Categories = { AIR_CONDITIONER: 21 };
     
     // Capture the didFinishLaunching callback
     mockApi.on.mockImplementation((event, callback) => {
@@ -73,58 +88,42 @@ describe('TfiacPlatform branch coverage tests', () => {
         didFinishLaunchingCallback = callback;
       }
     });
+
+    // Assign service instances - using correct subtypes from SUBTYPES constants
+    mockDisplayServiceViaDisplayName = { UUID: 'DisplayServiceUUID_ViaName', subtype: 'display_from_name', displayName: 'Display Light' };
+    mockDisplayServiceViaId = { UUID: 'DisplayServiceUUID_ViaId', subtype: 'display', displayName: 'Display Light' }; // Changed to match expected service name
+    mockFanSpeedService = { UUID: 'FanSpeedServiceUUID', subtype: 'fan_speed', displayName: 'Fan Speed Control by ID' }; // Fixed: fanspeed -> fan_speed
+    mockTempSensorServiceInstance = { UUID: mockApi.hap.Service.TemperatureSensor.UUID, subtype: 'indoor_temperature', displayName: 'Temperature Sensor' }; // Fixed: tempsensor -> indoor_temperature
     
     // Mock Accessory with some services
     mockAccessory = {
       UUID: 'test-uuid',
       displayName: 'Test Accessory',
       context: { deviceConfig: { name: 'Test', ip: '1.2.3.4' } },
-      getService: vi.fn((identifier: string | { UUID: string }, subtype?: string) => {
-        // Simulate finding services by name or UUID/subtype
+      getService: vi.fn((identifier: string | { UUID: string }) => {
         if (typeof identifier === 'string') {
-          if (identifier === 'Display') return { UUID: 'DisplayServiceUUID', subtype: 'display', displayName: 'Display' };
+          if (identifier === 'Display Light') return mockDisplayServiceViaDisplayName;
           if (identifier === 'Sleep Mode') return { UUID: 'SleepServiceUUID', subtype: 'sleepmode', displayName: 'Sleep Mode' };
-        } else if (identifier.UUID === mockApi.hap.Service.Switch.UUID) {
-          // Use the subtype parameter
-          if (subtype === 'display') return { UUID: 'DisplayServiceUUID', subtype: 'display', displayName: 'Display' };
-          if (subtype === 'sleepmode') return { UUID: 'SleepServiceUUID', subtype: 'sleepmode', displayName: 'Sleep Mode' };
-          if (subtype === 'fanspeed') return null;
-          if (subtype === 'drymode') return { UUID: 'DryServiceUUID', subtype: 'drymode', displayName: 'Dry Mode' };
-          if (subtype === 'fanonlymode') return { UUID: 'FanOnlyServiceUUID', subtype: 'fanonlymode', displayName: 'Fan Only Mode' };
-          if (subtype === 'standalonefan') return { UUID: 'StandaloneFanServiceUUID', subtype: 'standalonefan', displayName: 'Standalone Fan' };
-          if (subtype === 'horizontalswing') return { UUID: 'HorizontalSwingServiceUUID', subtype: 'horizontalswing', displayName: 'Horizontal Swing' };
-          if (subtype === 'turbo') return { UUID: 'TurboServiceUUID', subtype: 'turbo', displayName: 'Turbo' };
-          if (subtype === 'ecomode') return { UUID: 'EcoServiceUUID', subtype: 'ecomode', displayName: 'ECO Mode' };
-          if (subtype === 'beep') return { UUID: 'BeepServiceUUID', subtype: 'beep', displayName: 'Beep' };
-        } else if (identifier.UUID === mockApi.hap.Service.Fanv2.UUID) {
-          // Use the subtype parameter
-          if (subtype === 'fanspeed') return { UUID: 'FanSpeedServiceUUID', subtype: 'fanspeed', displayName: 'Fan Speed' };
-        } else if (identifier.UUID === mockApi.hap.Service.TemperatureSensor.UUID) {
-          return { UUID: mockApi.hap.Service.TemperatureSensor.UUID, subtype: 'tempsensor', displayName: 'Temperature Sensor' };
         }
         return undefined;
       }),
-      getServiceById: vi.fn((uuid: string, subtype: string) => {
+      getServiceById: vi.fn((uuid: string, subtype?: string) => {
         if (uuid === mockApi.hap.Service.Switch.UUID) {
-          if (subtype === 'display') return { UUID: 'DisplayServiceUUID', subtype: 'display', displayName: 'Display' };
-          if (subtype === 'sleepmode') return { UUID: 'SleepServiceUUID', subtype: 'sleepmode', displayName: 'Sleep Mode' };
-          if (subtype === 'drymode') return { UUID: 'DryServiceUUID', subtype: 'drymode', displayName: 'Dry Mode' };
-          if (subtype === 'fanonlymode') return { UUID: 'FanOnlyServiceUUID', subtype: 'fanonlymode', displayName: 'Fan Only Mode' };
-          if (subtype === 'standalonefan') return { UUID: 'StandaloneFanServiceUUID', subtype: 'standalonefan', displayName: 'Standalone Fan' };
-          if (subtype === 'horizontalswing') return { UUID: 'HorizontalSwingServiceUUID', subtype: 'horizontalswing', displayName: 'Horizontal Swing' };
-          if (subtype === 'turbo') return { UUID: 'TurboServiceUUID', subtype: 'turbo', displayName: 'Turbo' };
-          if (subtype === 'ecomode') return { UUID: 'EcoServiceUUID', subtype: 'ecomode', displayName: 'ECO Mode' };
-          if (subtype === 'beep') return { UUID: 'BeepServiceUUID', subtype: 'beep', displayName: 'Beep' };
+          if (subtype === 'display') return mockDisplayServiceViaId;
+          if (subtype === 'sleep') return { UUID: 'SleepServiceUUID_ViaId', subtype: 'sleep', displayName: 'Sleep by ID' };
         } else if (uuid === mockApi.hap.Service.Fanv2.UUID) {
-          if (subtype === 'fanspeed') return { UUID: 'FanSpeedServiceUUID', subtype: 'fanspeed', displayName: 'Fan Speed' };
+          if (subtype === 'fan_speed') return mockFanSpeedService; // Fixed subtype to match platform.ts
         } else if (uuid === mockApi.hap.Service.TemperatureSensor.UUID) {
-          return { UUID: mockApi.hap.Service.TemperatureSensor.UUID, subtype: 'tempsensor', displayName: 'Temperature Sensor' };
+          return mockTempSensorServiceInstance;
         }
         return undefined;
       }),
       removeService: vi.fn(),
       services: [
-        { UUID: mockApi.hap.Service.TemperatureSensor.UUID, subtype: 'tempsensor', displayName: 'Temperature Sensor' },
+        mockTempSensorServiceInstance,
+        mockDisplayServiceViaDisplayName,
+        mockDisplayServiceViaId, // Add the service with subtype 'display' that should be removed
+        mockFanSpeedService,
         { UUID: 'OtherServiceUUID', subtype: 'other', displayName: 'Other Service' },
       ],
     } as unknown as PlatformAccessory;
@@ -158,55 +157,80 @@ describe('TfiacPlatform branch coverage tests', () => {
     });
 
     it('does nothing when no features disabled', () => {
-      const deviceConfig = {} as any;
+      const deviceConfig = { name: mockAccessory.displayName } as any;
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
+
       expect(mockAccessory.removeService).not.toHaveBeenCalled();
+      
+      // Check for the key log messages in the simplified logging output
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=false');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] No services needed removal for Test Accessory.');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
+      
       expect(updateAccessoriesSpy).not.toHaveBeenCalled();
-      expect(mockLog.debug).toHaveBeenCalledWith(
-        `No services needed removal for ${mockAccessory.displayName}.`
-      );
     });
 
-    it('removes Display Switch when enableDisplay is false', () => {
-      const deviceConfig = { enableDisplay: false } as any;
-      const displayService = mockAccessory.getService('Display');
+    it('removes Display Switch when enableDisplaySwitch is false', () => {
+      const deviceConfig = { name: mockAccessory.displayName, enableDisplay: false, debug: true } as any;
+      const expectedServiceToRemove = mockDisplayServiceViaId; // Updated to use ID-based service
+
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
-      expect(mockAccessory.removeService).toHaveBeenCalledWith(displayService);
-      expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
+
+      expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
+      
+      // Check for the key log messages in the simplified logging output
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Display Light (display)');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
+      
       expect(mockLog.info).toHaveBeenCalledWith(
-        `Removed Display Switch service from ${mockAccessory.displayName}`
+        'Updating accessory Test Accessory after removing disabled services.'
       );
+      expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
     });
 
-    it('removes Fan Speed when enableFanSpeed is false', () => {
-      const deviceConfig = { enableFanSpeed: false } as any;
+    it('removes Fan Speed when enableFanSpeedSwitch is false', () => {
+      const deviceConfig = { name: mockAccessory.displayName, enableFanSpeed: false, debug: true } as any;
+      const expectedServiceToRemove = mockFanSpeedService as any;
+
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
-      // getService returns undefined, fallback to Fanv2 by subtype 'fanspeed'
-      const fanService = mockAccessory.getServiceById(
-        mockApi.hap.Service.Fanv2.UUID,
-        'fanspeed'
-      );
-      expect(mockAccessory.removeService).toHaveBeenCalledWith(fanService);
-      expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
+
+      expect(mockAccessory.removeService).toHaveBeenCalledWith(expectedServiceToRemove);
+      
+      // Check for the key log messages in the simplified logging output
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Fan Speed Control by ID (fan_speed)');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
+      
       expect(mockLog.info).toHaveBeenCalledWith(
-        `Removed Fan Speed service from ${mockAccessory.displayName}`
+        'Updating accessory Test Accessory after removing disabled services.'
       );
+      expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
     });
 
     it('removes temperature sensor when enableTemperature is false', () => {
-      const deviceConfig = { enableTemperature: false } as any;
+      const deviceConfig = { name: mockAccessory.displayName, enableTemperature: false, debug: true } as any;
+
       (platform as any).removeDisabledServices(mockAccessory, deviceConfig);
-      const tempServices = mockAccessory.services.filter(
-        s => s.UUID === mockApi.hap.Service.TemperatureSensor.UUID
-      );
-      // removeService called for each temp sensor
-      tempServices.forEach(svc => {
-        expect(mockAccessory.removeService).toHaveBeenCalledWith(svc);
-      });
-      expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
+
+      expect(mockAccessory.removeService).toHaveBeenCalledWith(mockTempSensorServiceInstance as any);
+      
+      // Check for the key log messages in the simplified logging output
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Starting service removal check for accessory: Test Accessory');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Removed service: Temperature Sensor (indoor_temperature)');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Service removal check completed. serviceRemoved=true');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] Accessory update completed');
+      expect(mockLog.debug).toHaveBeenCalledWith('[Test Accessory] removeDisabledServices completed');
+      
       expect(mockLog.info).toHaveBeenCalledWith(
-        `Temperature sensor is disabled for ${mockAccessory.displayName}. Removing ${tempServices.length} sensor(s).`
+        'Updating accessory Test Accessory after removing disabled services.'
       );
+      expect(updateAccessoriesSpy).toHaveBeenCalledWith([mockAccessory]);
     });
   });
 });

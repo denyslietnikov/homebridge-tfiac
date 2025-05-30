@@ -4,15 +4,17 @@ import {
   CharacteristicValue,
 } from 'homebridge';
 import { TfiacPlatform } from './platform.js';
-import AirConditionerAPI, { AirConditionerStatus } from './AirConditionerAPI.js';
+import { AirConditionerStatus } from './AirConditionerAPI.js';
 import { TfiacDeviceConfig } from './settings.js';
-import { PowerState, FanSpeed } from './enums.js';
+import { PowerState, FanSpeed, SUBTYPES } from './enums.js';
 import CacheManager from './CacheManager.js';
+import { DeviceState } from './state/DeviceState.js';
 
 export class StandaloneFanAccessory {
   private service: Service;
-  private deviceAPI: AirConditionerAPI;
   private cacheManager: CacheManager;
+  private deviceState: DeviceState;
+  private stateChangeListener: (state: DeviceState) => void;
 
   constructor(
     private readonly platform: TfiacPlatform,
@@ -20,37 +22,66 @@ export class StandaloneFanAccessory {
   ) {
     const serviceName = 'Standalone Fan';
     const deviceConfig = this.accessory.context.deviceConfig as TfiacDeviceConfig;
-    this.cacheManager = CacheManager.getInstance(deviceConfig);
-    this.deviceAPI = this.cacheManager.api;
+    this.cacheManager = CacheManager.getInstance(deviceConfig, platform.log);
+    this.deviceState = this.cacheManager.getDeviceState();
+    this.stateChangeListener = this.handleStateChange.bind(this);
 
     const existingService =
       this.accessory.getService(serviceName) ||
-      this.accessory.getServiceById(this.platform.Service.Fan, 'standalone_fan') ||
-      this.accessory.getServiceById(this.platform.Service.Fan.UUID, 'standalone_fan');
+      this.accessory.getServiceById(this.platform.Service.Fan, SUBTYPES.standaloneFan) ||
+      this.accessory.getServiceById(this.platform.Service.Fan.UUID, SUBTYPES.standaloneFan);
 
     this.service =
       existingService ||
-      this.accessory.addService(this.platform.Service.Fan, serviceName, 'standalone_fan');
+      this.accessory.addService(this.platform.Service.Fan, serviceName, SUBTYPES.standaloneFan);
     this.service.updateCharacteristic(this.platform.Characteristic.ConfiguredName, serviceName);
 
-    // Subscribe to centralized status updates
-    this.cacheManager.api.on('status', this.updateStatus.bind(this));
-    this.service
-      .getCharacteristic(this.platform.Characteristic.On)
-      .on('get', this.handleGet.bind(this))
-      .on('set', this.handleSet.bind(this));
-    this.service
-      .getCharacteristic(this.platform.Characteristic.RotationSpeed)
-      .on('get', this.handleRotationSpeedGet.bind(this))
-      .on('set', this.handleRotationSpeedSet.bind(this));
+    // Subscribe to DeviceState changes for reactive UI updates
+    this.deviceState.on('stateChanged', this.stateChangeListener);
+
+    // Get the On characteristic
+    const onCharacteristic = this.service.getCharacteristic(this.platform.Characteristic.On);
+    onCharacteristic
+      .onGet(this.handleOnGet.bind(this))
+      .onSet(this.handleOnSet.bind(this));
+
+    // Get the RotationSpeed characteristic
+    const rotationSpeedCharacteristic = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed);
+    rotationSpeedCharacteristic
+      .onGet(this.handleRotationSpeedGet.bind(this))
+      .onSet(this.handleRotationSpeedSet.bind(this));
   }
 
-  /** No-op stub for stopPolling; cleanup handled by platform */
+  /** Unsubscribe from centralized status updates */
   public stopPolling(): void {
-    // nothing to clear
+    // Unsubscribe from DeviceState events
+    this.deviceState.removeListener('stateChanged', this.stateChangeListener);
   }
 
-  private updateStatus(status: Partial<AirConditionerStatus> | null): void {
+  /**
+   * Handle state change events from the DeviceState
+   */
+  private handleStateChange(state: DeviceState): void {
+    try {
+      // Check if state is a valid DeviceState object with toApiStatus method
+      if (!state || typeof state.toApiStatus !== 'function') {
+        this.platform.log.warn('[StandaloneFan] Invalid DeviceState object received, toApiStatus is not a function');
+        this.updateStatus(null);
+        return;
+      }
+      
+      const apiStatus = state.toApiStatus();
+      this.updateStatus(apiStatus);
+    } catch (error) {
+      this.platform.log.error(`[StandaloneFan] Error in handleStateChange: ${error}`);
+      this.updateStatus(null);
+    }
+  }
+
+  /**
+   * Update the service with the latest status
+   */
+  public updateStatus(status: Partial<AirConditionerStatus> | null): void {
     const isOn = status && status.is_on ? status.is_on === PowerState.On : false;
     this.service.updateCharacteristic(this.platform.Characteristic.On, isOn);
     const speed = status && typeof status.fan_mode === 'string'
@@ -59,79 +90,56 @@ export class StandaloneFanAccessory {
     this.service.updateCharacteristic(this.platform.Characteristic.RotationSpeed, speed);
   }
 
-  private handleGet(callback?: (err: Error | null, value?: boolean) => void): boolean | Promise<boolean> {
+  private async handleOnGet(): Promise<boolean> {
     const value = this.service.getCharacteristic(this.platform.Characteristic.On).value as boolean;
-    
-    if (callback && typeof callback === 'function') {
-      callback(null, value ?? false);
-      return value ?? false;
-    }
-    
-    return Promise.resolve(value ?? false);
+    return value ?? false;
   }
 
-  private async handleSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
-    try {
-      if (value) {
-        await this.deviceAPI.turnOn();
-      } else {
-        await this.deviceAPI.turnOff();
-      }
-      this.cacheManager.clear();
-      if (callback && typeof callback === 'function') {
-        callback(null);
-      }
-    } catch (err) {
-      if (callback && typeof callback === 'function') {
-        callback(err as Error);
-      } else {
-        throw err;
-      }
+  private async handleOnSet(value: CharacteristicValue): Promise<void> {
+    const modifiedState = this.deviceState.clone();
+    
+    if (value) {
+      modifiedState.setPower(PowerState.On);
+    } else {
+      modifiedState.setPower(PowerState.Off);
     }
+    
+    await this.cacheManager.applyStateToDevice(modifiedState);
   }
 
-  private handleRotationSpeedGet(callback?: (err: Error | null, value?: number) => void): number | Promise<number> {
+  private async handleRotationSpeedGet(): Promise<number> {
     const value = this.service.getCharacteristic(this.platform.Characteristic.RotationSpeed).value as number;
-    
-    if (callback && typeof callback === 'function') {
-      callback(null, value ?? 50);
-      return value ?? 50;
-    }
-    
-    return Promise.resolve(value ?? 50);
+    return value ?? 50;
   }
 
-  private async handleRotationSpeedSet(value: CharacteristicValue, callback?: (err?: Error | null) => void): Promise<void> {
-    try {
-      await this.deviceAPI.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
-      this.cacheManager.clear();
-      if (callback && typeof callback === 'function') {
-        callback(null);
-      }
-    } catch (err) {
-      if (callback && typeof callback === 'function') {
-        callback(err as Error);
-      } else {
-        throw err;
-      }
-    }
+  private async handleRotationSpeedSet(value: CharacteristicValue): Promise<void> {
+    const modifiedState = this.deviceState.clone();
+    
+    // Set the fan speed while maintaining current sleep mode
+    modifiedState.setFanSpeed(this.mapRotationSpeedToFanMode(value as number));
+    
+    await this.cacheManager.applyStateToDevice(modifiedState);
   }
 
   private mapFanModeToRotationSpeed(fanMode: FanSpeed): number {
     const fanSpeedMap: { [key in FanSpeed]?: number } = {
       [FanSpeed.Auto]: 50,
       [FanSpeed.Low]: 25,
-      [FanSpeed.Middle]: 50,
+      [FanSpeed.Medium]: 50,
       [FanSpeed.High]: 75,
     };
     return fanSpeedMap[fanMode] ?? 50; // Default to 50 if mode is unknown
   }
 
   private mapRotationSpeedToFanMode(speed: number): FanSpeed {
+    if (speed === 0) {
+      return FanSpeed.Auto;
+    }
+
     if (speed <= 25) {
       return FanSpeed.Low;
     } else if (speed <= 50) {
-      return FanSpeed.Middle;
+      return FanSpeed.Medium;
     } else if (speed <= 75) {
       return FanSpeed.High;
     } else {

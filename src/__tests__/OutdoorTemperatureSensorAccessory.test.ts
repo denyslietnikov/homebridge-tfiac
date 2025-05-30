@@ -21,6 +21,16 @@ describe('OutdoorTemperatureSensorAccessory', () => {
     // Setup test platform using the utility function
     platform = setupTestPlatform();
     
+    // Add spy methods to the existing log object rather than replacing it
+    Object.defineProperties(platform.log, {
+      'debug': { value: vi.fn() },
+      'info': { value: vi.fn() },
+      'warn': { value: vi.fn() },
+      'error': { value: vi.fn() },
+      'log': { value: vi.fn() },
+      'success': { value: vi.fn() }
+    });
+    
     // Create mockService using utility function
     mockService = createMockService();
 

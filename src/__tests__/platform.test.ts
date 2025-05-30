@@ -5,6 +5,16 @@ import { PlatformAccessory, Service, Characteristic } from 'homebridge';
 import { TfiacDeviceConfig, TfiacPlatformConfig } from '../settings.js';
 import { PLUGIN_NAME, PLATFORM_NAME } from '../settings.js';
 
+// Mock fs/promises and path before imports
+vi.mock('fs/promises', () => ({
+  readFile: vi.fn().mockRejectedValue(new Error('ENOENT: no such file or directory, open \'/mock/storage/path/homebridge-tfiac-version.json\'')),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('path', () => ({
+  join: vi.fn((...args: string[]) => args.join('/')),
+}));
+
 // Mock implementations before imports
 vi.mock('../DrySwitchAccessory.js', () => ({ DrySwitchAccessory: vi.fn() }));
 vi.mock('../FanOnlySwitchAccessory.js', () => ({ FanOnlySwitchAccessory: vi.fn() }));
@@ -26,11 +36,23 @@ import {
   createMockService,
   createMockCharacteristic,
   createMockPlatformAccessory,
-  mockPlatformAccessory
 } from './testUtils.js';
 
-// Create a mockLogger instance
-const mockLogger = createMockLogger();
+// Ensure this mockLogger is a full vi.fn mock to enable spy checking
+const mockLogger = {
+  debug: vi.fn(),
+  info: vi.fn(),
+  warn: vi.fn(),
+  error: vi.fn((...args: unknown[]) => {
+    // Log to console for visibility during test run
+    const errorArgs = args.map(arg => 
+      arg instanceof Error ? { message: arg.message, stack: arg.stack } : arg
+    );
+    console.error('mockLogger.error called with:', JSON.stringify(errorArgs, null, 2));
+  }),
+  log: vi.fn(),
+  success: vi.fn()
+};
 
 // Collection to store TfiacPlatformAccessory instances for cleanup
 const tfiacAccessoryInstances: TfiacPlatformAccessory[] = [];
@@ -110,7 +132,12 @@ const mockAPI: API = {
       prototype: {},
       Thermostat: vi.fn(() => mockServiceInstance),
       HeaterCooler: vi.fn(() => mockServiceInstance),
-      AccessoryInformation: vi.fn(() => mockServiceInstance),
+      AccessoryInformation: Object.assign(vi.fn(() => mockServiceInstance), { UUID: 'accessory-information-uuid' }),
+      // Add missing service mocks with UUID properties
+      Switch: Object.assign(vi.fn(() => createMockService('Switch')), { UUID: 'switch-uuid' }),
+      Fanv2: Object.assign(vi.fn(() => createMockService('Fanv2')), { UUID: 'fanv2-uuid' }),
+      Fan: Object.assign(vi.fn(() => createMockService('Fan')), { UUID: 'fan-uuid' }), // For StandaloneFanAccessory if it uses Service.Fan
+      TemperatureSensor: Object.assign(vi.fn(() => createMockService('TemperatureSensor')), { UUID: 'temperature-sensor-uuid' }),
     } as unknown as typeof Service,
     Characteristic: {
       prototype: {},
@@ -188,16 +215,10 @@ describe('TfiacPlatform', () => {
 
   beforeEach(() => {
     // Reset all mocks
+    // Clear all mocks
     vi.clearAllMocks();
 
-    // Use the didFinishLaunchingCallback variable declared at module level
-    didFinishLaunchingCallback = () => {};
-
-    // Reset logger mocks
-    (mockLogger.debug as ReturnType<typeof vi.fn>).mockReset();
-    (mockLogger.info as ReturnType<typeof vi.fn>).mockReset();
-    (mockLogger.warn as ReturnType<typeof vi.fn>).mockReset();
-    (mockLogger.error as ReturnType<typeof vi.fn>).mockReset();
+    // Logger mocks are cleared globally via clearAllMocks
 
     // Reset API mocks specifically
     (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockReset();
@@ -243,12 +264,11 @@ describe('TfiacPlatform', () => {
       return mockAPI;
     });
 
+    // Initialize platform AFTER setting up the mock implementation for registerPlatformAccessories
     platform = new TfiacPlatform(mockLogger, config, mockAPI);
 
-    // Clear logger mocks for subsequent tests
-    (mockLogger.debug as ReturnType<typeof vi.fn>).mockClear();
-    (mockLogger.info as ReturnType<typeof vi.fn>).mockClear();
-    (mockLogger.warn as ReturnType<typeof vi.fn>).mockClear();
+    // Use vi.clearAllMocks() instead of individual mockClear calls
+    // This already happened at the beginning of beforeEach
   });
 
   // Clean up after each test
@@ -276,30 +296,143 @@ describe('TfiacPlatform', () => {
     vi.clearAllMocks();
   });
 
-  // ---------- Restored platform tests ----------
-  it('registers new accessories on didFinishLaunching', () => {
-    // Simulate Homebridge didFinishLaunching event
-    didFinishLaunchingCallback();
-    // Should register the configured accessory
-    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
-    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledWith(
-      PLUGIN_NAME,
-      PLATFORM_NAME,
-      accessoryInstances,
-    );
+  // ---------- Rewritten platform tests ----------
+  it('does not register accessories upon construction', () => {
+    // Platform is constructed in beforeEach, but discoverDevices is not called by constructor
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
   });
 
-  it('registers accessories when calling discoverDevices directly', async () => {
-    // Clear previous calls and state
-    (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockClear();
-    accessoryInstances.length = 0;
-    // Invoke discovery manually
+  it('registers new accessories on didFinishLaunching', async () => {
+    // Platform is constructed in beforeEach
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled(); // Ensure not called yet
+
+    if (!didFinishLaunchingCallback) {
+      throw new Error('didFinishLaunchingCallback was not set by mockAPI.on');
+    }
+    await didFinishLaunchingCallback(); // This will call platform.discoverDevices()
+
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
+    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledWith(
+      PLUGIN_NAME,
+      PLATFORM_NAME,
+      accessoryInstances, // This array is populated by the mockImplementation
+    );
+    // Assuming one device in the default config from beforeEach
+    expect(accessoryInstances.length).toBe(1);
+    if (config.devices && config.devices.length > 0) {
+      expect(accessoryInstances[0].displayName).toBe(config.devices[0].name);
+    }
+  });
+
+  it('registers new accessories when discoverDevices is called directly', async () => {
+    // Platform is constructed in beforeEach
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled(); // Ensure not called yet
+
     await platform.discoverDevices();
+
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
     expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
     expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledWith(
       PLUGIN_NAME,
       PLATFORM_NAME,
       accessoryInstances,
     );
+    expect(accessoryInstances.length).toBe(1);
+    if (config.devices && config.devices.length > 0) {
+      expect(accessoryInstances[0].displayName).toBe(config.devices[0].name);
+    }
+  });
+
+  it('does not re-register accessories if discoverDevices is called multiple times', async () => {
+    // First call (e.g., via didFinishLaunching)
+    if (!didFinishLaunchingCallback) {
+      throw new Error('didFinishLaunchingCallback was not set by mockAPI.on');
+    }
+    await didFinishLaunchingCallback();
+    
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).toHaveBeenCalledTimes(1);
+    
+    // Clear mocks for the next call
+    (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockClear();
+    accessoryInstances.length = 0; // Clear the capture array
+
+    // Second call (e.g., direct call to discoverDevices)
+    await platform.discoverDevices();
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled(); // Should not register again
+    expect(accessoryInstances.length).toBe(0); // No new accessories should have been pushed
+
+    // Third call (another direct call to be sure)
+    (mockAPI.registerPlatformAccessories as ReturnType<typeof vi.fn>).mockClear(); // Clear again just in case
+    accessoryInstances.length = 0;
+    await platform.discoverDevices();
+    expect(mockLogger.error).not.toHaveBeenCalled(); // Check for errors first
+    expect(mockAPI.registerPlatformAccessories).not.toHaveBeenCalled();
+    expect(accessoryInstances.length).toBe(0);
+  });
+
+  it('shows debug logs when debug flag is set to true', async () => {
+    vi.clearAllMocks();
+    
+    // Create a new platform instance with debug enabled
+    const debugConfig: TfiacPlatformConfig = { ...config, debug: true };
+    const debugPlatform = new TfiacPlatform(mockLogger, debugConfig, mockAPI);
+    // Spy on the wrapper debug method
+    const wrapperSpy = vi.spyOn(mockLogger, 'debug');
+    
+    // Log a debug message
+    debugPlatform.log.debug('Test debug message');
+    
+    // Verify the wrapper debug was called
+    expect(wrapperSpy).toHaveBeenCalledWith('Test debug message');
+  });
+  
+  it('does not show debug logs when debug flag is not set', async () => {
+    vi.clearAllMocks();
+    
+    // Create a clean mockLogger with a spy already in place
+    const testMockLogger = {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      log: vi.fn(),
+      success: vi.fn()
+    };
+    
+    // Directly spy on the debug method before creating the platform
+    const wrapperSpy = vi.spyOn(testMockLogger, 'debug');
+    
+    // Create a new platform instance with debug explicitly disabled
+    const noDebugConfig: TfiacPlatformConfig = { ...config, debug: false };
+    const noDebugPlatform = new TfiacPlatform(testMockLogger, noDebugConfig, mockAPI);
+    
+    // Log a debug message
+    noDebugPlatform.log.debug('Test debug message');
+    
+    // Verify the wrapper debug was not called
+    expect(wrapperSpy).not.toHaveBeenCalled();
+  });
+
+  it('shows debug logs when any device has debug flag set to true', async () => {
+    vi.clearAllMocks();
+    
+    // Create a new platform instance with platform debug disabled but device debug enabled
+    const deviceDebugConfig: TfiacPlatformConfig = {
+      ...config,
+      debug: false,
+      devices: [ { ...config.devices![0], debug: true } ]
+    };
+    const deviceDebugPlatform = new TfiacPlatform(mockLogger, deviceDebugConfig, mockAPI);
+    // Spy on the wrapper debug method
+    const wrapperSpy = vi.spyOn(mockLogger, 'debug');
+    
+    // Log a debug message
+    deviceDebugPlatform.log.debug('Test debug message');
+    
+    // Verify the wrapper debug was called
+    expect(wrapperSpy).toHaveBeenCalledWith('Test debug message');
   });
 });

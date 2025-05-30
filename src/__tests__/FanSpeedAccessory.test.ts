@@ -1,3 +1,4 @@
+// src/__tests__/FanSpeedAccessory.test.ts
 import { vi, describe, beforeEach, afterEach, it, expect  } from 'vitest';
 import { FanSpeedAccessory } from '../FanSpeedAccessory.js';
 import { TfiacPlatform } from '../platform.js';
@@ -6,191 +7,265 @@ import {
   createMockLogger,
   createMockService,
   createMockPlatformAccessory,
-  MockApiActions,
-  setupTestPlatform,
   createMockAPI,
-  createMockApiActions
+  createMockDeviceState,
+  createMockCacheManager,
+  defaultDeviceOptions
 } from './testUtils.js';
+import { FanSpeed, PowerState, OperationMode, SleepModeState } from '../enums.js';
+import { DeviceState } from '../state/DeviceState.js';
 
-// Use type assertion to fix the ReturnType<typeof vi.fn> compatibility issue
-import AirConditionerAPI from '../AirConditionerAPI.js';
+// Mock the CacheManager module
+vi.mock('../CacheManager.js');
 
-// Mock AirConditionerAPI at the module level
-vi.mock('../AirConditionerAPI.js', () => ({
-  __esModule: true,
-  default: vi.fn(() => MockApiActions),
-}));
+// Import after mocking
+import CacheManager from '../CacheManager.js';
 
 describe('FanSpeedAccessory', () => {
   let platform: TfiacPlatform;
   let accessory: PlatformAccessory;
   let service: any;
-  let deviceAPI: MockApiActions;
   let mockLogger: ReturnType<typeof createMockLogger>;
   let mockAPI: ReturnType<typeof createMockAPI>;
+  let mockDeviceState: any;
+  let mockCacheManager: any;
 
   beforeEach(() => {
+    vi.clearAllMocks();
+    
     mockLogger = createMockLogger();
     mockAPI = createMockAPI();
-    platform = setupTestPlatform({}, mockLogger, mockAPI);
+    
+    // Add Active status to Characteristic mocks
+    mockAPI.hap.Characteristic.Active = {
+      ...mockAPI.hap.Characteristic.On,
+      ACTIVE: 1,
+      INACTIVE: 0,
+    };
+    
+    // Add RotationSpeed characteristic
+    mockAPI.hap.Characteristic.RotationSpeed = {
+      ...mockAPI.hap.Characteristic.On,
+      UUID: 'rotation-speed-uuid',
+    };
+    
+    // Set up platform
+    platform = setupTestPlatform();
+    platform.Characteristic = mockAPI.hap.Characteristic as any;
     
     service = createMockService();
     
     accessory = createMockPlatformAccessory(
       'Test Device',
       'test-uuid',
-      { ip: '1.2.3.4', port: 1234, updateInterval: 1, name: 'Test' },
+      { ip: '1.2.3.4', port: 1234, updateInterval: 1, name: 'Test', id: 'test-id' },
       service
     );
     
-    // Create mock API actions using the helper function
-    deviceAPI = createMockApiActions({ fan_mode: '25' });
-    
-    // Configure mock methods
-    deviceAPI.updateState.mockResolvedValue({ fan_mode: '25' });
-    deviceAPI.turnOn.mockResolvedValue(undefined);
-    deviceAPI.turnOff.mockResolvedValue(undefined);
-    deviceAPI.setAirConditionerState.mockResolvedValue(undefined);
-    deviceAPI.setFanSpeed.mockResolvedValue(undefined);
-    deviceAPI.setSwingMode.mockResolvedValue(undefined);
-    deviceAPI.cleanup.mockResolvedValue(undefined);
-    
-    // Use type assertion to fix the compatibility issue
-    (AirConditionerAPI as unknown as ReturnType<typeof vi.fn>).mockImplementation(() => deviceAPI);
-    
-    // Mock service methods for characteristic handling
-    service.getCharacteristic.mockImplementation(() => {
-      return {
-        onGet: vi.fn().mockReturnThis(),
-        onSet: vi.fn().mockReturnThis(),
-        on: vi.fn().mockReturnThis(),
-        updateValue: vi.fn().mockReturnThis(),
-      };
+    // Create device state with mock
+    mockDeviceState = createMockDeviceState(defaultDeviceOptions);
+    mockDeviceState.power = PowerState.On;
+    mockDeviceState.operationMode = OperationMode.Cool;
+    mockDeviceState.fanSpeed = FanSpeed.Auto;
+    mockDeviceState.on = vi.fn((event, listener) => {
+      if (event === 'stateChanged') {
+        // Store the listener for testing
+        (mockDeviceState as any).stateChangedListener = listener;
+      }
+      return mockDeviceState;
     });
+    mockDeviceState.removeListener = vi.fn().mockReturnValue(mockDeviceState);
+    mockDeviceState.clone = vi.fn().mockReturnValue({...mockDeviceState});
+    mockDeviceState.setPower = vi.fn();
+    mockDeviceState.setOperationMode = vi.fn();
+    mockDeviceState.setFanSpeed = vi.fn();
     
-    // Fix type compatibility issues with proper type assertions
-    const getServiceMock = vi.fn().mockReturnValue(undefined);
-    const addServiceMock = vi.fn().mockReturnValue(service);
+    // Create CacheManager mock
+    mockCacheManager = createMockCacheManager();
+    mockCacheManager.getDeviceState = vi.fn().mockReturnValue(mockDeviceState);
+    mockCacheManager.getStatus = vi.fn().mockResolvedValue({ 
+      is_on: PowerState.On, 
+      fan_mode: FanSpeed.Auto, 
+      base_mode: OperationMode.Cool
+    });
+    mockCacheManager.applyStateToDevice = vi.fn().mockResolvedValue(undefined);
+    // Use any to bypass readonly limitation
+    (mockCacheManager as any).api = {
+      setDeviceOptions: vi.fn().mockResolvedValue(undefined),
+    };
     
-    // Type assertions to fix TypeScript errors
-    accessory.getService = getServiceMock as unknown as PlatformAccessory['getService'];
-    accessory.addService = addServiceMock as unknown as PlatformAccessory['addService'];
+    // Set up the mock getInstance function
+    (CacheManager.getInstance as any) = vi.fn().mockReturnValue(mockCacheManager);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.clearAllMocks();
   });
 
+  // Helper function to create an instance with our mocks
+  function createTestInstance(): FanSpeedAccessory {
+    accessory.context = {
+      deviceConfig: defaultDeviceOptions,
+    };
+    
+    // Mock service implementation
+    service.setCharacteristic = vi.fn().mockReturnValue(service);
+    
+    // Create a patched FanSpeedAccessory to avoid initialization errors
+    const originalServiceGetter = accessory.getServiceById;
+    accessory.getServiceById = vi.fn().mockReturnValue(undefined); // Force accessory.addService to be called
+    accessory.addService = vi.fn().mockReturnValue(service);
+    
+    // Set up mock DeviceState properly
+    mockDeviceState.setPower = vi.fn();
+    mockDeviceState.setOperationMode = vi.fn();
+    mockDeviceState.setFanSpeed = vi.fn();
+    
+    // Create a proper clone method
+    mockDeviceState.clone = vi.fn().mockImplementation(() => {
+      const cloned = {...mockDeviceState};
+      cloned.setPower = vi.fn();
+      cloned.setOperationMode = vi.fn();
+      cloned.setFanSpeed = vi.fn();
+      return cloned;
+    });
+    
+    // Create the instance
+    const instance = new FanSpeedAccessory(platform, accessory);
+    
+    // Restore getter to original behavior for other tests
+    accessory.getServiceById = originalServiceGetter;
+    
+    return instance;
+  }
+
   it('should construct and set up polling and handlers', () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
+    const inst = createTestInstance();
     
     expect(accessory.addService).toHaveBeenCalled();
     expect(service.setCharacteristic).toHaveBeenCalled();
-    expect(service.getCharacteristic).toHaveBeenCalled();
   });
 
   it('should stop polling', () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
+    const inst = createTestInstance();
+    
     // stopPolling should not throw or error
     expect(() => inst.stopPolling()).not.toThrow();
+    expect(mockDeviceState.removeListener).toHaveBeenCalled();
   });
 
-  it('should handle get with cached status', async () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
+  it('should handle active get with cached status', () => {
+    const inst = createTestInstance();
     
-    (inst as any).cachedStatus = { fan_mode: '50' } as any;
-    const result = await new Promise((resolve) => {
-      (inst as any).handleGet((err: any, val: any) => {
-        resolve({ err, val });
-      });
-    }) as { err: any, val: any };
-    expect(result.err).toBeNull();
-    expect(result.val).toBe(50);
-  });
-
-  it('should handle get with no cached status', async () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
+    // Simulate the handleGet method call with active fan control
+    const result = (inst as any).handleActiveGet();
     
-    (inst as any).cachedStatus = null;
-    const result = await new Promise((resolve) => {
-      (inst as any).handleGet((err: any, val: any) => {
-        resolve({ err, val });
-      });
-    }) as { err: any, val: any };
-    // Now expecting default value (50) instead of error
-    expect(result.err).toBeNull();
-    expect(result.val).toBe(50);
+    // The result should be ACTIVE since our mock device state has power on and cool mode
+    expect(result).toBe(platform.Characteristic.Active.ACTIVE);
   });
 
-  it('should handle set and update status', async () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
+  it('should handle rotation speed get', () => {
+    const inst = createTestInstance();
     
-    const cb = vi.fn();
-    await (inst as any).handleSet(75, cb);
-    expect(deviceAPI.setFanSpeed).toHaveBeenCalledWith('75');
-    expect(cb).toHaveBeenCalledWith(null);
-  });
-
-  it('should handle set error', async () => {
-    deviceAPI.setFanSpeed.mockRejectedValueOnce(new Error('fail'));
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // Manually inject our mock API into the instance
-    (inst as any).deviceAPI = deviceAPI;
+    // Simulate the handleRotationSpeedGet method call
+    const result = (inst as any).handleRotationSpeedGet();
     
-    const cb = vi.fn();
-    await (inst as any).handleSet(30, cb);
-    expect(cb).toHaveBeenCalledWith(expect.any(Error));
+    // Result should be a number (fan speed percentage)
+    expect(typeof result).toBe('number');
   });
 
-  it('should updateStatus and update characteristic with valid fan_mode', () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    // simulate status event
-    inst['updateStatus']({ fan_mode: '75' } as any);
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.RotationSpeed,
-      75,
-    );
-  });
-
-  it('should updateStatus and update characteristic with missing fan_mode', () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    inst['updateStatus']({} as any);
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.RotationSpeed,
-      50,
-    );
-  });
-
-  it('should updateStatus and update characteristic with non-numeric fan_mode', () => {
-    const inst = new FanSpeedAccessory(platform, accessory);
-    inst['updateStatus']({ fan_mode: 'notanumber' } as any);
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic.RotationSpeed,
-      0,
-    );
-  });
-
-  it('should reuse existing Fan service if present', () => {
-    const service = createMockService();
-    // Use proper type assertions to fix TypeScript errors
-    accessory.getServiceById = vi.fn().mockReturnValue(service) as unknown as PlatformAccessory['getServiceById'];
-    accessory.addService = vi.fn() as unknown as PlatformAccessory['addService'];
+  it('should handle state change events', () => {
+    const inst = createTestInstance();
     
-    const inst = new FanSpeedAccessory(platform, accessory);
-    (inst as any).deviceAPI = deviceAPI;
+    // Get the listener from our mock
+    const stateChangedListener = (mockDeviceState as any).stateChangedListener;
+    expect(stateChangedListener).toBeDefined();
     
-    expect(accessory.addService).not.toHaveBeenCalled();
-    expect(accessory.getServiceById).toHaveBeenCalled();
+    // Call the listener with updated state
+    stateChangedListener(mockDeviceState);
+    
+    // Characteristic update should have been called
+    expect(service.updateCharacteristic).toHaveBeenCalled();
+  });
+
+  it('should handle active set', async () => {
+    const inst = createTestInstance();
+    
+    // Set active to ACTIVE without callback
+    await (inst as any).handleActiveSet(platform.Characteristic.Active.ACTIVE);
+    
+    // Verify state was updated
+    expect(mockCacheManager.applyStateToDevice).toHaveBeenCalled();
+  });
+
+  it('should handle rotation speed set', () => {
+    const inst = createTestInstance();
+    
+    // Mock timer
+    vi.useFakeTimers();
+    
+    // Set rotation speed without callback
+    (inst as any).handleRotationSpeedSet(50);
+    
+    // Fast-forward timer to trigger the debounced function
+    vi.runAllTimers();
+    
+    // FanSpeed should have been set on a cloned object
+    expect(mockCacheManager.applyStateToDevice).toHaveBeenCalled();
+    
+    // Restore timers
+    vi.useRealTimers();
   });
 });
+
+// Helper function to create a platform
+function setupTestPlatform(): TfiacPlatform {
+  return {
+    log: createMockLogger(),
+    Service: {
+      Fan: {
+        UUID: 'fan-uuid'
+      },
+      Fanv2: {
+        UUID: 'fanv2-uuid'
+      }
+    },
+    Characteristic: {
+      Active: {
+        ACTIVE: 1,
+        INACTIVE: 0,
+        UUID: 'active-uuid'
+      },
+      RotationSpeed: {
+        UUID: 'rotation-speed-uuid'
+      },
+      ConfiguredName: {
+        UUID: 'configured-name-uuid'
+      }
+    },
+    api: {
+      hap: {
+        HAPStatusError: class HAPStatusError extends Error {
+          constructor(public hapStatus: number) {
+            super(`HAPStatusError: ${hapStatus}`);
+            this.name = 'HAPStatusError';
+            this.status = hapStatus;
+          }
+          status: number;
+        },
+        HapStatusError: class HapStatusError extends Error {
+          constructor(public hapStatus: number) {
+            super(`HAPStatusError: ${hapStatus}`);
+            this.name = 'HAPStatusError';
+            this.status = hapStatus;
+          }
+          status: number;
+        },
+        HAPStatus: {
+          SUCCESS: 0,
+          SERVICE_COMMUNICATION_FAILURE: -70402
+        }
+      }
+    }
+  } as unknown as TfiacPlatform;
+}

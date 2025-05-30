@@ -48,7 +48,8 @@ The plugin is registered as a dynamic platform. Add a new platform entry in your
           "enableEco": true,
           "enableBeep": true,
           "enableFanSpeed": true,
-          "enableTemperature": true
+          "enableTemperature": true,
+          "enableIFeelSensor": true
         },
         {
           "name": "Bedroom AC",
@@ -68,10 +69,32 @@ If you are using Homebridge Config UI X, the plugin provides a JSON schema (conf
 
 ## Advanced Configuration Options
 
-You can fine-tune which features are available for each device by adding the following boolean flags to each device entry:
+You can fine-tune which features are available for each device by using any of the following boolean flags:
 
-- `enableSleep`: Show Sleep Mode switch (default: true)
+### Feature Configuration Format
+
+Use the "enable" prefix for all feature flags:
+```json
+{
+  "name": "Living Room AC",
+  "ip": "192.168.1.100",
+  "enableDisplay": false,
+  "enableSleep": false,
+  "enableDry": false,
+  "enableFanOnly": false,
+  "enableTurbo": false,
+  "enableEco": false
+}
+```
+
+Setting any of these flags to `false` will disable the corresponding feature.
+
+### Available Features
+
+The following features can be enabled or disabled:
+
 - `enableDisplay`: Show Display switch (default: true)
+- `enableSleep`: Show Sleep Mode switch (default: true)
 - `enableDry`: Show Dry Mode switch (default: true)
 - `enableFanOnly`: Show Fan Only Mode switch (default: true)
 - `enableStandaloneFan`: Show Standalone Fan accessory (default: true)
@@ -81,8 +104,7 @@ You can fine-tune which features are available for each device by adding the fol
 - `enableBeep`: Show Beep switch (default: true)
 - `enableFanSpeed`: Show Fan Speed control (default: true)
 - `enableTemperature`: Show Temperature control (default: true)
-
-If any of these are set to `false`, the corresponding accessory or switch will not be created for that device.
+- `enableIFeelSensor`: Show iFeel sensor (default: true)
 
 See the Configuration example above for a complete JSON snippet including flags.
 

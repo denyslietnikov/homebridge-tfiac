@@ -22,7 +22,16 @@ export default defineConfig({
         functions: 80,
         lines: 80,
       },
-      exclude: ['**/node_modules/**', '**/__tests__/**', '**/*.d.ts', '**/fix-deprecations.js'],
+      exclude: [
+        '**/node_modules/**',
+        '**/__tests__/**',
+        '**/*.d.ts',
+        '**/*.html',    // Exclude HTML artifacts
+        '**/fix-deprecations.js',
+        '**/eslint.config.js',
+        '**/vite.config.ts',  // Trailing comma added
+        './src/state/index.ts',
+      ],
     },
     mockReset: true,
     restoreMocks: true,

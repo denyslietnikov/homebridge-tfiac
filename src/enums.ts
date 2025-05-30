@@ -9,6 +9,25 @@ export enum PowerState {
 }
 
 /**
+ * Service subtypes - single source of truth for all accessory service subtypes
+ */
+export const SUBTYPES = {
+  display: 'display',
+  sleep: 'sleep',
+  fanSpeed: 'fan_speed',
+  dry: 'dry',
+  fanOnly: 'fanonly',
+  turbo: 'turbo',
+  eco: 'eco',
+  standaloneFan: 'standalonefan',
+  horizontalSwing: 'horizontalswing',
+  beep: 'beep',
+  indoorTemperature: 'indoor_temperature',
+  outdoorTemperature: 'outdoor_temperature',
+  iFeelSensor: 'ifeel_sensor',
+} as const;
+
+/**
  * Represents the main operation modes of the air conditioner.
  */
 export enum OperationMode {
@@ -25,10 +44,26 @@ export enum OperationMode {
  */
 export enum FanSpeed {
   Low = 'Low',
-  Middle = 'Middle',
+  MediumLow = 'MediumLow',
+  Medium = 'Medium', // Renamed from Middle
+  MediumHigh = 'MediumHigh',
   High = 'High',
+  Turbo = 'Turbo',
   Auto = 'Auto',
 }
+
+/**
+ * Mapping from FanSpeed modes to HomeKit RotationSpeed percentages.
+ */
+export const FanSpeedPercentMap: Record<FanSpeed, number> = {
+  [FanSpeed.Auto]: 50,
+  [FanSpeed.Low]: 25,
+  [FanSpeed.MediumLow]: 40,
+  [FanSpeed.Medium]: 60, // Was Middle, percentage adjusted
+  [FanSpeed.MediumHigh]: 75,
+  [FanSpeed.High]: 100, // Changed from 90 to 100
+  [FanSpeed.Turbo]: 100,
+};
 
 /**
  * Represents the swing modes.

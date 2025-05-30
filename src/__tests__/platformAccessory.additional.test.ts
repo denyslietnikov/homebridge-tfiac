@@ -8,8 +8,10 @@ import {
   createMockPlatform,
   createMockService,
   createMockPlatformAccessory
-} from './testUtils';
-import { PowerState, OperationMode, FanSpeed } from '../enums.js'; // Import Enums
+} from './testUtils.js';
+import { PowerState, OperationMode, FanSpeed, FanSpeedPercentMap, SleepModeState, SwingMode } from '../../src/enums'; // Corrected import for enums
+import { fahrenheitToCelsius, celsiusToFahrenheit } from '../utils.js'; // Import utils
+import { DeviceState } from '../../src/state/DeviceState'; // Corrected import for DeviceState
 
 describe('TfiacPlatformAccessory extra tests', () => {
   let platform: Partial<TfiacPlatform>;
@@ -75,6 +77,15 @@ describe('TfiacPlatformAccessory extra tests', () => {
 
     // Create mock platform
     platform = createMockPlatform();
+    // Add spy methods to the existing log object rather than replacing it
+    Object.defineProperties(platform.log!, {
+      'debug': { value: vi.fn() },
+      'info': { value: vi.fn() },
+      'warn': { value: vi.fn() },
+      'error': { value: vi.fn() },
+      'log': { value: vi.fn() },
+      'success': { value: vi.fn() }
+    });
 
     // Make Service / Characteristic maps typeless to avoid TS clashes in unit tests
     (platform as any).Service = {
@@ -84,14 +95,14 @@ describe('TfiacPlatformAccessory extra tests', () => {
 
     (platform as any).Characteristic = {
       Name: 'Name',
-      Active: { ACTIVE: 1, INACTIVE: 0 },
-      CurrentHeaterCoolerState: { IDLE: 0, COOLING: 2, HEATING: 1 },
-      TargetHeaterCoolerState: { AUTO: 0, COOL: 1, HEAT: 2 },
+      Active: { ACTIVE: 1, INACTIVE: 0 }, // Standard
+      CurrentHeaterCoolerState: { INACTIVE: 0, IDLE: 1, HEATING: 2, COOLING: 3 }, // Standard HomeKit values
+      TargetHeaterCoolerState: { AUTO: 0, HEAT: 1, COOL: 2 }, // Standard HomeKit values
       CurrentTemperature: 'CurrentTemperature',
       CoolingThresholdTemperature: 'CoolingThresholdTemperature',
       HeatingThresholdTemperature: 'HeatingThresholdTemperature',
       RotationSpeed: 'RotationSpeed',
-      SwingMode: 'SwingMode',
+      SwingMode: { SWING_DISABLED: 0, SWING_ENABLED: 1 },
     };
 
     (platform as any).api = {
@@ -103,21 +114,9 @@ describe('TfiacPlatformAccessory extra tests', () => {
 
   it('should remove sensors when disable temperature', () => {
     accessory.context!.deviceConfig.enableTemperature = false;
-    // Provide existing sensor services
-    const indoorService = {};
-    const outdoorService = {};
-    (accessory.getServiceById as ReturnType<typeof vi.fn>)
-      .mockImplementation((serviceType, id) => {
-        if (serviceType === 'TemperatureSensor' && id === 'indoor_temperature') {
-          return indoorService;
-        } else if (serviceType === 'TemperatureSensor' && id === 'outdoor_temperature') {
-          return outdoorService;
-        }
-        return null;
-      });
 
     new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    expect(platform.log!.info).toHaveBeenCalledWith('Temperature sensors are disabled for AC - removing any that were cached.');
+    expect(platform.log!.info).toHaveBeenCalledWith('⚠️ Temperature sensors are disabled for AC - removing any that were cached.');
     // We only need to make sure `removeService` was invoked at least once
     expect(accessory.removeService).toHaveBeenCalled();
     expect(platform.log!.debug).toHaveBeenCalledWith('Removed existing indoor temperature sensor service.');
@@ -148,118 +147,102 @@ describe('TfiacPlatformAccessory extra tests', () => {
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.CurrentHeaterCoolerState,
-      platform.Characteristic!.CurrentHeaterCoolerState.IDLE,
+      platform.Characteristic!.CurrentHeaterCoolerState.INACTIVE, // Code uses INACTIVE for null status
     );
+    // CurrentTemperature default is 10 in the implementation
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.CurrentTemperature,
-      20,
+      10, 
     );
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic!.CoolingThresholdTemperature,
-      22,
-    );
+    // NOTE: No longer expect threshold temperature updates - this was the bug fix
+    // Threshold temperatures should only be updated by explicit HomeKit SET requests
+    // expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    //   platform.Characteristic!.CoolingThresholdTemperature,
+    //   10,
+    // );
+    // expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    //   platform.Characteristic!.HeatingThresholdTemperature,
+    //   10,
+    // );
+    // RotationSpeed default is 0
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.RotationSpeed,
-      50,
+      0, 
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.SwingMode,
-      0,
+      platform.Characteristic!.SwingMode.SWING_DISABLED,
     );
   });
 
   it('updateHeaterCoolerCharacteristics sets values on non-null status', () => {
     const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    const status: AirConditionerStatus = {
-      is_on: PowerState.On, // Use Enum
-      operation_mode: OperationMode.Heat, // Use Enum
-      current_temp: 212,
-      target_temp: 212,
-      fan_mode: FanSpeed.High, // Use Enum
-      swing_mode: 'Both',
-    };
-    (inst as any).updateHeaterCoolerCharacteristics(status);
+    const state = new DeviceState(platform.log!);
+    state.setPower(PowerState.On);
+    state.setOperationMode(OperationMode.Cool);
+    state.setTargetTemperature(35); // Explicitly set to meet the CoolingThresholdTemperature expectation
+    state.setCurrentTemperature(20);
+    state.setFanSpeed(FanSpeed.Auto);
+    state.setSwingMode(SwingMode.Off);
+
+    // Make the accessory instance use our specifically prepared 'state'
+    (inst as any).deviceStateInstance = state;
+
+    (inst as any).updateHeaterCoolerCharacteristics(state.toApiStatus());
+
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.Active,
       platform.Characteristic!.Active.ACTIVE,
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.CurrentHeaterCoolerState,
-      platform.Characteristic!.CurrentHeaterCoolerState.HEATING,
+      platform.Characteristic!.CurrentHeaterCoolerState.COOLING,
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.TargetHeaterCoolerState,
-      platform.Characteristic!.TargetHeaterCoolerState.HEAT,
+      platform.Characteristic!.TargetHeaterCoolerState.COOL,
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.CurrentTemperature,
-      100,
+      20,
     );
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic!.CoolingThresholdTemperature,
-      100,
-    );
-    expect(service.updateCharacteristic).toHaveBeenCalledWith(
-      platform.Characteristic!.HeatingThresholdTemperature,
-      100,
-    );
+    // NOTE: No longer expect threshold temperature updates - this was the bug fix
+    // Threshold temperatures should only be updated by explicit HomeKit SET requests
+    // expect(service.updateCharacteristic).toHaveBeenCalledWith(
+    //   platform.Characteristic!.CoolingThresholdTemperature,
+    //   30, // Changed from 35 to 30 due to DeviceState internal clamping
+    // );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.RotationSpeed,
-      75,
+      FanSpeedPercentMap[FanSpeed.Auto],
     );
     expect(service.updateCharacteristic).toHaveBeenCalledWith(
       platform.Characteristic!.SwingMode,
-      1,
+      platform.Characteristic!.SwingMode.SWING_DISABLED,
     );
   });
 
   it('map and handler functions behave correctly', () => {
     const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Cool)).toBe(2); // Use Enum
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Heat)).toBe(1); // Use Enum
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState'](OperationMode.Auto)).toBe(0); // Use Enum
-    expect(inst['mapOperationModeToCurrentHeaterCoolerState']('other' as OperationMode)).toBe(0); // Handle unknown
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode'](OperationMode.Cool, PowerState.On, 70, 75)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.COOLING);
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode'](OperationMode.Heat, PowerState.On, 70, 65)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.HEATING);
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode'](OperationMode.Auto, PowerState.On, 70, 70)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.IDLE);
+    expect((inst as any)['mapAPICurrentModeToHomebridgeCurrentMode']('other' as OperationMode, PowerState.On, 70, 70)).toBe(platform.Characteristic!.CurrentHeaterCoolerState.IDLE);
 
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Low)).toBe(25); // Use Enum
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Middle)).toBe(50); // Use Enum for Middle
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.High)).toBe(75); // Use Enum
-    expect(inst['mapFanModeToRotationSpeed'](FanSpeed.Auto)).toBe(50); // Use Enum
-    expect(inst['mapFanModeToRotationSpeed']('X' as FanSpeed)).toBe(50); // Handle unknown, map to Middle
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.Low, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Low]);
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.Medium, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Medium]);
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.High, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.High]);
+    expect((inst as any)['calculateFanRotationSpeed'](FanSpeed.Auto, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Auto]);
+    expect((inst as any)['calculateFanRotationSpeed']('X' as FanSpeed, PowerState.Off, SleepModeState.Off)).toBe(FanSpeedPercentMap[FanSpeed.Auto]);
 
-    expect(inst['mapRotationSpeedToFanMode'](10)).toBe(FanSpeed.Low);
-    expect(inst['mapRotationSpeedToFanMode'](60)).toBe(FanSpeed.High);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](0)).toBe(FanSpeed.Auto);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](10)).toBe(FanSpeed.Low);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](20)).toBe(FanSpeed.Low); 
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](40)).toBe(FanSpeed.MediumLow); 
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](60)).toBe(FanSpeed.Medium);
+    expect((inst as any)['mapRotationSpeedToAPIFanMode'](90)).toBe(FanSpeed.MediumHigh);
 
-    expect(inst.fahrenheitToCelsius(32)).toBe(0);
-    expect(inst.celsiusToFahrenheit(0)).toBe(32);
-
-    // test compatibility handler fallback
-    const h = inst.getCharacteristicHandler('Active', 'get');
-    expect(h).toBeDefined();
-    const h2 = inst.getCharacteristicHandler('Unknown', 'get');
-    expect(h2).toBeUndefined();
-  });
-
-  it('getCharacteristicHandler fallback covers all mapped cases', () => {
-    const inst = new TfiacPlatformAccessory(platform as TfiacPlatform, accessory as PlatformAccessory);
-    const keys: Array<[string, 'get' | 'set']> = [
-      ['CurrentTemperature', 'get'],
-      ['CoolingThresholdTemperature', 'get'],
-      ['HeatingThresholdTemperature', 'get'],
-      ['CoolingThresholdTemperature', 'set'],
-      ['RotationSpeed', 'get'],
-      ['RotationSpeed', 'set'],
-      ['SwingMode', 'get'],
-      ['SwingMode', 'set'],
-      ['Active', 'get'],
-      ['Active', 'set'],
-      ['CurrentHeaterCoolerState', 'get'],
-      ['TargetHeaterCoolerState', 'get'],
-      ['TargetHeaterCoolerState', 'set'],
-    ];
-    for (const [char, event] of keys) {
-      const handler = inst.getCharacteristicHandler(char, event);
-      expect(handler).toBeDefined();
-      expect(typeof handler).toBe('function');
-    }
+    expect(fahrenheitToCelsius(32)).toBe(0);
+    expect(celsiusToFahrenheit(0)).toBe(32);
   });
 });

@@ -35,85 +35,63 @@
               "minimum": 0.5,
               "maximum": 1
             },
-            "display": {
+            "enableDisplay": {
               "title": "Display",
               "type": "boolean",
               "required": false
             },
-            "health": {
-              "title": "Health",
-              "type": "boolean",
-              "required": false
-            },
-            "clean": {
-              "title": "Clean",
-              "type": "boolean",
-              "required": false
-            },
-            "sleep": {
+            "enableSleep": {
               "title": "Sleep",
               "type": "boolean",
               "required": false
             },
-            "mildew": {
-              "title": "Mildew",
-              "type": "boolean",
-              "required": false
-            },
-            "auto": {
-              "title": "Auto fan speed",
-              "type": "boolean",
-              "required": false
-            },
-            "swing": {
-              "title": "Swing",
-              "type": "integer",
-              "required": false,
-              "minimum": 1,
-              "maximum": 3
-            },
             "enableDry": {
-              "title": "Enable Dry Mode Switch",
+              "title": "Dry",
               "type": "boolean",
               "required": false
             },
             "enableFanOnly": {
-              "title": "Enable Fan Only Mode Switch",
+              "title": "Fan Only",
               "type": "boolean",
               "required": false
             },
             "enableTurbo": {
-              "title": "Enable Turbo Switch",
+              "title": "Turbo",
               "type": "boolean",
               "required": false
             },
             "enableEco": {
-              "title": "Enable Eco Switch",
+              "title": "Eco",
               "type": "boolean",
               "required": false
             },
             "enableBeep": {
-              "title": "Enable Beep Switch",
+              "title": "Beep",
               "type": "boolean",
               "required": false
             },
             "enableHorizontalSwing": {
-              "title": "Enable Horizontal Swing Switch",
+              "title": "Horizontal Swing",
+              "type": "boolean",
+              "required": false
+            },
+            "enableIFeelSensor": {
+              "title": "iFeel",
               "type": "boolean",
               "required": false
             },
             "enableStandaloneFan": {
-              "title": "Enable Standalone Fan Service",
+              "title": "Standalone Fan",
               "type": "boolean",
               "required": false
             },
             "enableTemperature": {
-              "title": "Enable Temperature Sensor",
+              "title": "Temperature",
               "type": "boolean",
               "required": false
             },
             "enableFanSpeed": {
-              "title": "Enable Fan Speed Control",
+              "title": "Fan Speed",
               "type": "boolean",
               "required": false
             },
@@ -121,6 +99,29 @@
               "type": "number",
               "title": "Temperature Correction",
               "description": "Correction factor (in Celsius) to be added to the measured indoor temperature. Use negative value to decrease reported temperature."
+            },
+            "updateInterval": {
+              "type": "number",
+              "title": "Update Interval",
+              "description": "Time in seconds between status updates from the device. Lower values provide more responsive status updates but may increase network traffic.",
+              "default": 30,
+              "minimum": 5,
+              "maximum": 300
+            },
+            "debug": {
+              "title": "Device Debug Logging",
+              "description": "Enable debug logging for this specific device",
+              "type": "boolean",
+              "required": false,
+              "default": false
+            },
+            "uiHoldSeconds": {
+              "type": "number",
+              "title": "UI Hold Timeout",
+              "description": "Time in seconds to ignore state updates from the device after manually changing a switch",
+              "default": 30,
+              "minimum": 1,
+              "maximum": 60
             }
           }
         }
@@ -131,6 +132,15 @@
         "type": "boolean",
         "required": false,
         "default": false
+      },
+      "uiHoldSeconds": {
+        "title": "UI Hold Timeout",
+        "description": "Time in seconds to ignore state updates from the device after manually changing a switch (global setting)",
+        "type": "number",
+        "required": false,
+        "default": 30,
+        "minimum": 1,
+        "maximum": 60
       }
     }
   },
